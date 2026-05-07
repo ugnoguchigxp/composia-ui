@@ -2,7 +2,10 @@ import type {
   DatabaseDesignConversationResponse,
   DatabaseDesignEditRequest,
   DatabaseDesignProposeRequest,
+  DatabaseDesignReproposalRequest,
   DatabaseDesignResponse,
+  DatabaseDraftGapResponse,
+  DatabaseDraftsResponse,
   DatabaseSchemaJsonResponse,
   SandboxDeleteResponse,
   SandboxMigrationPreview,
@@ -16,6 +19,8 @@ import type {
 import {
   databaseDesignConversationResponseSchema,
   databaseDesignResponseSchema,
+  databaseDraftGapResponseSchema,
+  databaseDraftsResponseSchema,
   databaseSchemaJsonResponseSchema,
   sandboxDeleteResponseSchema,
   sandboxMigrationPreviewSchema,
@@ -53,6 +58,20 @@ export const databaseDesignRepository = {
     if (!response.ok) throw new Error(await readErrorMessage(response));
     return databaseDesignConversationResponseSchema.parse(await response.json());
   },
+  drafts: async (): Promise<DatabaseDraftsResponse> => {
+    const response = await client['database-design'].drafts.$get({});
+    if (!response.ok) throw new Error(await readErrorMessage(response));
+    return databaseDraftsResponseSchema.parse(await response.json());
+  },
+  draftGap: async (databaseSchemaJsonId: string): Promise<DatabaseDraftGapResponse> => {
+    const response = await client['database-design']['schema-jsons'][
+      ':databaseSchemaJsonId'
+    ].gap.$get({
+      param: { databaseSchemaJsonId },
+    });
+    if (!response.ok) throw new Error(await readErrorMessage(response));
+    return databaseDraftGapResponseSchema.parse(await response.json());
+  },
   edit: async (
     designSessionId: string,
     input: DatabaseDesignEditRequest
@@ -75,6 +94,19 @@ export const databaseDesignRepository = {
   },
   propose: async (input: DatabaseDesignProposeRequest): Promise<DatabaseDesignResponse> => {
     const response = await client['database-design'].propose.$post({ json: input });
+    if (!response.ok) throw new Error(await readErrorMessage(response));
+    return databaseDesignResponseSchema.parse(await response.json());
+  },
+  reproposal: async (
+    databaseSchemaJsonId: string,
+    input: DatabaseDesignReproposalRequest
+  ): Promise<DatabaseDesignResponse> => {
+    const response = await client['database-design']['schema-jsons'][
+      ':databaseSchemaJsonId'
+    ].reproposal.$post({
+      json: input,
+      param: { databaseSchemaJsonId },
+    });
     if (!response.ok) throw new Error(await readErrorMessage(response));
     return databaseDesignResponseSchema.parse(await response.json());
   },

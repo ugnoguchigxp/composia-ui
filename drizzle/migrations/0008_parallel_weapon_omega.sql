@@ -1,0 +1,1 @@
+ALTER TABLE "database_schema_jsons" ADD COLUMN "data_bindings" jsonb DEFAULT '[]'::jsonb NOT NULL;

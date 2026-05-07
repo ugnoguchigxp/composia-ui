@@ -526,6 +526,7 @@ export const databaseDesignTriggerSchema = z.enum([
   'initial-prompt',
   'screen-proposal',
   'dbdesign-proposal',
+  'db-reproposal',
   'db-edit',
   'ui-edit',
   'reset',
@@ -551,6 +552,7 @@ export const databaseSchemaJsonRecordSchema = z
     prompt: z.string().min(1),
     trigger: databaseDesignTriggerSchema,
     schema: databaseSchemaJsonSchema,
+    dataBindings: z.array(dataBindingSchema).default([]),
     diffSummary: databaseSchemaDiffSummarySchema.default({
       addedTables: [],
       changedTables: [],
@@ -606,6 +608,12 @@ export const databaseDesignProposeRequestSchema = z
 export const databaseDesignEditRequestSchema = z
   .object({
     prompt: z.string().trim().min(1).max(4000),
+  })
+  .strict();
+
+export const databaseDesignReproposalRequestSchema = z
+  .object({
+    prompt: z.string().trim().min(1).max(4000).optional(),
   })
   .strict();
 
@@ -842,6 +850,96 @@ export const sandboxResetResponseSchema = z
   })
   .strict();
 
+export const sandboxTableColumnStateSchema = z
+  .object({
+    name: databaseIdentifierSchema,
+    type: z.string().min(1),
+    scalarType: databaseScalarTypeSchema,
+    nullable: z.boolean(),
+    primaryKey: z.boolean(),
+    defaultValue: z.string().nullable().default(null),
+  })
+  .strict();
+
+export const sandboxTableIndexStateSchema = z
+  .object({
+    name: databaseIdentifierSchema,
+    columns: z.array(databaseIdentifierSchema).min(1),
+    unique: z.boolean(),
+  })
+  .strict();
+
+export const sandboxTableForeignKeyStateSchema = z
+  .object({
+    name: databaseIdentifierSchema,
+    column: databaseIdentifierSchema,
+    referencesTable: databaseIdentifierSchema,
+    referencesColumn: databaseIdentifierSchema,
+    onDelete: z.string().nullable().default(null),
+  })
+  .strict();
+
+export const sandboxTableStateSchema = z
+  .object({
+    name: databaseIdentifierSchema,
+    rowCount: z.number().int().min(0),
+    managed: z.boolean(),
+    columns: z.array(sandboxTableColumnStateSchema).default([]),
+    indexes: z.array(sandboxTableIndexStateSchema).default([]),
+    foreignKeys: z.array(sandboxTableForeignKeyStateSchema).default([]),
+  })
+  .strict();
+
+export const databaseDraftGapKindSchema = z.enum([
+  'missing_table',
+  'extra_table',
+  'unmanaged_table_present',
+  'missing_column',
+  'extra_column',
+  'column_type_mismatch',
+  'column_nullability_mismatch',
+  'missing_foreign_key',
+  'extra_foreign_key',
+  'index_mismatch',
+]);
+
+export const databaseDraftGapItemSchema = z
+  .object({
+    kind: databaseDraftGapKindSchema,
+    severity: z.enum(['blocking', 'info']),
+    table: databaseIdentifierSchema.nullable().default(null),
+    column: databaseIdentifierSchema.nullable().default(null),
+    expected: z.string().nullable().default(null),
+    actual: z.string().nullable().default(null),
+    message: z.string().min(1),
+  })
+  .strict();
+
+export const databaseDraftGapSummarySchema = z
+  .object({
+    currentMatch: z.boolean(),
+    blockingCount: z.number().int().min(0),
+    infoCount: z.number().int().min(0),
+    items: z.array(databaseDraftGapItemSchema).default([]),
+  })
+  .strict();
+
+export const databaseDraftSummarySchema = z
+  .object({
+    id: z.string().uuid(),
+    designSessionId: z.string().uuid(),
+    title: z.string().min(1),
+    prompt: z.string().min(1),
+    source: z.enum(['screen', 'dbdesign', 'reproposal']),
+    createdAt: z.string().datetime(),
+    tableCount: z.number().int().min(0),
+    sourceScreenJsonId: z.string().uuid().nullable().default(null),
+    historicallyAppliedAt: z.string().datetime().nullable().default(null),
+    currentMatch: z.boolean(),
+    gap: databaseDraftGapSummarySchema,
+  })
+  .strict();
+
 export const sandboxMigrationRunSchema = z
   .object({
     id: z.string().uuid(),
@@ -882,6 +980,19 @@ export const databaseDesignResponseSchema = z
   })
   .strict();
 
+export const databaseDraftsResponseSchema = z
+  .object({
+    drafts: z.array(databaseDraftSummarySchema).default([]),
+  })
+  .strict();
+
+export const databaseDraftGapResponseSchema = z
+  .object({
+    databaseSchemaJsonId: z.string().uuid(),
+    gap: databaseDraftGapSummarySchema,
+  })
+  .strict();
+
 export const databaseSchemaJsonResponseSchema = z
   .object({
     databaseSchemaJson: databaseSchemaJsonRecordSchema,
@@ -903,15 +1014,7 @@ export const sandboxStateResponseSchema = z
   .object({
     appliedDatabaseSchemaJsonId: z.string().uuid().nullable(),
     appliedVersion: z.number().int().min(1).nullable(),
-    tables: z.array(
-      z
-        .object({
-          name: databaseIdentifierSchema,
-          rowCount: z.number().int().min(0),
-          managed: z.boolean(),
-        })
-        .strict()
-    ),
+    tables: z.array(sandboxTableStateSchema),
   })
   .strict();
 
@@ -951,15 +1054,26 @@ export type DatabaseSchemaJsonRecord = z.infer<typeof databaseSchemaJsonRecordSc
 export type DatabaseDesignMessage = z.infer<typeof databaseDesignMessageSchema>;
 export type DatabaseDesignProposeRequest = z.infer<typeof databaseDesignProposeRequestSchema>;
 export type DatabaseDesignEditRequest = z.infer<typeof databaseDesignEditRequestSchema>;
+export type DatabaseDesignReproposalRequest = z.infer<typeof databaseDesignReproposalRequestSchema>;
 export type DatabaseDesignDraftResponse = z.infer<typeof databaseDesignDraftResponseSchema>;
 export type SandboxMigrationPreview = z.infer<typeof sandboxMigrationPreviewSchema>;
 export type SandboxMigrationRun = z.infer<typeof sandboxMigrationRunSchema>;
 export type SandboxResetRequest = z.infer<typeof sandboxResetRequestSchema>;
 export type SandboxResetResponse = z.infer<typeof sandboxResetResponseSchema>;
+export type SandboxTableColumnState = z.infer<typeof sandboxTableColumnStateSchema>;
+export type SandboxTableIndexState = z.infer<typeof sandboxTableIndexStateSchema>;
+export type SandboxTableForeignKeyState = z.infer<typeof sandboxTableForeignKeyStateSchema>;
+export type SandboxTableState = z.infer<typeof sandboxTableStateSchema>;
+export type DatabaseDraftGapKind = z.infer<typeof databaseDraftGapKindSchema>;
+export type DatabaseDraftGapItem = z.infer<typeof databaseDraftGapItemSchema>;
+export type DatabaseDraftGapSummary = z.infer<typeof databaseDraftGapSummarySchema>;
+export type DatabaseDraftSummary = z.infer<typeof databaseDraftSummarySchema>;
 export type DatabaseDesignConversationResponse = z.infer<
   typeof databaseDesignConversationResponseSchema
 >;
 export type DatabaseDesignResponse = z.infer<typeof databaseDesignResponseSchema>;
+export type DatabaseDraftsResponse = z.infer<typeof databaseDraftsResponseSchema>;
+export type DatabaseDraftGapResponse = z.infer<typeof databaseDraftGapResponseSchema>;
 export type DatabaseSchemaJsonResponse = z.infer<typeof databaseSchemaJsonResponseSchema>;
 export type DatabaseCheckpointRestoreRequest = z.infer<
   typeof databaseCheckpointRestoreRequestSchema

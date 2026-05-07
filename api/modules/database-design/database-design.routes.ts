@@ -5,7 +5,10 @@ import {
   databaseDesignConversationResponseSchema,
   databaseDesignEditRequestSchema,
   databaseDesignProposeRequestSchema,
+  databaseDesignReproposalRequestSchema,
   databaseDesignResponseSchema,
+  databaseDraftGapResponseSchema,
+  databaseDraftsResponseSchema,
   databaseSchemaJsonResponseSchema,
   sandboxDeleteResponseSchema,
   sandboxMigrationApplyRequestSchema,
@@ -50,6 +53,17 @@ const proposeRoute = createRoute({
     200: {
       content: { 'application/json': { schema: databaseDesignResponseSchema } },
       description: 'Propose a DatabaseSchemaJSON draft from prompt or ScreenJSON',
+    },
+  },
+});
+
+const draftsRoute = createRoute({
+  method: 'get',
+  path: '/drafts',
+  responses: {
+    200: {
+      content: { 'application/json': { schema: databaseDraftsResponseSchema } },
+      description: 'List DBDesign drafts for the current user',
     },
   },
 });
@@ -106,6 +120,35 @@ const schemaJsonRoute = createRoute({
     200: {
       content: { 'application/json': { schema: databaseSchemaJsonResponseSchema } },
       description: 'Get DatabaseSchemaJSON as minified JSON',
+    },
+  },
+});
+
+const schemaJsonGapRoute = createRoute({
+  method: 'get',
+  path: '/schema-jsons/:databaseSchemaJsonId/gap',
+  request: { params: databaseSchemaJsonParamSchema },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: databaseDraftGapResponseSchema } },
+      description: 'Compare a DatabaseSchemaJSON draft with current SandboxDB state',
+    },
+  },
+});
+
+const schemaJsonReproposalRoute = createRoute({
+  method: 'post',
+  path: '/schema-jsons/:databaseSchemaJsonId/reproposal',
+  request: {
+    params: databaseSchemaJsonParamSchema,
+    body: {
+      content: { 'application/json': { schema: databaseDesignReproposalRequestSchema } },
+    },
+  },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: databaseDesignResponseSchema } },
+      description: 'Create a new DatabaseSchemaJSON draft from current SandboxDB state',
     },
   },
 });
@@ -345,6 +388,7 @@ export const databaseDesignRouter = protectedDatabaseDesignRouter
   .openapi(proposeRoute, async (c) =>
     c.json(await databaseDesignService.propose(userId(c), c.req.valid('json')), 200)
   )
+  .openapi(draftsRoute, async (c) => c.json(await databaseDesignService.listDrafts(userId(c)), 200))
   .openapi(conversationRoute, async (c) =>
     c.json(
       await databaseDesignService.conversation(userId(c), c.req.valid('param').designSessionId),
@@ -373,6 +417,22 @@ export const databaseDesignRouter = protectedDatabaseDesignRouter
       200
     );
   })
+  .openapi(schemaJsonGapRoute, async (c) =>
+    c.json(
+      await databaseDesignService.draftGap(userId(c), c.req.valid('param').databaseSchemaJsonId),
+      200
+    )
+  )
+  .openapi(schemaJsonReproposalRoute, async (c) =>
+    c.json(
+      await databaseDesignService.reproposal(
+        userId(c),
+        c.req.valid('param').databaseSchemaJsonId,
+        c.req.valid('json')
+      ),
+      200
+    )
+  )
   .openapi(schemaJsonRoute, async (c) =>
     c.json(
       await databaseDesignService.schemaJson(userId(c), c.req.valid('param').databaseSchemaJsonId),

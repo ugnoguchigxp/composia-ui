@@ -9,6 +9,7 @@ import type {
   DatabaseRelation,
   DatabaseSchemaJson,
   DatabaseTable,
+  SandboxStateResponse,
 } from '../../../shared/schemas/database-design.schema';
 import { databaseDesignDraftResponseSchema } from '../../../shared/schemas/database-design.schema';
 import type { AppUiSchema, AppUiSchemaSection } from '../../../shared/schemas/ui-schema.schema';
@@ -27,9 +28,12 @@ const dbDesignSystemInstructions =
 
 export type DatabaseDesignProviderInput = {
   currentDatabaseSchema?: DatabaseSchemaJson | null;
+  currentSandboxState?: SandboxStateResponse | null;
   currentScreen?: AppUiSchema | null;
+  selectedDraftPrompt?: string | null;
+  selectedDraftSchema?: DatabaseSchemaJson | null;
   prompt: string;
-  source: 'screen' | 'dbdesign';
+  source: 'screen' | 'dbdesign' | 'reproposal';
 };
 
 export type DatabaseDesignProviderOutput = {
@@ -168,6 +172,18 @@ function screenSummary(screen?: AppUiSchema | null) {
     layout: screen.layout,
     sectionCount: screen.sections.length,
     components: screen.sections.map((section) => section.component),
+  };
+}
+
+function sandboxStateSummary(state?: SandboxStateResponse | null) {
+  if (!state) return null;
+  return {
+    tableCount: state.tables.length,
+    tables: state.tables.map((table) => ({
+      columnCount: table.columns.length,
+      managed: table.managed,
+      name: table.name,
+    })),
   };
 }
 
@@ -750,13 +766,17 @@ function buildLlmInput(input: DatabaseDesignProviderInput) {
   const payload = {
     source: input.source,
     currentDatabaseSchema: input.currentDatabaseSchema ?? null,
+    currentSandboxState: input.currentSandboxState ?? null,
     currentScreen: input.currentScreen ?? null,
+    selectedDraftPrompt: input.selectedDraftPrompt ?? null,
+    selectedDraftSchema: input.selectedDraftSchema ?? null,
     latestUserInstruction: input.prompt,
   };
   const json = JSON.stringify(payload);
   const prompt = [
     'Generate a DBDesignJob JSON object only.',
-    'Use only catalog constraints, current database schema JSON, current screen JSON, and latest user instruction.',
+    'Use only catalog constraints, current sandbox state, selected draft intent, current database schema JSON, current screen JSON, and latest user instruction.',
+    'When currentSandboxState is present, treat it as the current database truth. Treat selectedDraftSchema and selectedDraftPrompt as intent, not as current state.',
     'Do not use prior conversation history.',
     'Return the complete desired DBDesignJob after applying the latest instruction, not a diff.',
     'DBDesignJob shape: { "name": string, "label": string, "purpose": string, "tables": Table[], "relationships": Relationship[], "primaryTables": string[], "notes": string[] }.',
@@ -1079,7 +1099,9 @@ export function createDefaultDatabaseDesignProvider(): DatabaseDesignProvider {
         {
           traceId,
           currentDatabaseSchema: schemaSummary(input.currentDatabaseSchema),
+          currentSandboxState: sandboxStateSummary(input.currentSandboxState),
           currentScreen: screenSummary(input.currentScreen),
+          selectedDraftSchema: schemaSummary(input.selectedDraftSchema),
           promptChars: input.prompt.length,
           source: input.source,
         },

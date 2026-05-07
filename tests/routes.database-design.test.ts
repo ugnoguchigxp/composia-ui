@@ -11,9 +11,12 @@ const screenJsonId = '44444444-4444-4444-8444-444444444444';
 const databaseDesignServiceMocks = vi.hoisted(() => ({
   applyMigration: vi.fn(),
   conversation: vi.fn(),
+  draftGap: vi.fn(),
   edit: vi.fn(),
+  listDrafts: vi.fn(),
   migrationPreview: vi.fn(),
   propose: vi.fn(),
+  reproposal: vi.fn(),
   resetSandbox: vi.fn(),
   restoreCheckpoint: vi.fn(),
   schemaJson: vi.fn(),
@@ -43,6 +46,7 @@ function databaseSchemaJson() {
     version: 1,
     prompt: '商品を管理したい',
     trigger: 'dbdesign-proposal',
+    dataBindings: [],
     schema: {
       name: 'products_schema',
       label: 'Products',
@@ -94,6 +98,48 @@ function databaseSchemaJson() {
     providerMeta: { provider: 'mock', componentRegistryVersion: 'component-registry-v2:test' },
     createdAt: '2026-05-07T00:00:00.000Z',
     updatedAt: '2026-05-07T00:00:00.000Z',
+  };
+}
+
+function draftGapResponse() {
+  return {
+    databaseSchemaJsonId,
+    gap: {
+      currentMatch: false,
+      blockingCount: 1,
+      infoCount: 0,
+      items: [
+        {
+          kind: 'missing_table',
+          severity: 'blocking',
+          table: 'products',
+          column: null,
+          expected: 'products',
+          actual: null,
+          message: 'products is missing from SandboxDB',
+        },
+      ],
+    },
+  };
+}
+
+function draftsResponse() {
+  return {
+    drafts: [
+      {
+        id: databaseSchemaJsonId,
+        designSessionId,
+        title: 'Products',
+        prompt: '商品を管理したい',
+        source: 'dbdesign',
+        createdAt: '2026-05-07T00:00:00.000Z',
+        tableCount: 1,
+        sourceScreenJsonId: null,
+        historicallyAppliedAt: null,
+        currentMatch: false,
+        gap: draftGapResponse().gap,
+      },
+    ],
   };
 }
 
@@ -205,6 +251,46 @@ describe('database design routes', () => {
       undefined
     );
     expect(databaseDesignServiceMocks.propose).not.toHaveBeenCalled();
+  });
+
+  it('lists user-wide database drafts', async () => {
+    databaseDesignServiceMocks.listDrafts.mockResolvedValue(draftsResponse());
+
+    const res = await createApp().request('/api/database-design/drafts');
+
+    expect(res.status).toBe(200);
+    expect(databaseDesignServiceMocks.listDrafts).toHaveBeenCalledWith(userId);
+  });
+
+  it('returns a draft gap against current SandboxDB state', async () => {
+    databaseDesignServiceMocks.draftGap.mockResolvedValue(draftGapResponse());
+
+    const res = await createApp().request(
+      `/api/database-design/schema-jsons/${databaseSchemaJsonId}/gap`
+    );
+
+    expect(res.status).toBe(200);
+    expect(databaseDesignServiceMocks.draftGap).toHaveBeenCalledWith(userId, databaseSchemaJsonId);
+  });
+
+  it('creates a reproposal draft from the current SandboxDB state', async () => {
+    databaseDesignServiceMocks.reproposal.mockResolvedValue(databaseDesignResponse());
+
+    const res = await createApp().request(
+      `/api/database-design/schema-jsons/${databaseSchemaJsonId}/reproposal`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ prompt: '現在のテーブルに合わせてください' }),
+      }
+    );
+
+    expect(res.status).toBe(200);
+    expect(databaseDesignServiceMocks.reproposal).toHaveBeenCalledWith(
+      userId,
+      databaseSchemaJsonId,
+      { prompt: '現在のテーブルに合わせてください' }
+    );
   });
 
   it('exposes the get_database_schema_json MCP tool endpoint', async () => {

@@ -181,6 +181,7 @@ export const databaseSchemaJsons = pgTable(
     prompt: text('prompt').notNull(),
     trigger: text('trigger').notNull(),
     schema: jsonb('schema').$type<DatabaseSchemaJson>().notNull(),
+    dataBindings: jsonb('data_bindings').$type<DataBinding[]>().notNull().default([]),
     diffSummary: jsonb('diff_summary').$type<DatabaseSchemaDiffSummary>().notNull().default({
       addedTables: [],
       changedTables: [],

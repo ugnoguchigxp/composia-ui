@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, inArray, max } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, isNotNull, max } from 'drizzle-orm';
 import { db } from '../../db/client';
 import {
   databaseDesignMessages,
@@ -23,6 +23,11 @@ export type ScreenJsonWithPromptSessionRecord = {
 export type DatabaseSchemaJsonWithSessionRecord = {
   databaseSchemaJson: DatabaseSchemaJsonRecord;
   session: DatabaseDesignSessionRecord;
+};
+
+export type DatabaseDesignSourceScreenRecord = {
+  databaseSchemaJsonId: string | null;
+  screenJsonId: string | null;
 };
 
 export type DatabaseDesignRepository = {
@@ -59,8 +64,15 @@ export type DatabaseDesignRepository = {
   nextSchemaVersion: (designSessionId: string) => Promise<number>;
   nextScreenJsonVersion: (sessionId: string) => Promise<number>;
   listDesignMessages: (designSessionId: string) => Promise<DatabaseDesignMessageRecord[]>;
+  listMigrationRunsBySchemaJsonIds: (
+    databaseSchemaJsonIds: string[]
+  ) => Promise<SandboxMigrationRunRecord[]>;
   listManagedObjects: () => Promise<SandboxManagedObjectRecord[]>;
   listSchemaJsons: (designSessionId: string) => Promise<DatabaseSchemaJsonRecord[]>;
+  listSchemaJsonsForUser: (userId: string) => Promise<DatabaseSchemaJsonWithSessionRecord[]>;
+  listSourceScreenJsonIdsBySchemaJsonIds: (
+    databaseSchemaJsonIds: string[]
+  ) => Promise<DatabaseDesignSourceScreenRecord[]>;
   markAppliedMigrationRunsReverted: () => Promise<void>;
   markManagedObjectsDropped: (ids: string[]) => Promise<void>;
   replaceManagedObjects: (
@@ -194,6 +206,14 @@ export const databaseDesignRepository: DatabaseDesignRepository = {
       .from(databaseDesignMessages)
       .where(eq(databaseDesignMessages.designSessionId, designSessionId))
       .orderBy(asc(databaseDesignMessages.createdAt)),
+  listMigrationRunsBySchemaJsonIds: async (databaseSchemaJsonIds) => {
+    if (databaseSchemaJsonIds.length === 0) return [];
+    return db
+      .select()
+      .from(sandboxMigrationRuns)
+      .where(inArray(sandboxMigrationRuns.databaseSchemaJsonId, databaseSchemaJsonIds))
+      .orderBy(desc(sandboxMigrationRuns.appliedAt), desc(sandboxMigrationRuns.createdAt));
+  },
   listManagedObjects: async () =>
     db.select().from(sandboxManagedObjects).orderBy(asc(sandboxManagedObjects.objectName)),
   listSchemaJsons: async (designSessionId) =>
@@ -202,6 +222,32 @@ export const databaseDesignRepository: DatabaseDesignRepository = {
       .from(databaseSchemaJsons)
       .where(eq(databaseSchemaJsons.designSessionId, designSessionId))
       .orderBy(asc(databaseSchemaJsons.version)),
+  listSchemaJsonsForUser: async (userId) =>
+    db
+      .select({ databaseSchemaJson: databaseSchemaJsons, session: databaseDesignSessions })
+      .from(databaseSchemaJsons)
+      .innerJoin(
+        databaseDesignSessions,
+        eq(databaseSchemaJsons.designSessionId, databaseDesignSessions.id)
+      )
+      .where(eq(databaseDesignSessions.createdBy, userId))
+      .orderBy(desc(databaseSchemaJsons.createdAt)),
+  listSourceScreenJsonIdsBySchemaJsonIds: async (databaseSchemaJsonIds) => {
+    if (databaseSchemaJsonIds.length === 0) return [];
+    return db
+      .select({
+        databaseSchemaJsonId: databaseDesignMessages.databaseSchemaJsonId,
+        screenJsonId: databaseDesignMessages.screenJsonId,
+      })
+      .from(databaseDesignMessages)
+      .where(
+        and(
+          inArray(databaseDesignMessages.databaseSchemaJsonId, databaseSchemaJsonIds),
+          isNotNull(databaseDesignMessages.screenJsonId)
+        )
+      )
+      .orderBy(asc(databaseDesignMessages.createdAt));
+  },
   markAppliedMigrationRunsReverted: async () => {
     await db
       .update(sandboxMigrationRuns)
