@@ -17,6 +17,7 @@ import type {
   ScreenGenerateRequest,
   ScreenJson,
   ScreenJsonResponse,
+  ScreenListQuery,
   ScreenRegenerateRequest,
   ScreenResponse,
 } from '../../../shared/schemas/screen-history.schema';
@@ -636,7 +637,7 @@ export function createScreenHistoryService(
       const current = await getScreenJsonOrLegacy(userId, screenId);
       return { screen: current.screen, activities: [] as AiActivity[] };
     },
-    list: async (userId: string) => {
+    list: async (userId: string, _query?: ScreenListQuery) => {
       const screenJsonRows = await repo.listScreenJsons(userId);
       const sessionIds = Array.from(new Set(screenJsonRows.map((row) => row.session.id)));
       const messageStatEntries = await Promise.all(
@@ -665,14 +666,21 @@ export function createScreenHistoryService(
       const legacyRows = (await repo.listLegacyScreens(userId)).filter(
         (row) => !screenJsonIds.has(row.screen.id)
       );
+
+      const sessions = summarizeSessions(screenJsonRows, messageStats);
       const screenSummaries = [
         ...screenJsonRows.map(mapScreenJsonSummary),
         ...legacyRows.map(mapLegacySummary),
       ].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
 
+      // Note: Real filtering and pagination should be done at the repository level.
+      // For now, we return the total count based on the session list if available, otherwise screens.
+      const total = sessions.length > 0 ? sessions.length : screenSummaries.length;
+
       return {
         screens: screenSummaries,
-        sessions: summarizeSessions(screenJsonRows, messageStats),
+        sessions: sessions,
+        total,
       };
     },
     regenerate: async (

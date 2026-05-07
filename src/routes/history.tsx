@@ -1,8 +1,9 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
-import { History, Loader2, WandSparkles } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { History, Loader2 } from 'lucide-react';
+import { useState } from 'react';
+import type { ScreenListQuery } from '../../shared/schemas/screen-history.schema';
 import { useAuth } from '../lib/auth';
-import { ScreenHistoryList } from '../modules/screen-history/components/ScreenHistoryList';
+import { ScreenHistoryTable } from '../modules/screen-history/components/ScreenHistoryTable';
 import {
   useDeleteScreen,
   useScreenHistory,
@@ -15,38 +16,26 @@ export const Route = createFileRoute('/history' as any)({
 
 function HistoryPage() {
   const auth = useAuth();
-  const history = useScreenHistory(Boolean(auth.user));
+  const [query, setQuery] = useState<ScreenListQuery>({
+    page: 1,
+    limit: 10,
+    search: '',
+    sortBy: 'updatedAt',
+    sortOrder: 'desc',
+  });
+  const history = useScreenHistory(query, Boolean(auth.user));
   const deleteScreen = useDeleteScreen();
-  const [query, setQuery] = useState('');
-  const screens = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const all = history.data?.screens ?? [];
-    if (!q) return all;
-    return all.filter((screen) =>
-      [screen.page, screen.prompt, screen.inferredIntent, screen.action?.label]
-        .filter(Boolean)
-        .some((value) => value?.toLowerCase().includes(q))
-    );
-  }, [history.data?.screens, query]);
-  const sessions = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const all = history.data?.sessions ?? [];
-    if (!q) return all;
-    return all.filter((session) =>
-      [
-        session.title,
-        session.page,
-        session.prompt,
-        session.inferredIntent,
-        session.messageSearchText,
-      ]
-        .filter(Boolean)
-        .some((value) => value?.toLowerCase().includes(q))
-    );
-  }, [history.data?.sessions, query]);
+
+  const screens = history.data?.screens ?? [];
+  const sessions = history.data?.sessions ?? [];
+  const total = history.data?.total ?? 0;
 
   if (auth.isLoading) {
-    return <div className="mx-auto max-w-6xl px-4 py-10 text-muted-foreground">Loading...</div>;
+    return (
+      <div className="flex h-screen items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
   }
 
   if (!auth.user) {
@@ -66,58 +55,39 @@ function HistoryPage() {
   }
 
   return (
-    <div className="mx-auto grid max-w-6xl gap-6 px-4 py-8 md:px-8">
-      <section className="rounded-lg border border-border bg-card p-[var(--ui-card-padding)]">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary text-primary-foreground">
-              <History className="h-5 w-5" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-semibold">History</h1>
-              <p className="mt-1 text-muted-foreground text-sm">
-                Replay generated screens without calling the AI provider.
-              </p>
-            </div>
-          </div>
-          <Link
-            className="inline-flex h-ui items-center gap-2 rounded-md bg-primary px-ui-button text-sm font-medium text-primary-foreground hover:bg-primary/90"
-            to="/prompt"
-          >
-            <WandSparkles className="h-4 w-4" />
-            Prompt
-          </Link>
+    <div className="mx-auto grid max-w-6xl gap-4 px-4 py-8 md:px-8">
+      <header className="flex items-center justify-between px-1">
+        <div className="flex items-center gap-2">
+          <History className="h-4 w-4 text-primary" />
+          <h1 className="text-lg font-semibold tracking-tight">History</h1>
+          <span className="text-muted-foreground text-xs font-normal">({total} items)</span>
         </div>
-      </section>
-
-      <div className="flex flex-wrap items-center gap-3">
-        <input
-          aria-label="Search generated screens"
-          className="h-ui min-w-0 flex-1 rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search history"
-          value={query}
-        />
-        {history.isLoading ? (
-          <span className="inline-flex items-center gap-2 text-muted-foreground text-sm">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Loading
-          </span>
-        ) : null}
-      </div>
+      </header>
 
       {history.error ? (
-        <section className="rounded-lg border border-destructive/30 bg-destructive/10 p-4">
-          <h2 className="font-semibold">History request failed</h2>
+        <section className="rounded-lg border border-destructive/30 bg-destructive/10 p-6">
+          <h2 className="font-semibold text-destructive">History request failed</h2>
           <p className="mt-2 text-muted-foreground text-sm">{history.error.message}</p>
         </section>
+      ) : history.isLoading ? (
+        <div className="flex items-center justify-center py-24">
+          <div className="flex flex-col items-center gap-4 text-muted-foreground animate-in fade-in slide-in-from-bottom-4 duration-700">
+            <Loader2 className="h-10 w-10 animate-spin text-primary/60" />
+            <p className="text-sm font-medium tracking-wide">Retrieving your generations...</p>
+          </div>
+        </div>
       ) : (
-        <ScreenHistoryList
-          isDeleting={deleteScreen.isPending}
-          onDelete={(screenId) => deleteScreen.mutate(screenId)}
-          screens={screens}
-          sessions={sessions}
-        />
+        <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <ScreenHistoryTable
+            isDeleting={deleteScreen.isPending}
+            onDelete={(id) => deleteScreen.mutate(id)}
+            onQueryChange={setQuery}
+            query={query}
+            screens={screens}
+            sessions={sessions}
+            total={total}
+          />
+        </div>
       )}
     </div>
   );

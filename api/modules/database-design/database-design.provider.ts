@@ -1,17 +1,21 @@
 import { randomUUID } from 'node:crypto';
+import { z } from 'zod';
 import type { AiActivity } from '../../../shared/schemas/ai.schema';
 import type { DataBindingDraft } from '../../../shared/schemas/data-binding.schema';
 import type {
   DatabaseColumn,
   DatabaseDesignDraftResponse,
+  DatabaseIndex,
+  DatabaseRelation,
   DatabaseSchemaJson,
+  DatabaseTable,
 } from '../../../shared/schemas/database-design.schema';
 import { databaseDesignDraftResponseSchema } from '../../../shared/schemas/database-design.schema';
 import type { AppUiSchema, AppUiSchemaSection } from '../../../shared/schemas/ui-schema.schema';
 import { config } from '../../config';
 import { AppError, ValidationError } from '../../lib/errors';
 import { logger } from '../../lib/logger';
-import { layoutSystemContextVersion, parseJsonText } from '../ai/ai.provider';
+import { layoutSystemContextVersion } from '../ai/ai.provider';
 
 const dbDesignInputTokenLimit = 24_000;
 const dbDesignMaxOutputTokens = 24_000;
@@ -19,7 +23,7 @@ const dbDesignReasoningEffort = 'minimal';
 const dbDesignProviderProgressLogIntervalMs = 5000;
 const componentRegistryVersion = `component-registry-v2:${layoutSystemContextVersion}`;
 const dbDesignSystemInstructions =
-  'You design PostgreSQL schemas and UI data bindings. Return JSON only. Never create SQL.';
+  'You design DBDesignJob JSON for PostgreSQL-backed screens. Return JSON only. Never create SQL.';
 
 export type DatabaseDesignProviderInput = {
   currentDatabaseSchema?: DatabaseSchemaJson | null;
@@ -41,6 +45,91 @@ export type DatabaseDesignProviderOutput = {
 export type DatabaseDesignProvider = {
   propose: (input: DatabaseDesignProviderInput) => Promise<DatabaseDesignProviderOutput>;
 };
+
+const databaseDesignJobIdentifierSchema = z
+  .string()
+  .trim()
+  .regex(/^[a-z][a-z0-9_]*$/, 'Use snake_case identifiers starting with a letter');
+
+const databaseDesignJobFieldTypeSchema = z.enum([
+  'uuid',
+  'text',
+  'varchar',
+  'integer',
+  'bigint',
+  'numeric',
+  'boolean',
+  'date',
+  'timestamp',
+  'jsonb',
+  'enum',
+]);
+
+const databaseDesignJobFieldSchema = z
+  .object({
+    name: databaseDesignJobIdentifierSchema,
+    label: z.string().min(1),
+    type: databaseDesignJobFieldTypeSchema,
+    required: z.boolean().default(true),
+    unique: z.boolean().default(false),
+    enumName: databaseDesignJobIdentifierSchema.optional(),
+    enumValues: z.array(z.string().min(1)).optional(),
+    listVisible: z.boolean().default(true),
+    formVisible: z.boolean().default(true),
+    filterable: z.boolean().default(false),
+    sortable: z.boolean().default(false),
+    widget: z
+      .enum(['text', 'textarea', 'number', 'checkbox', 'select', 'date', 'datetime', 'json'])
+      .optional(),
+  })
+  .superRefine((field, context) => {
+    if (field.type === 'enum' && (!field.enumValues || field.enumValues.length === 0)) {
+      context.addIssue({
+        code: 'custom',
+        message: 'enum fields require enumValues',
+        path: ['enumValues'],
+      });
+    }
+  });
+
+const databaseDesignJobTableSchema = z.object({
+  name: databaseDesignJobIdentifierSchema,
+  label: z.string().min(1),
+  description: z.string().min(1).optional(),
+  fields: z.array(databaseDesignJobFieldSchema).default([]),
+});
+
+const databaseDesignJobRelationshipSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('one_to_many'),
+    parentTable: databaseDesignJobIdentifierSchema,
+    childTable: databaseDesignJobIdentifierSchema,
+    foreignKeyColumn: databaseDesignJobIdentifierSchema.optional(),
+    required: z.boolean().default(true),
+    onDelete: z.enum(['cascade', 'restrict', 'set-null']).default('restrict'),
+  }),
+  z.object({
+    kind: z.literal('many_to_many'),
+    leftTable: databaseDesignJobIdentifierSchema,
+    rightTable: databaseDesignJobIdentifierSchema,
+    joinTable: databaseDesignJobIdentifierSchema,
+    onDelete: z.enum(['cascade', 'restrict']).default('cascade'),
+  }),
+]);
+
+const databaseDesignJobSchema = z.object({
+  name: databaseDesignJobIdentifierSchema,
+  label: z.string().min(1),
+  purpose: z.string().min(1),
+  tables: z.array(databaseDesignJobTableSchema).min(1).max(40),
+  relationships: z.array(databaseDesignJobRelationshipSchema).default([]),
+  primaryTables: z.array(databaseDesignJobIdentifierSchema).default([]),
+  notes: z.array(z.string().min(1)).default([]),
+});
+
+type DatabaseDesignJob = z.infer<typeof databaseDesignJobSchema>;
+type DatabaseDesignJobField = z.infer<typeof databaseDesignJobFieldSchema>;
+type DatabaseDesignJobRelationship = z.infer<typeof databaseDesignJobRelationshipSchema>;
 
 function estimateTokens(text: string) {
   return Math.ceil(text.length / 3);
@@ -149,34 +238,17 @@ function emptyTextDetails(
   };
 }
 
-function slugifyIdentifier(value: string, fallback: string) {
-  const ascii = value
-    .toLowerCase()
-    .replace(/[^a-z0-9_]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .replace(/_{2,}/g, '_');
-  const normalized = ascii.replace(/^[^a-z]+/, '');
-  return normalized && /^[a-z][a-z0-9_]*$/.test(normalized) ? normalized : fallback;
+function identifierOrFallback(value: string, fallback: string) {
+  const normalized = value.trim().toLowerCase();
+  return databaseDesignJobIdentifierSchema.safeParse(normalized).success ? normalized : fallback;
 }
 
 function titleCase(value: string) {
   return value
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, (char) => char.toUpperCase())
-    .trim();
-}
-
-function tableNameFromText(text: string) {
-  const lower = text.toLowerCase();
-  if (/注文|order/.test(lower)) return 'orders';
-  if (/顧客|customer|client/.test(lower)) return 'customers';
-  if (/商品|製品|スキー|product|item/.test(lower)) return 'products';
-  if (/予約|booking|reservation/.test(lower)) return 'bookings';
-  if (/請求|invoice|billing/.test(lower)) return 'invoices';
-  if (/タスク|task|ticket|issue/.test(lower)) return 'tasks';
-  if (/記事|投稿|post|article/.test(lower)) return 'posts';
-  if (/社員|メンバー|member|employee/.test(lower)) return 'members';
-  return slugifyIdentifier(lower, 'records');
+    .split('_')
+    .filter(Boolean)
+    .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
+    .join(' ');
 }
 
 function textColumn(name: string, label: string, overrides: Partial<DatabaseColumn> = {}) {
@@ -232,7 +304,7 @@ function columnTypeFromField(field: Record<string, unknown>) {
 
 function columnFromField(field: Record<string, unknown>, index: number): DatabaseColumn {
   const label = String(field.label ?? field.name ?? `項目 ${index + 1}`);
-  const name = slugifyIdentifier(String(field.name ?? label), `field_${index + 1}`);
+  const name = identifierOrFallback(String(field.name ?? label), `field_${index + 1}`);
   const type = columnTypeFromField(field);
   const options = Array.isArray(field.options) ? field.options : [];
   return textColumn(name, label, {
@@ -269,7 +341,7 @@ function columnsFromScreen(screen: AppUiSchema | null | undefined, tableName: st
         if (typeof column !== 'object' || column === null) continue;
         const raw = column as { key?: unknown; label?: unknown };
         const label = String(raw.label ?? raw.key ?? `項目 ${index + 1}`);
-        const name = slugifyIdentifier(String(raw.key ?? raw.label ?? ''), `field_${index + 1}`);
+        const name = identifierOrFallback(String(raw.key ?? raw.label ?? ''), `field_${index + 1}`);
         if (name !== 'id' && !columns.has(name)) columns.set(name, textColumn(name, label));
       }
     }
@@ -290,65 +362,6 @@ function columnsFromScreen(screen: AppUiSchema | null | undefined, tableName: st
   }
 
   return [...systemColumns(), ...columns.values()];
-}
-
-function maybeAddCommonDomainTables(schema: DatabaseSchemaJson, prompt: string) {
-  const lower = prompt.toLowerCase();
-  if (!/タグ|tag|many.?to.?many|多対多/.test(lower)) return schema;
-  const base = schema.tables[0];
-  if (!base || schema.tables.some((table) => table.name === 'tags')) return schema;
-
-  const tags = {
-    name: 'tags',
-    label: 'タグ',
-    description: '分類タグ',
-    columns: [...systemColumns(), textColumn('name', 'タグ名', { unique: true })],
-    indexes: [{ name: 'tags_name_uidx', columns: ['name'], unique: true }],
-    ui: { displayField: 'name', defaultSortField: 'name', defaultSortDirection: 'asc' as const },
-  };
-  const joinTable = {
-    name: `${base.name}_tags`,
-    label: `${base.label}タグ`,
-    columns: [
-      ...systemColumns(),
-      {
-        ...textColumn(`${base.name.slice(0, -1)}_id`, `${base.label}ID`, { type: 'uuid' }),
-        ui: { listVisible: false, formVisible: true, filterable: true, sortable: false },
-      },
-      {
-        ...textColumn('tag_id', 'タグID', { type: 'uuid' }),
-        ui: { listVisible: false, formVisible: true, filterable: true, sortable: false },
-      },
-    ],
-    indexes: [
-      {
-        name: `${base.name}_tags_pair_uidx`,
-        columns: [`${base.name.slice(0, -1)}_id`, 'tag_id'],
-        unique: true,
-      },
-    ],
-    ui: { defaultSortDirection: 'asc' as const },
-  };
-
-  return {
-    ...schema,
-    tables: [...schema.tables, tags, joinTable],
-    relations: [
-      ...schema.relations,
-      {
-        kind: 'many-to-many' as const,
-        name: `${base.name}_to_tags`,
-        leftTable: base.name,
-        rightTable: 'tags',
-        joinTable: joinTable.name,
-        leftForeignKeyColumn: `${base.name.slice(0, -1)}_id`,
-        rightForeignKeyColumn: 'tag_id',
-        leftDisplayField: base.ui.displayField,
-        rightDisplayField: 'name',
-        onDelete: 'cascade' as const,
-      },
-    ],
-  };
 }
 
 function dataBindingForTable(tableName: string, operation: DataBindingDraft['operation']) {
@@ -395,45 +408,328 @@ function bindScreen(
   return { ...screen, sections };
 }
 
+function widgetForField(field: DatabaseDesignJobField): DatabaseColumn['ui']['widget'] {
+  if (field.widget) return field.widget;
+  if (field.type === 'numeric' || field.type === 'integer' || field.type === 'bigint') {
+    return 'number';
+  }
+  if (field.type === 'boolean') return 'checkbox';
+  if (field.type === 'date') return 'date';
+  if (field.type === 'timestamp') return 'datetime';
+  if (field.type === 'jsonb') return 'json';
+  if (field.type === 'enum') return 'select';
+  return 'text';
+}
+
+function columnFromJobField(field: DatabaseDesignJobField): DatabaseColumn {
+  return textColumn(field.name, field.label, {
+    type: field.type,
+    enumName: field.type === 'enum' ? (field.enumName ?? `${field.name}_enum`) : undefined,
+    enumValues: field.type === 'enum' ? field.enumValues : undefined,
+    nullable: !field.required,
+    unique: field.unique,
+    validation: { required: field.required },
+    ui: {
+      listVisible: field.listVisible,
+      formVisible: field.formVisible,
+      filterable: field.filterable,
+      sortable: field.sortable,
+      widget: widgetForField(field),
+    },
+  });
+}
+
+function displayFieldForTable(columns: DatabaseColumn[]) {
+  for (const preferred of ['name', 'title', 'email']) {
+    if (columns.some((column) => column.name === preferred)) return preferred;
+  }
+  return columns.find((column) => !column.primaryKey && column.ui.listVisible)?.name;
+}
+
+function tableFromJobTable(table: DatabaseDesignJob['tables'][number]): DatabaseTable {
+  const fieldColumns = table.fields
+    .filter((field) => field.name !== 'id' && field.name !== 'created_at')
+    .map((field) => columnFromJobField(field));
+  const columns = [...systemColumns(), ...fieldColumns];
+  const displayField = displayFieldForTable(columns);
+  return {
+    name: table.name,
+    label: table.label,
+    description: table.description,
+    columns,
+    indexes: [],
+    ui: {
+      displayField,
+      defaultSortField: 'created_at',
+      defaultSortDirection: 'desc',
+    },
+  };
+}
+
+function singularName(tableName: string) {
+  if (tableName.endsWith('ies') && tableName.length > 3) return `${tableName.slice(0, -3)}y`;
+  if (tableName.endsWith('s') && tableName.length > 1) return tableName.slice(0, -1);
+  return tableName;
+}
+
+function foreignKeyColumn(name: string, label: string, required: boolean): DatabaseColumn {
+  return textColumn(name, label, {
+    type: 'uuid',
+    nullable: !required,
+    validation: { required },
+    ui: {
+      listVisible: false,
+      formVisible: true,
+      filterable: true,
+      sortable: false,
+    },
+  });
+}
+
+function ensureColumn(table: DatabaseTable, column: DatabaseColumn): DatabaseTable {
+  if (table.columns.some((existing) => existing.name === column.name)) return table;
+  return { ...table, columns: [...table.columns, column] };
+}
+
+function uniqueIdentifier(base: string, used: Set<string>) {
+  let candidate = base;
+  let suffix = 2;
+  while (used.has(candidate)) {
+    candidate = `${base}_${suffix}`;
+    suffix += 1;
+  }
+  used.add(candidate);
+  return candidate;
+}
+
+function addIndexSpec(
+  specs: Map<string, { columns: string[]; unique: boolean }[]>,
+  table: string,
+  columns: string[],
+  unique: boolean
+) {
+  specs.set(table, [...(specs.get(table) ?? []), { columns, unique }]);
+}
+
+function indexName(table: string, columns: string[], unique: boolean) {
+  return `${table}_${columns.join('_')}_${unique ? 'uidx' : 'idx'}`;
+}
+
+function indexesForTable(
+  table: DatabaseTable,
+  relationIndexSpecs: { columns: string[]; unique: boolean }[]
+): DatabaseIndex[] {
+  const usedNames = new Set<string>();
+  const specs = [
+    ...table.columns
+      .filter((column) => column.unique && !column.primaryKey)
+      .map((column) => ({ columns: [column.name], unique: true })),
+    ...relationIndexSpecs,
+  ];
+  return specs.map((spec) => ({
+    name: uniqueIdentifier(indexName(table.name, spec.columns, spec.unique), usedNames),
+    columns: spec.columns,
+    unique: spec.unique,
+  }));
+}
+
+function relationFromJob(
+  relationship: DatabaseDesignJobRelationship,
+  tables: Map<string, DatabaseTable>,
+  usedRelationNames: Set<string>,
+  indexSpecs: Map<string, { columns: string[]; unique: boolean }[]>
+): DatabaseRelation {
+  if (relationship.kind === 'one_to_many') {
+    const parent = tables.get(relationship.parentTable);
+    const child = tables.get(relationship.childTable);
+    const foreignKeyColumnName =
+      relationship.foreignKeyColumn ?? `${singularName(relationship.parentTable)}_id`;
+    const foreignKeyRequired = relationship.onDelete === 'set-null' ? false : relationship.required;
+    if (child) {
+      tables.set(
+        child.name,
+        ensureColumn(
+          child,
+          foreignKeyColumn(
+            foreignKeyColumnName,
+            `${parent?.label ?? titleCase(relationship.parentTable)} ID`,
+            foreignKeyRequired
+          )
+        )
+      );
+      addIndexSpec(indexSpecs, child.name, [foreignKeyColumnName], false);
+    }
+    return {
+      kind: 'one-to-many',
+      name: uniqueIdentifier(
+        `${relationship.parentTable}_${relationship.childTable}`,
+        usedRelationNames
+      ),
+      parentTable: relationship.parentTable,
+      childTable: relationship.childTable,
+      foreignKeyColumn: foreignKeyColumnName,
+      parentDisplayField: parent?.ui.displayField,
+      onDelete: relationship.onDelete,
+    };
+  }
+
+  const left = tables.get(relationship.leftTable);
+  const right = tables.get(relationship.rightTable);
+  const leftForeignKeyColumn = `${singularName(relationship.leftTable)}_id`;
+  const rightForeignKeyColumn = `${singularName(relationship.rightTable)}_id`;
+  const existingJoin = tables.get(relationship.joinTable);
+  const join = existingJoin ?? {
+    name: relationship.joinTable,
+    label: `${left?.label ?? titleCase(relationship.leftTable)} ${
+      right?.label ?? titleCase(relationship.rightTable)
+    }`,
+    description: `${relationship.leftTable} to ${relationship.rightTable}`,
+    columns: systemColumns(),
+    indexes: [],
+    ui: { defaultSortField: 'created_at', defaultSortDirection: 'desc' as const },
+  };
+
+  tables.set(
+    relationship.joinTable,
+    ensureColumn(
+      ensureColumn(
+        join,
+        foreignKeyColumn(
+          leftForeignKeyColumn,
+          `${left?.label ?? titleCase(relationship.leftTable)} ID`,
+          true
+        )
+      ),
+      foreignKeyColumn(
+        rightForeignKeyColumn,
+        `${right?.label ?? titleCase(relationship.rightTable)} ID`,
+        true
+      )
+    )
+  );
+  addIndexSpec(
+    indexSpecs,
+    relationship.joinTable,
+    [leftForeignKeyColumn, rightForeignKeyColumn],
+    true
+  );
+
+  return {
+    kind: 'many-to-many',
+    name: uniqueIdentifier(
+      `${relationship.leftTable}_${relationship.rightTable}`,
+      usedRelationNames
+    ),
+    leftTable: relationship.leftTable,
+    rightTable: relationship.rightTable,
+    joinTable: relationship.joinTable,
+    leftForeignKeyColumn,
+    rightForeignKeyColumn,
+    leftDisplayField: left?.ui.displayField,
+    rightDisplayField: right?.ui.displayField,
+    onDelete: relationship.onDelete,
+  };
+}
+
+function dataBindingsForSchema(schema: DatabaseSchemaJson): DataBindingDraft[] {
+  const bindingTables =
+    schema.uiHints.primaryTables.length > 0
+      ? schema.uiHints.primaryTables
+      : schema.tables.slice(0, 1).map((table) => table.name);
+  return bindingTables.flatMap((table) => [
+    dataBindingForTable(table, 'list'),
+    dataBindingForTable(table, 'create'),
+  ]);
+}
+
+export function draftFromDatabaseDesignJob(
+  jobInput: z.input<typeof databaseDesignJobSchema>,
+  input: DatabaseDesignProviderInput
+): DatabaseDesignDraftResponse {
+  const job = databaseDesignJobSchema.parse(jobInput);
+  const tableMap = new Map(job.tables.map((table) => [table.name, tableFromJobTable(table)]));
+  const usedRelationNames = new Set<string>();
+  const indexSpecs = new Map<string, { columns: string[]; unique: boolean }[]>();
+  const relations = job.relationships.map((relationship) =>
+    relationFromJob(relationship, tableMap, usedRelationNames, indexSpecs)
+  );
+  const tables = [...tableMap.values()].map((table) => ({
+    ...table,
+    indexes: indexesForTable(table, indexSpecs.get(table.name) ?? []),
+  }));
+  const tableNames = new Set(tables.map((table) => table.name));
+  const selectedPrimaryTables =
+    job.primaryTables.length > 0 ? job.primaryTables : [tables[0]?.name].filter(Boolean);
+  const databaseSchema: DatabaseSchemaJson = {
+    name: job.name,
+    label: job.label,
+    purpose: job.purpose,
+    tables,
+    relations,
+    uiHints: {
+      primaryTables: selectedPrimaryTables,
+      defaultNavigation: job.tables
+        .map((table) => table.name)
+        .filter((table) => tableNames.has(table)),
+      suggestedScreens: selectedPrimaryTables.flatMap((table) => [
+        { name: `${titleCase(table)} List`, table, operation: 'list' as const },
+        { name: `${titleCase(table)} Create`, table, operation: 'create' as const },
+      ]),
+    },
+  };
+  const dataBindings = dataBindingsForSchema(databaseSchema);
+  const screen = bindScreen(
+    input.currentScreen,
+    selectedPrimaryTables[0] ?? tables[0]?.name,
+    dataBindings
+  );
+
+  return databaseDesignDraftResponseSchema.parse({
+    screen,
+    databaseSchema,
+    dataBindings,
+    rationale: {
+      databaseChanges: job.notes.length > 0 ? job.notes : [`${job.label} schemaを提案`],
+      uiBindings: screen ? ['既存UIの主要セクションにdataBindingIdを付与'] : [],
+    },
+  });
+}
+
 function deterministicDraft(input: DatabaseDesignProviderInput): DatabaseDesignDraftResponse {
-  const sourceText = input.currentScreen?.page ?? input.prompt;
-  const tableName = tableNameFromText(`${sourceText}\n${input.prompt}`);
-  const label = tableName === 'products' ? '商品' : titleCase(tableName);
+  const tableName = 'records';
+  const label = input.currentScreen?.page ?? 'Records';
   const columns = columnsFromScreen(input.currentScreen, tableName);
   const displayField = columns.find((column) => column.name === 'name')?.name ?? columns[2]?.name;
-  const databaseSchema = maybeAddCommonDomainTables(
-    {
-      name: slugifyIdentifier(input.currentScreen?.page ?? input.prompt, 'app_schema'),
-      label: input.currentScreen?.page ?? 'DBDesign',
-      purpose: input.prompt,
-      tables: [
-        {
-          name: tableName,
-          label,
-          description: input.prompt,
-          columns,
-          indexes: displayField
-            ? [{ name: `${tableName}_${displayField}_idx`, columns: [displayField], unique: false }]
-            : [],
-          ui: {
-            displayField,
-            defaultSortField: 'created_at',
-            defaultSortDirection: 'desc',
-          },
+  const databaseSchema = {
+    name: 'app_schema',
+    label,
+    purpose: input.prompt,
+    tables: [
+      {
+        name: tableName,
+        label,
+        description: input.prompt,
+        columns,
+        indexes: displayField
+          ? [{ name: `${tableName}_${displayField}_idx`, columns: [displayField], unique: false }]
+          : [],
+        ui: {
+          displayField,
+          defaultSortField: 'created_at',
+          defaultSortDirection: 'desc' as const,
         },
-      ],
-      relations: [],
-      uiHints: {
-        primaryTables: [tableName],
-        defaultNavigation: [tableName],
-        suggestedScreens: [
-          { name: `${label}一覧`, table: tableName, operation: 'list' },
-          { name: `${label}作成`, table: tableName, operation: 'create' },
-        ],
       },
+    ],
+    relations: [],
+    uiHints: {
+      primaryTables: [tableName],
+      defaultNavigation: [tableName],
+      suggestedScreens: [
+        { name: `${label}一覧`, table: tableName, operation: 'list' as const },
+        { name: `${label}作成`, table: tableName, operation: 'create' as const },
+      ],
     },
-    input.prompt
-  );
+  };
   const dataBindings = [
     dataBindingForTable(tableName, 'list'),
     dataBindingForTable(tableName, 'create'),
@@ -459,17 +755,16 @@ function buildLlmInput(input: DatabaseDesignProviderInput) {
   };
   const json = JSON.stringify(payload);
   const prompt = [
-    'Generate a database design draft as strict JSON only.',
+    'Generate a DBDesignJob JSON object only.',
     'Use only catalog constraints, current database schema JSON, current screen JSON, and latest user instruction.',
     'Do not use prior conversation history.',
-    'Return { "databaseSchema", "dataBindings", "screen"?, "rationale" }.',
-    'databaseSchema must be an object, never an array. Put table definitions in databaseSchema.tables.',
-    'Return compact minified JSON directly. Do not include explanations, Markdown, or step-by-step reasoning.',
-    'Prefer the smallest relational schema that satisfies the request. Do not add audit/log/RBAC tables unless the user explicitly asks for them.',
-    'rationale must be an object: { "databaseChanges": string[], "uiBindings": string[] }. Do not return rationale as a string.',
-    'databaseSchema must model 1-to-many and many-to-many relations when the user intent requires them.',
-    'Use snake_case SQL identifiers. Do not prefix table names. Do not use reserved SQL words such as order, user, table, select, from, where, group, or limit as table or column names.',
-    'Every table must have exactly one primary key column. Prefer { "name": "id", "type": "uuid", "primaryKey": true, "default": { "kind": "uuid" } }.',
+    'Return the complete desired DBDesignJob after applying the latest instruction, not a diff.',
+    'DBDesignJob shape: { "name": string, "label": string, "purpose": string, "tables": Table[], "relationships": Relationship[], "primaryTables": string[], "notes": string[] }.',
+    'Table shape: { "name": snake_case_identifier, "label": string, "description"?: string, "fields": Field[] }.',
+    'Field shape: { "name": snake_case_identifier, "label": string, "type": "uuid"|"text"|"varchar"|"integer"|"bigint"|"numeric"|"boolean"|"date"|"timestamp"|"jsonb"|"enum", "required"?: boolean, "unique"?: boolean, "enumName"?: snake_case_identifier, "enumValues"?: string[] }.',
+    'Relationship shapes: { "kind": "one_to_many", "parentTable": string, "childTable": string, "foreignKeyColumn"?: string, "required"?: boolean, "onDelete"?: "cascade"|"restrict"|"set-null" } or { "kind": "many_to_many", "leftTable": string, "rightTable": string, "joinTable": string, "onDelete"?: "cascade"|"restrict" }.',
+    'Do not return databaseSchema, dataBindings, screen, SQL, indexes, id columns, created_at columns, or join table fields. The application derives them.',
+    'Return compact minified JSON directly. Do not include Markdown, comments, prose, or reasoning.',
     '',
     json,
   ].join('\n');
@@ -495,10 +790,7 @@ type ProviderTrace = {
 };
 
 function extractResponseText(payload: Record<string, unknown>, trace: ProviderTrace) {
-  logger.info(
-    { ...trace, payloadSummary: responsePayloadSummary(payload) },
-    'DBDesign provider extracting text output'
-  );
+  logger.info(trace, 'DBDesign provider extracting text output');
   const returnText = (text: string, extractionPath: string) => {
     logger.info(
       { ...trace, extractionPath, textChars: text.length },
@@ -586,10 +878,14 @@ async function parseProviderResponse(response: Response, trace: ProviderTrace, s
   return payload;
 }
 
-function parseDraftResponseText(text: string, trace: ProviderTrace) {
+function parseDesignJobResponseText(
+  text: string,
+  trace: ProviderTrace,
+  input: DatabaseDesignProviderInput
+) {
   logger.info(
     { ...trace, textChars: text.length, outputPreview: textPreview(text) },
-    'DBDesign provider parsing draft JSON'
+    'DBDesign provider parsing job JSON'
   );
   if (!text.trim()) {
     logger.error(
@@ -601,40 +897,50 @@ function parseDraftResponseText(text: string, trace: ProviderTrace) {
       traceId: trace.traceId,
     });
   }
-  const draft = parseJsonText(text);
-  logger.info(
-    {
-      ...trace,
-      topLevelKeys:
-        typeof draft === 'object' && draft !== null && !Array.isArray(draft)
-          ? Object.keys(draft)
-          : [],
-    },
-    'DBDesign provider draft JSON parsed'
-  );
-  const parsed = databaseDesignDraftResponseSchema.safeParse(draft);
-  if (!parsed.success) {
+  let job: unknown;
+  try {
+    job = JSON.parse(text);
+  } catch (error) {
     logger.error(
-      { ...trace, issues: parsed.error.issues, outputPreview: textPreview(text, 1200) },
-      'DBDesign provider draft schema validation failed'
+      { ...trace, err: error, outputPreview: textPreview(text, 1200) },
+      'DBDesign provider job JSON parse failed'
     );
-    throw new ValidationError('AI returned an invalid database design draft', {
-      issues: parsed.error.issues,
+    throw new ValidationError('AI returned invalid DBDesignJob JSON', {
       traceId: trace.traceId,
     });
   }
   logger.info(
     {
       ...trace,
-      bindingCount: parsed.data.dataBindings.length,
-      hasScreen: Boolean(parsed.data.screen),
-      relationCount: parsed.data.databaseSchema.relations.length,
-      tableCount: parsed.data.databaseSchema.tables.length,
-      tables: parsed.data.databaseSchema.tables.map((table) => table.name),
+      topLevelKeys:
+        typeof job === 'object' && job !== null && !Array.isArray(job) ? Object.keys(job) : [],
     },
-    'DBDesign provider draft schema validation succeeded'
+    'DBDesign provider job JSON parsed'
   );
-  return parsed.data;
+  const parsed = databaseDesignJobSchema.safeParse(job);
+  if (!parsed.success) {
+    logger.error(
+      { ...trace, issues: parsed.error.issues, outputPreview: textPreview(text, 1200) },
+      'DBDesign provider job schema validation failed'
+    );
+    throw new ValidationError('AI returned an invalid DBDesignJob', {
+      issues: parsed.error.issues,
+      traceId: trace.traceId,
+    });
+  }
+  const draft = draftFromDatabaseDesignJob(parsed.data, input);
+  logger.info(
+    {
+      ...trace,
+      bindingCount: draft.dataBindings.length,
+      hasScreen: Boolean(draft.screen),
+      relationCount: draft.databaseSchema.relations.length,
+      tableCount: draft.databaseSchema.tables.length,
+      tables: draft.databaseSchema.tables.map((table) => table.name),
+    },
+    'DBDesign provider job converted to draft'
+  );
+  return draft;
 }
 
 async function fetchWithProgress(url: string, init: RequestInit, trace: ProviderTrace) {
@@ -660,7 +966,11 @@ async function fetchWithProgress(url: string, init: RequestInit, trace: Provider
   }
 }
 
-async function generateWithOpenAi(input: BuiltLlmInput, trace: ProviderTrace) {
+async function generateWithOpenAi(
+  input: BuiltLlmInput,
+  trace: ProviderTrace,
+  sourceInput: DatabaseDesignProviderInput
+) {
   logger.info(
     {
       ...trace,
@@ -700,10 +1010,14 @@ async function generateWithOpenAi(input: BuiltLlmInput, trace: ProviderTrace) {
     trace
   );
   const payload = await parseProviderResponse(response, trace, startedAt);
-  return parseDraftResponseText(extractResponseText(payload, trace), trace);
+  return parseDesignJobResponseText(extractResponseText(payload, trace), trace, sourceInput);
 }
 
-async function generateWithAzure(input: BuiltLlmInput, trace: ProviderTrace) {
+async function generateWithAzure(
+  input: BuiltLlmInput,
+  trace: ProviderTrace,
+  sourceInput: DatabaseDesignProviderInput
+) {
   const rawEndpoint = config.AZURE_OPENAI_ENDPOINT;
   const endpoint = rawEndpoint?.endsWith('/') ? rawEndpoint.slice(0, -1) : rawEndpoint;
   const deployment = encodeURIComponent(config.AZURE_OPENAI_DEPLOYMENT_NAME ?? '');
@@ -753,7 +1067,7 @@ async function generateWithAzure(input: BuiltLlmInput, trace: ProviderTrace) {
     trace
   );
   const payload = await parseProviderResponse(response, trace, startedAt);
-  return parseDraftResponseText(extractResponseText(payload, trace), trace);
+  return parseDesignJobResponseText(extractResponseText(payload, trace), trace, sourceInput);
 }
 
 export function createDefaultDatabaseDesignProvider(): DatabaseDesignProvider {
@@ -804,7 +1118,7 @@ export function createDefaultDatabaseDesignProvider(): DatabaseDesignProvider {
           },
           'DBDesign provider selected'
         );
-        const draft = await generateWithAzure(llmInput, trace);
+        const draft = await generateWithAzure(llmInput, trace, input);
         logger.info(
           { ...trace, durationMs: durationMs(startedAt) },
           'DBDesign provider propose completed'
@@ -826,7 +1140,7 @@ export function createDefaultDatabaseDesignProvider(): DatabaseDesignProvider {
           { ...trace, model: config.OPENAI_MODEL, providerPriority: 'openai' },
           'DBDesign provider selected'
         );
-        const draft = await generateWithOpenAi(llmInput, trace);
+        const draft = await generateWithOpenAi(llmInput, trace, input);
         logger.info(
           { ...trace, durationMs: durationMs(startedAt) },
           'DBDesign provider propose completed'

@@ -1,5 +1,10 @@
 # Sandbox Database And UI Co-Generation Implementation Plan
 
+> Update note: DBDesign の主画面、Draft の version 表示、applied schema の扱いは
+> [DBDesign Sandbox State First Implementation Plan](./dbdesign-sandbox-state-first-plan.md)
+> を優先する。この文書の `Draft / Applied / Binding version` や `Applied Schema version`
+> に関する記述は初期実装時の前提であり、今後は SandboxDB current state と Draft を分離する方針に置き換える。
+
 ## 目的
 
 Composia の既存コンセプトである「LLM が構造化 JSON を生成し、ChatDock で再編集し、checkpoint として戻れる」体験を、UI だけでなく database schema まで拡張する。

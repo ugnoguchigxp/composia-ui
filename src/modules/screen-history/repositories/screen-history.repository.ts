@@ -7,6 +7,7 @@ import type {
   ScreenEditRequest,
   ScreenGenerateRequest,
   ScreenJsonResponse,
+  ScreenListQuery,
   ScreenListResponse,
   ScreenRegenerateRequest,
   ScreenResponse,
@@ -97,8 +98,8 @@ export const screenHistoryRepository = {
     if (!response.ok) throw new Error(await readErrorMessage(response));
     return screenJsonResponseSchema.parse(await response.json());
   },
-  list: async (): Promise<ScreenListResponse> => {
-    const response = await client.screens.$get({});
+  list: async (query: ScreenListQuery): Promise<ScreenListResponse> => {
+    const response = await client.screens.$get({ query });
     if (!response.ok) throw new Error(await readErrorMessage(response));
     return screenListResponseSchema.parse(await response.json());
   },

@@ -3,23 +3,27 @@ import type {
   ScreenActionGenerateRequest,
   ScreenEditRequest,
   ScreenGenerateRequest,
+  ScreenListQuery,
   ScreenRegenerateRequest,
 } from '../../../../shared/schemas/screen-history.schema';
 import { screenHistoryRepository } from '../repositories/screen-history.repository';
 
 export const screenHistoryQueryKeys = {
-  children: (screenId: string) => ['screen-history', screenId, 'children'] as const,
-  conversation: (sessionId: string) => ['screen-history', 'session', sessionId] as const,
-  detail: (screenId: string) => ['screen-history', screenId] as const,
-  list: ['screen-history', 'list'] as const,
+  all: ['screen-history'] as const,
+  children: (screenId: string) => [...screenHistoryQueryKeys.all, screenId, 'children'] as const,
+  conversation: (sessionId: string) =>
+    [...screenHistoryQueryKeys.all, 'session', sessionId] as const,
+  detail: (screenId: string) => [...screenHistoryQueryKeys.all, screenId] as const,
+  lists: () => [...screenHistoryQueryKeys.all, 'list'] as const,
+  list: (query: ScreenListQuery) => [...screenHistoryQueryKeys.lists(), query] as const,
   screenJson: (screenJsonId: string) => ['screen-json', screenJsonId] as const,
 };
 
-export function useScreenHistory(enabled = true) {
+export function useScreenHistory(query: ScreenListQuery, enabled = true) {
   return useQuery({
     enabled,
-    queryKey: screenHistoryQueryKeys.list,
-    queryFn: screenHistoryRepository.list,
+    queryKey: screenHistoryQueryKeys.list(query),
+    queryFn: () => screenHistoryRepository.list(query),
   });
 }
 
@@ -60,7 +64,7 @@ export function useGenerateScreen() {
   return useMutation({
     mutationFn: (input: ScreenGenerateRequest) => screenHistoryRepository.generate(input),
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: screenHistoryQueryKeys.list });
+      queryClient.invalidateQueries({ queryKey: screenHistoryQueryKeys.lists() });
       queryClient.setQueryData(screenHistoryQueryKeys.detail(data.screen.id), data);
     },
   });
@@ -72,7 +76,7 @@ export function useGenerateScreenFromAction(screenId: string | null) {
     mutationFn: ({ actionId, input }: { actionId: string; input: ScreenActionGenerateRequest }) =>
       screenHistoryRepository.generateFromAction(screenId ?? '', actionId, input),
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: screenHistoryQueryKeys.list });
+      queryClient.invalidateQueries({ queryKey: screenHistoryQueryKeys.lists() });
       if (screenId) {
         queryClient.invalidateQueries({ queryKey: screenHistoryQueryKeys.children(screenId) });
       }
@@ -87,7 +91,7 @@ export function useGenerateScreenFromSessionAction(sessionId: string | null) {
     mutationFn: ({ actionId, input }: { actionId: string; input: ScreenActionGenerateRequest }) =>
       screenHistoryRepository.generateFromSessionAction(sessionId ?? '', actionId, input),
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: screenHistoryQueryKeys.list });
+      queryClient.invalidateQueries({ queryKey: screenHistoryQueryKeys.lists() });
       if (sessionId) {
         queryClient.invalidateQueries({ queryKey: screenHistoryQueryKeys.conversation(sessionId) });
       }
@@ -101,7 +105,7 @@ export function useEditSessionScreen(sessionId: string | null) {
   return useMutation({
     mutationFn: (input: ScreenEditRequest) => screenHistoryRepository.edit(sessionId ?? '', input),
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: screenHistoryQueryKeys.list });
+      queryClient.invalidateQueries({ queryKey: screenHistoryQueryKeys.lists() });
       if (sessionId) {
         queryClient.invalidateQueries({ queryKey: screenHistoryQueryKeys.conversation(sessionId) });
       }
@@ -116,7 +120,7 @@ export function useRegenerateScreen(screenId: string | null) {
     mutationFn: (input: ScreenRegenerateRequest) =>
       screenHistoryRepository.regenerate(screenId ?? '', input),
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: screenHistoryQueryKeys.list });
+      queryClient.invalidateQueries({ queryKey: screenHistoryQueryKeys.lists() });
       if (screenId) {
         queryClient.invalidateQueries({ queryKey: screenHistoryQueryKeys.children(screenId) });
       }
@@ -131,7 +135,7 @@ export function useRegenerateSessionScreen(sessionId: string | null) {
     mutationFn: (input: ScreenRegenerateRequest) =>
       screenHistoryRepository.regenerateSession(sessionId ?? '', input),
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: screenHistoryQueryKeys.list });
+      queryClient.invalidateQueries({ queryKey: screenHistoryQueryKeys.lists() });
       if (sessionId) {
         queryClient.invalidateQueries({ queryKey: screenHistoryQueryKeys.conversation(sessionId) });
       }
@@ -146,7 +150,7 @@ export function useRestoreScreenJsonCheckpoint(sessionId: string | null) {
     mutationFn: (screenJsonId: string) =>
       screenHistoryRepository.restoreCheckpoint(sessionId ?? '', screenJsonId),
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: screenHistoryQueryKeys.list });
+      queryClient.invalidateQueries({ queryKey: screenHistoryQueryKeys.lists() });
       if (sessionId) {
         queryClient.setQueryData(screenHistoryQueryKeys.conversation(sessionId), data.conversation);
       }
@@ -163,7 +167,7 @@ export function useDeleteScreen() {
   return useMutation({
     mutationFn: (screenId: string) => screenHistoryRepository.delete(screenId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: screenHistoryQueryKeys.list });
+      queryClient.invalidateQueries({ queryKey: screenHistoryQueryKeys.lists() });
     },
   });
 }

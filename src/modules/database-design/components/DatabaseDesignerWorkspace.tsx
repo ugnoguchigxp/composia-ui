@@ -9,12 +9,11 @@ import type {
 import type { AppUiSchema } from '../../../../shared/schemas/ui-schema.schema';
 import { useAuth } from '../../../lib/auth';
 import { cn } from '../../../lib/utils';
-import { JsonRenderRenderer } from '../../ui-schema/components/JsonRenderRenderer';
+import { useScreenJson } from '../../screen-history/hooks/screen-history.hooks';
 import {
   useApplySandboxMigration,
   useDatabaseDesignConversation,
   useEditDatabaseDesign,
-  useInsertSandboxRow,
   useProposeDatabaseDesign,
   useResetSandbox,
   useRestoreDatabaseDesignCheckpoint,
@@ -65,15 +64,23 @@ export function DatabaseDesignerWorkspace() {
   const resetSandbox = useResetSandbox();
   const sandboxState = useSandboxState(Boolean(auth.user));
   const currentConversation =
-    propose.data?.conversation ?? edit.data?.conversation ?? conversationQuery.data;
+    conversationQuery.data ?? edit.data?.conversation ?? propose.data?.conversation;
+  const activeScreenJsonId =
+    currentConversation?.activeScreenJsonId ??
+    edit.data?.screenJsonId ??
+    propose.data?.screenJsonId ??
+    null;
+  const activeScreenQuery = useScreenJson(
+    activeScreenJsonId,
+    Boolean(auth.user && activeScreenJsonId)
+  );
   const currentSchema = activeSchema(currentConversation);
   const screenPreview =
-    propose.data?.screen ??
-    edit.data?.screen ??
-    (currentConversation?.activeScreenJsonId ? null : undefined);
+    edit.data?.screen ?? propose.data?.screen ?? activeScreenQuery.data?.screenJson.schema;
   const currentDataBindings =
-    propose.data?.dataBindings ??
     edit.data?.dataBindings ??
+    propose.data?.dataBindings ??
+    activeScreenQuery.data?.screenJson.dataBindings ??
     currentConversation?.dataBindings ??
     [];
   const visibleTables = currentSchema?.schema.tables ?? [];
@@ -227,10 +234,14 @@ export function DatabaseDesignerWorkspace() {
         {screenPreview ? (
           <section className="overflow-hidden rounded-lg border border-border bg-card">
             <div className="border-b border-border px-4 py-3">
-              <h2 className="font-semibold">UI binding preview</h2>
+              <h2 className="font-semibold">UI bindings</h2>
             </div>
             <div className="bg-background p-4">
-              <DataBoundScreenPreview dataBindings={currentDataBindings} schema={screenPreview} />
+              <BindingOverview
+                dataBindings={currentDataBindings}
+                databaseSchema={currentSchema?.schema ?? null}
+                schema={screenPreview}
+              />
             </div>
           </section>
         ) : null}
@@ -578,40 +589,111 @@ function ResetPanel({
   );
 }
 
-function DataBoundScreenPreview({
+function sectionTitle(section: AppUiSchema['sections'][number], index: number) {
+  const title = section.props.title;
+  return typeof title === 'string' && title.trim() ? title : `Section ${index + 1}`;
+}
+
+function bindingFields(
+  binding: DataBinding,
+  databaseSchema: DatabaseSchemaJsonRecord['schema'] | null
+) {
+  if (binding.fields.length > 0) return binding.fields;
+  const table = databaseSchema?.tables.find((candidate) => candidate.name === binding.table);
+  if (!table) return [];
+  const formOperation = ['create', 'update'].includes(binding.operation);
+  return table.columns
+    .filter((column) =>
+      formOperation
+        ? column.ui.formVisible && !column.primaryKey
+        : column.ui.listVisible && !column.primaryKey
+    )
+    .map((column) => column.name);
+}
+
+function BindingOverview({
   dataBindings,
+  databaseSchema,
   schema,
 }: {
   dataBindings: DataBinding[];
+  databaseSchema: DatabaseSchemaJsonRecord['schema'] | null;
   schema: AppUiSchema;
 }) {
-  const insertRow = useInsertSandboxRow();
-  const firstListBinding = dataBindings.find((binding) => binding.operation === 'list');
-  const rows = useSandboxRows(firstListBinding?.table ?? null, Boolean(firstListBinding));
-  const bindingRows = firstListBinding
-    ? { [firstListBinding.id]: rows.data?.rows ?? [] }
-    : undefined;
-  const handleSubmitBinding = (dataBindingId: string, value: Record<string, unknown>) => {
-    const binding = dataBindings.find(
-      (candidate) => candidate.id === dataBindingId && candidate.operation === 'create'
-    );
-    if (!binding) return;
-    insertRow.mutate({ bindingId: dataBindingId, table: binding.table, value });
-  };
+  const bindingsById = new Map(dataBindings.map((binding) => [binding.id, binding]));
+  const boundSectionCount = schema.sections.filter((section) => section.dataBindingId).length;
 
   return (
-    <div className="grid gap-3">
-      <JsonRenderRenderer
-        bindingRows={bindingRows}
-        onSubmitBinding={handleSubmitBinding}
-        pendingBindingId={insertRow.isPending ? insertRow.variables?.bindingId : null}
-        schema={schema}
-      />
-      {insertRow.error ? (
-        <p className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-destructive text-sm">
-          {insertRow.error.message}
-        </p>
-      ) : null}
+    <div className="grid gap-4">
+      <div className="grid gap-3 rounded-md border border-border bg-card p-3 text-sm sm:grid-cols-3">
+        <div>
+          <div className="text-muted-foreground text-xs">screen</div>
+          <div className="mt-1 font-medium">{schema.page}</div>
+        </div>
+        <div>
+          <div className="text-muted-foreground text-xs">sections</div>
+          <div className="mt-1 font-medium">
+            {boundSectionCount}/{schema.sections.length} bound
+          </div>
+        </div>
+        <div>
+          <div className="text-muted-foreground text-xs">bindings</div>
+          <div className="mt-1 font-medium">{dataBindings.length}</div>
+        </div>
+      </div>
+
+      <div className="grid gap-2">
+        {schema.sections.map((section, index) => {
+          const binding = section.dataBindingId ? bindingsById.get(section.dataBindingId) : null;
+          const fields = binding ? bindingFields(binding, databaseSchema) : [];
+          return (
+            <article
+              className="rounded-md border border-border bg-card p-3"
+              key={`${section.component}-${index}`}
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="font-medium text-sm">{sectionTitle(section, index)}</div>
+                  <div className="mt-1 flex flex-wrap gap-2 text-muted-foreground text-xs">
+                    <span>{section.component}</span>
+                    <span>{section.source}</span>
+                    {section.dataBindingId ? <span>{section.dataBindingId}</span> : null}
+                  </div>
+                </div>
+                <span
+                  className={cn(
+                    'rounded-md px-2 py-1 text-xs',
+                    binding ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
+                  )}
+                >
+                  {binding ? `${binding.operation} ${binding.table}` : 'unbound'}
+                </span>
+              </div>
+              {binding ? (
+                <div className="mt-3 grid gap-2 text-xs">
+                  <div className="flex flex-wrap gap-2">
+                    {fields.length > 0 ? (
+                      fields.map((field) => (
+                        <span className="rounded-md bg-muted px-2 py-1 font-mono" key={field}>
+                          {field}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-muted-foreground">fields are resolved at runtime</span>
+                    )}
+                  </div>
+                  {binding.sort.length > 0 ? (
+                    <div className="text-muted-foreground">
+                      sort:{' '}
+                      {binding.sort.map((sort) => `${sort.field} ${sort.direction}`).join(', ')}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </article>
+          );
+        })}
+      </div>
     </div>
   );
 }

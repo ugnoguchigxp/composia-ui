@@ -169,12 +169,25 @@ export const screenEditRequestSchema = z
   })
   .strict();
 
+export const screenListQuerySchema = z
+  .object({
+    page: z.coerce.number().int().min(1).default(1),
+    limit: z.coerce.number().int().min(1).max(100).default(10),
+    search: z.string().optional(),
+    sortBy: z.enum(['updatedAt', 'createdAt', 'title', 'screenCount']).default('updatedAt'),
+    sortOrder: z.enum(['asc', 'desc']).default('desc'),
+  })
+  .strict();
+
 export const screenListResponseSchema = z
   .object({
     screens: z.array(generatedScreenSummarySchema),
     sessions: z.array(promptSessionSummarySchema).default([]),
+    total: z.number().int().min(0).default(0),
   })
   .strict();
+
+export type ScreenListQuery = z.infer<typeof screenListQuerySchema>;
 
 export const screenResponseSchema = z
   .object({

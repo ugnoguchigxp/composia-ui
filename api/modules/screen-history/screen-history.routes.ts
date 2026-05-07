@@ -9,6 +9,7 @@ import {
   screenEditRequestSchema,
   screenGenerateRequestSchema,
   screenJsonResponseSchema,
+  screenListQuerySchema,
   screenListResponseSchema,
   screenRegenerateRequestSchema,
   screenResponseSchema,
@@ -35,6 +36,9 @@ const mcpGetScreenJsonRequestSchema = z.object({ screenJsonId: z.string().uuid()
 const listRoute = createRoute({
   method: 'get',
   path: '/',
+  request: {
+    query: screenListQuerySchema,
+  },
   responses: {
     200: {
       content: { 'application/json': { schema: screenListResponseSchema } },
@@ -277,7 +281,9 @@ function userId(c: Context<AppEnv>) {
 }
 
 export const screenHistoryRouter = protectedScreensRouter
-  .openapi(listRoute, async (c) => c.json(await screenHistoryService.list(userId(c)), 200))
+  .openapi(listRoute, async (c) =>
+    c.json(await screenHistoryService.list(userId(c), c.req.valid('query')), 200)
+  )
   .openapi(generateRoute, async (c) =>
     c.json(await screenHistoryService.generate(userId(c), c.req.valid('json')), 200)
   )
