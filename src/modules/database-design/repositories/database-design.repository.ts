@@ -72,6 +72,15 @@ export const databaseDesignRepository = {
     if (!response.ok) throw new Error(await readErrorMessage(response));
     return databaseDraftGapResponseSchema.parse(await response.json());
   },
+  deleteDraft: async (databaseSchemaJsonId: string): Promise<SandboxDeleteResponse> => {
+    const response = await client['database-design']['schema-jsons'][
+      ':databaseSchemaJsonId'
+    ].$delete({
+      param: { databaseSchemaJsonId },
+    });
+    if (!response.ok) throw new Error(await readErrorMessage(response));
+    return sandboxDeleteResponseSchema.parse(await response.json());
+  },
   edit: async (
     designSessionId: string,
     input: DatabaseDesignEditRequest
@@ -156,6 +165,14 @@ export const databaseDesignRepository = {
     if (!response.ok) throw new Error(await readErrorMessage(response));
     return sandboxRowsResponseSchema.parse(await response.json());
   },
+  sandboxTableContents: async (table: string, limit = 100): Promise<SandboxRowsResponse> => {
+    const response = await client['sandbox-db'].tables[':table'].contents.$get({
+      param: { table },
+      query: { limit: String(limit) },
+    });
+    if (!response.ok) throw new Error(await readErrorMessage(response));
+    return sandboxRowsResponseSchema.parse(await response.json());
+  },
   insertSandboxRow: async (
     table: string,
     input: Record<string, unknown>
@@ -201,6 +218,13 @@ export const databaseDesignRepository = {
   deleteSandboxRow: async (table: string, id: string): Promise<SandboxDeleteResponse> => {
     const response = await client['sandbox-db'].tables[':table'].rows[':id'].$delete({
       param: { id, table },
+    });
+    if (!response.ok) throw new Error(await readErrorMessage(response));
+    return sandboxDeleteResponseSchema.parse(await response.json());
+  },
+  dropSandboxTable: async (table: string): Promise<SandboxDeleteResponse> => {
+    const response = await client['sandbox-db'].tables[':table'].$delete({
+      param: { table },
     });
     if (!response.ok) throw new Error(await readErrorMessage(response));
     return sandboxDeleteResponseSchema.parse(await response.json());

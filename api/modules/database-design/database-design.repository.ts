@@ -52,6 +52,7 @@ export type DatabaseDesignRepository = {
   createScreenJson: (
     input: typeof screenJsons.$inferInsert
   ) => Promise<typeof screenJsons.$inferSelect>;
+  deleteSchemaJson: (designSessionId: string, databaseSchemaJsonId: string) => Promise<void>;
   deleteScreenJsonsAfterVersion: (sessionId: string, version: number) => Promise<void>;
   findDesignSessionById: (
     userId: string,
@@ -128,6 +129,38 @@ export const databaseDesignRepository: DatabaseDesignRepository = {
     const [screenJson] = await db.insert(screenJsons).values(input).returning();
     if (!screenJson) throw new Error('ScreenJSON was not persisted');
     return screenJson;
+  },
+  deleteSchemaJson: async (designSessionId, databaseSchemaJsonId) => {
+    await db.transaction(async (tx) => {
+      const [session] = await tx
+        .select()
+        .from(databaseDesignSessions)
+        .where(eq(databaseDesignSessions.id, designSessionId))
+        .limit(1);
+
+      await tx
+        .delete(databaseSchemaJsons)
+        .where(
+          and(
+            eq(databaseSchemaJsons.id, databaseSchemaJsonId),
+            eq(databaseSchemaJsons.designSessionId, designSessionId)
+          )
+        );
+
+      if (session?.activeDatabaseSchemaJsonId !== databaseSchemaJsonId) return;
+
+      const [nextActive] = await tx
+        .select({ id: databaseSchemaJsons.id })
+        .from(databaseSchemaJsons)
+        .where(eq(databaseSchemaJsons.designSessionId, designSessionId))
+        .orderBy(desc(databaseSchemaJsons.version))
+        .limit(1);
+
+      await tx
+        .update(databaseDesignSessions)
+        .set({ activeDatabaseSchemaJsonId: nextActive?.id ?? null })
+        .where(eq(databaseDesignSessions.id, designSessionId));
+    });
   },
   deleteScreenJsonsAfterVersion: async (sessionId, version) => {
     await db

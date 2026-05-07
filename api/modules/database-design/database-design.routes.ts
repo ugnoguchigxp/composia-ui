@@ -124,6 +124,18 @@ const schemaJsonRoute = createRoute({
   },
 });
 
+const schemaJsonDeleteRoute = createRoute({
+  method: 'delete',
+  path: '/schema-jsons/:databaseSchemaJsonId',
+  request: { params: databaseSchemaJsonParamSchema },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: sandboxDeleteResponseSchema } },
+      description: 'Physically delete a DBDesign draft',
+    },
+  },
+});
+
 const schemaJsonGapRoute = createRoute({
   method: 'get',
   path: '/schema-jsons/:databaseSchemaJsonId/gap',
@@ -263,6 +275,30 @@ const sandboxRowsRoute = createRoute({
     200: {
       content: { 'application/json': { schema: sandboxRowsResponseSchema } },
       description: 'List rows from a managed sandbox table',
+    },
+  },
+});
+
+const sandboxTableContentsRoute = createRoute({
+  method: 'get',
+  path: '/tables/:table/contents',
+  request: { params: tableParamSchema, query: rowsQuerySchema },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: sandboxRowsResponseSchema } },
+      description: 'Inspect rows from a public sandbox table',
+    },
+  },
+});
+
+const sandboxDropTableRoute = createRoute({
+  method: 'delete',
+  path: '/tables/:table',
+  request: { params: tableParamSchema },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: sandboxDeleteResponseSchema } },
+      description: 'Drop a table from the sandbox DB',
     },
   },
 });
@@ -439,6 +475,12 @@ export const databaseDesignRouter = protectedDatabaseDesignRouter
       200
     )
   )
+  .openapi(schemaJsonDeleteRoute, async (c) =>
+    c.json(
+      await databaseDesignService.deleteDraft(userId(c), c.req.valid('param').databaseSchemaJsonId),
+      200
+    )
+  )
   .openapi(schemaJsonAliasRoute, async (c) =>
     c.json(
       await databaseDesignService.schemaJson(userId(c), c.req.valid('param').databaseSchemaJsonId),
@@ -488,10 +530,20 @@ export const databaseDesignRouter = protectedDatabaseDesignRouter
 export const sandboxDatabaseRouter = protectedSandboxRouter
   .openapi(sandboxStateRoute, async (c) => c.json(await sandboxQueryService.state(), 200))
   .openapi(sandboxTablesRoute, async (c) => c.json(await sandboxQueryService.state(), 200))
+  .openapi(sandboxDropTableRoute, async (c) =>
+    c.json(await sandboxQueryService.dropTable(c.req.valid('param').table), 200)
+  )
   .openapi(sandboxRowsRoute, async (c) => {
     const params = c.req.valid('param');
     return c.json(
       await sandboxQueryService.listRows(params.table, c.req.valid('query').limit),
+      200
+    );
+  })
+  .openapi(sandboxTableContentsRoute, async (c) => {
+    const params = c.req.valid('param');
+    return c.json(
+      await sandboxQueryService.inspectRows(params.table, c.req.valid('query').limit),
       200
     );
   })

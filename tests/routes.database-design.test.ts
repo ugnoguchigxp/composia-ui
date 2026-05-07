@@ -11,6 +11,7 @@ const screenJsonId = '44444444-4444-4444-8444-444444444444';
 const databaseDesignServiceMocks = vi.hoisted(() => ({
   applyMigration: vi.fn(),
   conversation: vi.fn(),
+  deleteDraft: vi.fn(),
   draftGap: vi.fn(),
   edit: vi.fn(),
   listDrafts: vi.fn(),
@@ -20,6 +21,12 @@ const databaseDesignServiceMocks = vi.hoisted(() => ({
   resetSandbox: vi.fn(),
   restoreCheckpoint: vi.fn(),
   schemaJson: vi.fn(),
+}));
+
+const sandboxQueryServiceMocks = vi.hoisted(() => ({
+  dropTable: vi.fn(),
+  inspectRows: vi.fn(),
+  state: vi.fn(),
 }));
 
 vi.mock('../api/middleware/auth', () => ({
@@ -34,9 +41,14 @@ vi.mock('../api/modules/database-design/database-design.service', () => ({
   databaseDesignService: databaseDesignServiceMocks,
 }));
 
+vi.mock('../api/modules/database-design/sandbox-query.service', () => ({
+  createSandboxQueryService: () => sandboxQueryServiceMocks,
+}));
+
 import {
   databaseDesignMcpRouter,
   databaseDesignRouter,
+  sandboxDatabaseRouter,
 } from '../api/modules/database-design/database-design.routes';
 
 function databaseSchemaJson() {
@@ -206,6 +218,7 @@ describe('database design routes', () => {
     const app = new OpenAPIHono<AppEnv>();
     app.onError(errorHandler);
     app.route('/api/database-design', databaseDesignRouter);
+    app.route('/api/sandbox-db', sandboxDatabaseRouter);
     app.route('/api/mcp', databaseDesignMcpRouter);
     return app;
   }
@@ -271,6 +284,24 @@ describe('database design routes', () => {
 
     expect(res.status).toBe(200);
     expect(databaseDesignServiceMocks.draftGap).toHaveBeenCalledWith(userId, databaseSchemaJsonId);
+  });
+
+  it('physically deletes a DBDesign draft', async () => {
+    databaseDesignServiceMocks.deleteDraft.mockResolvedValue({ success: true });
+
+    const res = await createApp().request(
+      `/api/database-design/schema-jsons/${databaseSchemaJsonId}`,
+      {
+        method: 'DELETE',
+      }
+    );
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ success: true });
+    expect(databaseDesignServiceMocks.deleteDraft).toHaveBeenCalledWith(
+      userId,
+      databaseSchemaJsonId
+    );
   });
 
   it('creates a reproposal draft from the current SandboxDB state', async () => {
@@ -343,5 +374,33 @@ describe('database design routes', () => {
     expect(databaseDesignServiceMocks.resetSandbox).toHaveBeenCalledWith({
       confirmation: 'RESET SANDBOX',
     });
+  });
+
+  it('drops a sandbox table through the sandbox-db endpoint', async () => {
+    sandboxQueryServiceMocks.dropTable.mockResolvedValue({ success: true });
+
+    const res = await createApp().request('/api/sandbox-db/tables/products', {
+      method: 'DELETE',
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ success: true });
+    expect(sandboxQueryServiceMocks.dropTable).toHaveBeenCalledWith('products');
+  });
+
+  it('inspects sandbox table contents through the sandbox-db endpoint', async () => {
+    sandboxQueryServiceMocks.inspectRows.mockResolvedValue({
+      table: 'products',
+      rows: [{ id: databaseSchemaJsonId, name: 'Keyboard' }],
+    });
+
+    const res = await createApp().request('/api/sandbox-db/tables/products/contents?limit=25');
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      table: 'products',
+      rows: [{ id: databaseSchemaJsonId, name: 'Keyboard' }],
+    });
+    expect(sandboxQueryServiceMocks.inspectRows).toHaveBeenCalledWith('products', 25);
   });
 });

@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
-import { History, Loader2 } from 'lucide-react';
+import { Loader2, WandSparkles } from 'lucide-react';
 import { useState } from 'react';
 import type { ScreenListQuery } from '../../shared/schemas/screen-history.schema';
 import { useAuth } from '../lib/auth';
@@ -42,7 +42,7 @@ function HistoryPage() {
     return (
       <div className="mx-auto max-w-4xl px-4 py-10">
         <section className="rounded-lg border border-border bg-card p-[var(--ui-card-padding)]">
-          <h1 className="text-2xl font-semibold">History</h1>
+          <h1 className="text-2xl font-semibold">UIDesign</h1>
           <Link
             className="mt-5 inline-flex h-ui items-center rounded-md bg-primary px-ui-button text-sm font-medium text-primary-foreground hover:bg-primary/90"
             to="/login"
@@ -58,15 +58,15 @@ function HistoryPage() {
     <div className="mx-auto grid max-w-6xl gap-4 px-4 py-8 md:px-8">
       <header className="flex items-center justify-between px-1">
         <div className="flex items-center gap-2">
-          <History className="h-4 w-4 text-primary" />
-          <h1 className="text-lg font-semibold tracking-tight">History</h1>
+          <WandSparkles className="h-4 w-4 text-primary" />
+          <h1 className="text-lg font-semibold tracking-tight">UIDesign</h1>
           <span className="text-muted-foreground text-xs font-normal">({total} items)</span>
         </div>
       </header>
 
       {history.error ? (
         <section className="rounded-lg border border-destructive/30 bg-destructive/10 p-6">
-          <h2 className="font-semibold text-destructive">History request failed</h2>
+          <h2 className="font-semibold text-destructive">UIDesign request failed</h2>
           <p className="mt-2 text-muted-foreground text-sm">{history.error.message}</p>
         </section>
       ) : history.isLoading ? (

@@ -274,7 +274,7 @@ export function ScreenHistoryTable({
           <input
             className="h-9 w-full rounded-l-md border border-r-0 border-border bg-card px-3 text-xs outline-none ring-primary/20 transition-all focus:border-primary focus:ring-4 focus:z-10"
             onChange={(e) => setSearchValue(e.target.value)}
-            placeholder="Search history..."
+            placeholder="Search UI designs..."
             value={searchValue}
           />
           <button

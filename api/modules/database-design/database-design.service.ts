@@ -9,6 +9,7 @@ import type {
   DatabaseDesignTrigger,
   DatabaseDraftSummary,
   DatabaseSchemaJsonResponse,
+  SandboxDeleteResponse,
   SandboxMigrationPreview,
   SandboxMigrationRun,
 } from '../../../shared/schemas/database-design.schema';
@@ -487,6 +488,15 @@ export function createDatabaseDesignService(
     },
     conversation,
     draftGap,
+    deleteDraft: async (
+      userId: string,
+      databaseSchemaJsonId: string
+    ): Promise<SandboxDeleteResponse> => {
+      const found = await repo.findSchemaJsonById(userId, databaseSchemaJsonId);
+      if (!found) throw new NotFoundError('DatabaseSchemaJSON not found');
+      await repo.deleteSchemaJson(found.session.id, databaseSchemaJsonId);
+      return { success: true };
+    },
     edit: async (
       userId: string,
       designSessionId: string,

@@ -31,7 +31,7 @@ export function ScreenHistoryList({
   if (screens.length === 0 && sessions.length === 0) {
     return (
       <section className="rounded-lg border border-dashed border-border bg-card/40 p-6 text-center">
-        <h2 className="font-semibold">History is empty</h2>
+        <h2 className="font-semibold">UIDesign is empty</h2>
         <p className="mt-2 text-muted-foreground text-sm">
           Generated screens will appear here after you submit a prompt.
         </p>

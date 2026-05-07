@@ -28,7 +28,7 @@ async function readErrorMessage(response: Response) {
     error?: { message?: string };
     message?: string;
   } | null;
-  return payload?.error?.message ?? payload?.message ?? 'Screen history request failed';
+  return payload?.error?.message ?? payload?.message ?? 'UIDesign request failed';
 }
 
 export const screenHistoryRepository = {

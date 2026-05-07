@@ -18,6 +18,7 @@ export const databaseDesignQueryKeys = {
   schemaJson: (databaseSchemaJsonId: string) =>
     ['database-design', 'schema-json', databaseSchemaJsonId] as const,
   state: ['sandbox-db', 'state'] as const,
+  tableContents: (table: string) => ['sandbox-db', 'table-contents', table] as const,
 };
 
 export function useDatabaseDesignConversation(designSessionId: string | null, enabled = true) {
@@ -60,6 +61,27 @@ export function useDatabaseDraftGap(databaseSchemaJsonId: string | null, enabled
   });
 }
 
+export function useDeleteDatabaseDraft() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (databaseSchemaJsonId: string) =>
+      databaseDesignRepository.deleteDraft(databaseSchemaJsonId),
+    onSuccess: (_data, databaseSchemaJsonId) => {
+      queryClient.invalidateQueries({ queryKey: databaseDesignQueryKeys.drafts });
+      queryClient.invalidateQueries({ queryKey: databaseDesignQueryKeys.state });
+      queryClient.removeQueries({
+        queryKey: databaseDesignQueryKeys.draftGap(databaseSchemaJsonId),
+      });
+      queryClient.removeQueries({
+        queryKey: databaseDesignQueryKeys.migrationPreview(databaseSchemaJsonId),
+      });
+      queryClient.removeQueries({
+        queryKey: databaseDesignQueryKeys.schemaJson(databaseSchemaJsonId),
+      });
+    },
+  });
+}
+
 export function useMigrationPreview(databaseSchemaJsonId: string | null, enabled = true) {
   return useQuery({
     enabled: enabled && Boolean(databaseSchemaJsonId),
@@ -73,6 +95,14 @@ export function useSandboxRows(table: string | null, enabled = true) {
     enabled: enabled && Boolean(table),
     queryKey: databaseDesignQueryKeys.rows(table ?? ''),
     queryFn: () => databaseDesignRepository.sandboxRows(table ?? ''),
+  });
+}
+
+export function useSandboxTableContents(table: string | null, enabled = true) {
+  return useQuery({
+    enabled: enabled && Boolean(table),
+    queryKey: databaseDesignQueryKeys.tableContents(table ?? ''),
+    queryFn: () => databaseDesignRepository.sandboxTableContents(table ?? ''),
   });
 }
 
@@ -176,6 +206,20 @@ export function useResetSandbox() {
   });
 }
 
+export function useDropSandboxTable() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (table: string) => databaseDesignRepository.dropSandboxTable(table),
+    onSuccess: (_data, table) => {
+      queryClient.invalidateQueries({ queryKey: ['sandbox-db'] });
+      queryClient.invalidateQueries({ queryKey: ['database-design', 'draft-gap'] });
+      queryClient.invalidateQueries({ queryKey: databaseDesignQueryKeys.drafts });
+      queryClient.removeQueries({ queryKey: databaseDesignQueryKeys.rows(table) });
+      queryClient.removeQueries({ queryKey: databaseDesignQueryKeys.tableContents(table) });
+    },
+  });
+}
+
 export function useInsertSandboxRow() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -184,6 +228,9 @@ export function useInsertSandboxRow() {
     onSuccess: (_data, input) => {
       queryClient.invalidateQueries({ queryKey: databaseDesignQueryKeys.state });
       queryClient.invalidateQueries({ queryKey: databaseDesignQueryKeys.rows(input.table) });
+      queryClient.invalidateQueries({
+        queryKey: databaseDesignQueryKeys.tableContents(input.table),
+      });
     },
   });
 }
@@ -196,6 +243,9 @@ export function useUpdateSandboxRow() {
     onSuccess: (_data, input) => {
       queryClient.invalidateQueries({ queryKey: databaseDesignQueryKeys.state });
       queryClient.invalidateQueries({ queryKey: databaseDesignQueryKeys.rows(input.table) });
+      queryClient.invalidateQueries({
+        queryKey: databaseDesignQueryKeys.tableContents(input.table),
+      });
     },
   });
 }

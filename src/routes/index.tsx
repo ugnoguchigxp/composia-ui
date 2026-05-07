@@ -10,7 +10,7 @@ function Index() {
       <div className="space-y-3">
         <h1 className="text-3xl font-semibold tracking-normal">Welcome to composia-ai</h1>
         <p className="max-w-2xl leading-7 text-muted-foreground">
-          Generate structured app screens from prompts, replay them from history, and let actions
+          Generate structured app screens from prompts, revisit them from UIDesign, and let actions
           branch into the next AI-inferred screen.
         </p>
       </div>

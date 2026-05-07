@@ -38,6 +38,19 @@ async function tableRowCount(table: string) {
   return typeof count === 'number' ? count : Number(count ?? 0);
 }
 
+async function assertPublicTable(table: string) {
+  const rows = await getSandboxSql().unsafe(
+    `SELECT 1
+     FROM pg_class c
+     JOIN pg_namespace n ON n.oid = c.relnamespace
+     WHERE n.nspname = 'public'
+       AND c.relkind = 'r'
+       AND c.relname = ${quoteLiteral(table)}
+     LIMIT 1`
+  );
+  if (!rows[0]) throw new NotFoundError(`Sandbox table "${table}" was not found`);
+}
+
 type IntrospectionColumnRow = {
   default_value: string | null;
   is_enum: boolean;
@@ -262,6 +275,14 @@ export function createSandboxQueryService(repo: DatabaseDesignRepository) {
       );
       return { table, rows: rows as Record<string, unknown>[] };
     },
+    inspectRows: async (table: string, limit = 100): Promise<SandboxRowsResponse> => {
+      await assertPublicTable(table);
+      const boundedLimit = Math.min(Math.max(limit, 1), 200);
+      const rows = await getSandboxSql().unsafe(
+        `SELECT * FROM ${quoteIdent(table)} LIMIT ${boundedLimit}`
+      );
+      return { table, rows: rows as Record<string, unknown>[] };
+    },
     getRow: async (table: string, id: string): Promise<SandboxRowResponse> => {
       await assertManagedTable(table);
       const rows = await getSandboxSql().unsafe(
@@ -307,6 +328,24 @@ export function createSandboxQueryService(repo: DatabaseDesignRepository) {
       await getSandboxSql().unsafe(
         `DELETE FROM ${quoteIdent(table)} WHERE id = ${quoteLiteral(id)}`
       );
+      return { success: true };
+    },
+    dropTable: async (table: string) => {
+      const managedObjects = (await repo.listManagedObjects()).filter(
+        (object) =>
+          object.status === 'active' &&
+          (object.objectName === table || object.parentObjectName === table)
+      );
+      const indexes = managedObjects.filter((object) => object.objectType === 'index');
+      const enums = managedObjects.filter((object) => object.objectType === 'enum');
+      const statements = [
+        ...indexes.map((object) => `DROP INDEX IF EXISTS ${quoteIdent(object.objectName)};`),
+        `DROP TABLE IF EXISTS ${quoteIdent(table)} CASCADE;`,
+        ...enums.map((object) => `DROP TYPE IF EXISTS ${quoteIdent(object.objectName)} CASCADE;`),
+      ].join('\n');
+
+      await getSandboxSql().unsafe(statements);
+      await repo.markManagedObjectsDropped(managedObjects.map((object) => object.id));
       return { success: true };
     },
     attachRelation: async (

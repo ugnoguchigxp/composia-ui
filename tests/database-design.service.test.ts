@@ -166,9 +166,18 @@ function createRepository(): DatabaseDesignRepository {
       };
       return state.boundScreenJson;
     }),
+    deleteSchemaJson: vi.fn(async (_designSessionId, databaseSchemaJsonId) => {
+      if (state.schemaJson?.id === databaseSchemaJsonId) {
+        state.schemaJson = null;
+      }
+    }),
     deleteScreenJsonsAfterVersion: vi.fn(async () => undefined),
     findDesignSessionById: vi.fn(async () => designSession),
-    findSchemaJsonById: vi.fn(async () => null),
+    findSchemaJsonById: vi.fn(async (_userId, databaseSchemaJsonId) =>
+      state.schemaJson?.id === databaseSchemaJsonId
+        ? { databaseSchemaJson: state.schemaJson, session: designSession }
+        : null
+    ),
     findScreenJsonById: vi.fn(async () => ({
       screenJson: sourceScreenJson,
       session: promptSession,
@@ -467,5 +476,55 @@ describe('database design service', () => {
         boundScreenJsonId,
       }),
     ]);
+  });
+
+  it('physically deletes a draft after checking ownership', async () => {
+    const repo = createRepository();
+    const provider: DatabaseDesignProvider = {
+      propose: vi.fn(async () => ({
+        activities: [],
+        draft: {
+          databaseSchema: databaseSchema(),
+          dataBindings: [],
+          rationale: { databaseChanges: [], uiBindings: [] },
+          screen: null,
+        },
+        providerMeta: { provider: 'mock', componentRegistryVersion: 'test' },
+      })),
+    };
+    const migrationService = {
+      apply: vi.fn(),
+      preview: vi.fn(),
+      reset: vi.fn(),
+    };
+    const sandboxQueryService = {
+      state: vi.fn(async () => ({
+        appliedDatabaseSchemaJsonId: null,
+        appliedVersion: null,
+        tables: [],
+      })),
+    };
+    const service = createDatabaseDesignService(
+      repo,
+      provider,
+      migrationService,
+      sandboxQueryService as never
+    );
+    const created = await service.propose(userId, {
+      prompt: 'Products を管理したい',
+      source: 'dbdesign',
+    });
+
+    const result = await service.deleteDraft(userId, created.databaseSchemaJson.id);
+
+    expect(result).toEqual({ success: true });
+    expect(repo.findSchemaJsonById).toHaveBeenCalledWith(userId, created.databaseSchemaJson.id);
+    expect(repo.deleteSchemaJson).toHaveBeenCalledWith(
+      designSessionId,
+      created.databaseSchemaJson.id
+    );
+    await expect(service.schemaJson(userId, created.databaseSchemaJson.id)).rejects.toThrow(
+      'DatabaseSchemaJSON not found'
+    );
   });
 });

@@ -18,6 +18,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as PromptScreenIdRouteImport } from './routes/prompt.$screenId'
 import { Route as OauthCallbackRouteImport } from './routes/oauth.callback'
 import { Route as PromptSessionSessionIdRouteImport } from './routes/prompt.session.$sessionId'
+import { Route as DbdesignDraftsDatabaseSchemaJsonIdRouteImport } from './routes/dbdesign.drafts.$databaseSchemaJsonId'
 
 const PromptRoute = PromptRouteImport.update({
   id: '/prompt',
@@ -64,39 +65,48 @@ const PromptSessionSessionIdRoute = PromptSessionSessionIdRouteImport.update({
   path: '/session/$sessionId',
   getParentRoute: () => PromptRoute,
 } as any)
+const DbdesignDraftsDatabaseSchemaJsonIdRoute =
+  DbdesignDraftsDatabaseSchemaJsonIdRouteImport.update({
+    id: '/drafts/$databaseSchemaJsonId',
+    path: '/drafts/$databaseSchemaJsonId',
+    getParentRoute: () => DbdesignRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/database': typeof DatabaseRoute
-  '/dbdesign': typeof DbdesignRoute
+  '/dbdesign': typeof DbdesignRouteWithChildren
   '/history': typeof HistoryRoute
   '/login': typeof LoginRoute
   '/prompt': typeof PromptRouteWithChildren
   '/oauth/callback': typeof OauthCallbackRoute
   '/prompt/$screenId': typeof PromptScreenIdRoute
+  '/dbdesign/drafts/$databaseSchemaJsonId': typeof DbdesignDraftsDatabaseSchemaJsonIdRoute
   '/prompt/session/$sessionId': typeof PromptSessionSessionIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/database': typeof DatabaseRoute
-  '/dbdesign': typeof DbdesignRoute
+  '/dbdesign': typeof DbdesignRouteWithChildren
   '/history': typeof HistoryRoute
   '/login': typeof LoginRoute
   '/prompt': typeof PromptRouteWithChildren
   '/oauth/callback': typeof OauthCallbackRoute
   '/prompt/$screenId': typeof PromptScreenIdRoute
+  '/dbdesign/drafts/$databaseSchemaJsonId': typeof DbdesignDraftsDatabaseSchemaJsonIdRoute
   '/prompt/session/$sessionId': typeof PromptSessionSessionIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/database': typeof DatabaseRoute
-  '/dbdesign': typeof DbdesignRoute
+  '/dbdesign': typeof DbdesignRouteWithChildren
   '/history': typeof HistoryRoute
   '/login': typeof LoginRoute
   '/prompt': typeof PromptRouteWithChildren
   '/oauth/callback': typeof OauthCallbackRoute
   '/prompt/$screenId': typeof PromptScreenIdRoute
+  '/dbdesign/drafts/$databaseSchemaJsonId': typeof DbdesignDraftsDatabaseSchemaJsonIdRoute
   '/prompt/session/$sessionId': typeof PromptSessionSessionIdRoute
 }
 export interface FileRouteTypes {
@@ -110,6 +120,7 @@ export interface FileRouteTypes {
     | '/prompt'
     | '/oauth/callback'
     | '/prompt/$screenId'
+    | '/dbdesign/drafts/$databaseSchemaJsonId'
     | '/prompt/session/$sessionId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -121,6 +132,7 @@ export interface FileRouteTypes {
     | '/prompt'
     | '/oauth/callback'
     | '/prompt/$screenId'
+    | '/dbdesign/drafts/$databaseSchemaJsonId'
     | '/prompt/session/$sessionId'
   id:
     | '__root__'
@@ -132,13 +144,14 @@ export interface FileRouteTypes {
     | '/prompt'
     | '/oauth/callback'
     | '/prompt/$screenId'
+    | '/dbdesign/drafts/$databaseSchemaJsonId'
     | '/prompt/session/$sessionId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   DatabaseRoute: typeof DatabaseRoute
-  DbdesignRoute: typeof DbdesignRoute
+  DbdesignRoute: typeof DbdesignRouteWithChildren
   HistoryRoute: typeof HistoryRoute
   LoginRoute: typeof LoginRoute
   PromptRoute: typeof PromptRouteWithChildren
@@ -210,8 +223,28 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PromptSessionSessionIdRouteImport
       parentRoute: typeof PromptRoute
     }
+    '/dbdesign/drafts/$databaseSchemaJsonId': {
+      id: '/dbdesign/drafts/$databaseSchemaJsonId'
+      path: '/drafts/$databaseSchemaJsonId'
+      fullPath: '/dbdesign/drafts/$databaseSchemaJsonId'
+      preLoaderRoute: typeof DbdesignDraftsDatabaseSchemaJsonIdRouteImport
+      parentRoute: typeof DbdesignRoute
+    }
   }
 }
+
+interface DbdesignRouteChildren {
+  DbdesignDraftsDatabaseSchemaJsonIdRoute: typeof DbdesignDraftsDatabaseSchemaJsonIdRoute
+}
+
+const DbdesignRouteChildren: DbdesignRouteChildren = {
+  DbdesignDraftsDatabaseSchemaJsonIdRoute:
+    DbdesignDraftsDatabaseSchemaJsonIdRoute,
+}
+
+const DbdesignRouteWithChildren = DbdesignRoute._addFileChildren(
+  DbdesignRouteChildren,
+)
 
 interface PromptRouteChildren {
   PromptScreenIdRoute: typeof PromptScreenIdRoute
@@ -229,7 +262,7 @@ const PromptRouteWithChildren =
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   DatabaseRoute: DatabaseRoute,
-  DbdesignRoute: DbdesignRoute,
+  DbdesignRoute: DbdesignRouteWithChildren,
   HistoryRoute: HistoryRoute,
   LoginRoute: LoginRoute,
   PromptRoute: PromptRouteWithChildren,

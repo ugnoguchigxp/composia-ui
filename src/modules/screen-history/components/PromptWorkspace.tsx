@@ -5,11 +5,11 @@ import {
   CheckCircle2,
   ChevronDown,
   Database,
-  History,
   Loader2,
   MessageSquare,
   Send,
   User,
+  WandSparkles,
   XCircle,
 } from 'lucide-react';
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -805,11 +805,12 @@ function ChatDock({
             <Database className="h-4 w-4" />
           </Link>
           <Link
-            aria-label="Open history"
+            aria-label="Open UIDesign"
             className="inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-secondary"
+            title="UIDesign"
             to="/history"
           >
-            <History className="h-4 w-4" />
+            <WandSparkles className="h-4 w-4" />
           </Link>
           <button
             aria-label="Collapse Chatdock"
