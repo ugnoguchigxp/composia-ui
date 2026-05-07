@@ -1,0 +1,1 @@
+ALTER TABLE "source_definitions" ADD COLUMN "settings" jsonb;
