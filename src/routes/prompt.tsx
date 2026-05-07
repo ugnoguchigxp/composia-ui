@@ -8,6 +8,13 @@ export const Route = createFileRoute('/prompt' as any)({
 
 function PromptRoute() {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
-  const screenId = pathname.match(/^\/prompt\/([^/]+)$/)?.[1];
-  return <PromptWorkspace screenId={screenId ? decodeURIComponent(screenId) : undefined} />;
+  const sessionId = pathname.match(/^\/prompt\/session\/([^/]+)$/)?.[1];
+  const screenId = sessionId ? undefined : pathname.match(/^\/prompt\/([^/]+)$/)?.[1];
+  return (
+    <PromptWorkspace
+      key={sessionId ?? screenId ?? 'new'}
+      screenId={screenId ? decodeURIComponent(screenId) : undefined}
+      sessionId={sessionId ? decodeURIComponent(sessionId) : undefined}
+    />
+  );
 }

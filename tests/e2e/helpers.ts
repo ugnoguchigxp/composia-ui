@@ -11,6 +11,13 @@ export const defaultUser: TestUser = {
 };
 
 export const mockAuthMe = async (page: Page, user: TestUser = defaultUser) => {
+  await page.context().addCookies([
+    {
+      name: 'auth_hint',
+      value: 'true',
+      url: 'http://localhost:5173',
+    },
+  ]);
   await page.route('**/api/auth/me', async (route) => {
     await route.fulfill({
       status: 200,

@@ -1,6 +1,7 @@
 import {
   boolean,
   index,
+  integer,
   jsonb,
   pgTable,
   text,
@@ -8,7 +9,11 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import type { GeneratedScreen } from '../../shared/schemas/screen-history.schema';
+import type {
+  GeneratedScreen,
+  PromptSessionMessage,
+  ScreenJson,
+} from '../../shared/schemas/screen-history.schema';
 import type { AppUiSchema } from '../../shared/schemas/ui-schema.schema';
 
 const commonColumns = {
@@ -136,9 +141,58 @@ export const promptSessions = pgTable(
     createdBy: uuid('created_by')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
+    activeScreenJsonId: uuid('active_screen_json_id'),
   },
   (table) => ({
     createdByIdx: index('prompt_sessions_created_by_idx').on(table.createdBy),
+  })
+);
+
+export const screenJsons = pgTable(
+  'screen_jsons',
+  {
+    ...commonColumns,
+    sessionId: uuid('session_id')
+      .notNull()
+      .references(() => promptSessions.id, { onDelete: 'cascade' }),
+    version: integer('version').notNull(),
+    prompt: text('prompt').notNull(),
+    trigger: text('trigger').notNull(),
+    inferredIntent: text('inferred_intent').notNull(),
+    action: jsonb('action').$type<ScreenJson['action']>(),
+    schema: jsonb('schema').$type<AppUiSchema>().notNull(),
+    contextSnapshot: jsonb('context_snapshot').$type<ScreenJson['contextSnapshot']>().notNull(),
+    providerMeta: jsonb('provider_meta').$type<ScreenJson['providerMeta']>().notNull(),
+  },
+  (table) => ({
+    sessionIdx: index('screen_jsons_session_idx').on(table.sessionId),
+    sessionVersionUniqueIdx: uniqueIndex('screen_jsons_session_version_uidx').on(
+      table.sessionId,
+      table.version
+    ),
+  })
+);
+
+export const promptSessionMessages = pgTable(
+  'prompt_session_messages',
+  {
+    ...commonColumns,
+    sessionId: uuid('session_id')
+      .notNull()
+      .references(() => promptSessions.id, { onDelete: 'cascade' }),
+    screenJsonId: uuid('screen_json_id')
+      .notNull()
+      .references(() => screenJsons.id, {
+        onDelete: 'cascade',
+      }),
+    role: text('role').notNull(),
+    content: text('content').notNull(),
+    metadata: jsonb('metadata').$type<PromptSessionMessage['metadata']>().notNull().default({}),
+  },
+  (table) => ({
+    createdAtIdx: index('prompt_session_messages_created_at_idx').on(table.createdAt),
+    screenJsonIdx: index('prompt_session_messages_screen_json_idx').on(table.screenJsonId),
+    sessionIdx: index('prompt_session_messages_session_idx').on(table.sessionId),
   })
 );
 

@@ -36,7 +36,8 @@ describe('ui schema renderer', () => {
     const schema = await uiSchemaPreviewRepository.getPreview('sample');
     const html = renderToStaticMarkup(<JsonRenderRenderer schema={schema} />);
 
-    expect(html).toContain('Generated Screen Sample');
+    expect(html).not.toContain('<h1');
+    expect(html).toContain('aria-label="Generated Screen Sample"');
     expect(html).toContain('Registry coverage');
     expect(html).toContain('https://picsum.photos/seed/composia-ai-sample/1200/720');
     expect(html).toContain('Entity preview');

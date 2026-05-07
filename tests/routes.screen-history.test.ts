@@ -5,15 +5,22 @@ import { errorHandler } from '../api/middleware/error-handler';
 
 const userId = '11111111-1111-4111-8111-111111111111';
 const screenId = '22222222-2222-4222-8222-222222222222';
+const sessionId = '33333333-3333-4333-8333-333333333333';
 
 const screenHistoryServiceMocks = vi.hoisted(() => ({
   children: vi.fn(),
+  conversation: vi.fn(),
   delete: vi.fn(),
+  edit: vi.fn(),
   generate: vi.fn(),
   generateFromAction: vi.fn(),
+  generateFromSessionAction: vi.fn(),
   get: vi.fn(),
   list: vi.fn(),
   regenerate: vi.fn(),
+  regenerateSession: vi.fn(),
+  restoreCheckpoint: vi.fn(),
+  screenJson: vi.fn(),
 }));
 
 vi.mock('../api/middleware/auth', () => ({
@@ -28,14 +35,20 @@ vi.mock('../api/modules/screen-history/screen-history.service', () => ({
   screenHistoryService: screenHistoryServiceMocks,
 }));
 
-import { screenHistoryRouter } from '../api/modules/screen-history/screen-history.routes';
+import {
+  mcpToolsRouter,
+  screenHistoryRouter,
+  screenJsonRouter,
+  screenSessionRouter,
+} from '../api/modules/screen-history/screen-history.routes';
 
 function screenResponse() {
   return {
     screen: {
       id: screenId,
-      sessionId: '33333333-3333-4333-8333-333333333333',
+      sessionId,
       parentScreenId: null,
+      version: 1,
       trigger: 'initial-prompt',
       prompt: 'ECサイトのトップ画面',
       inferredIntent: 'Flower shop top page',
@@ -61,6 +74,49 @@ function screenResponse() {
   };
 }
 
+function conversationResponse() {
+  const { parentScreenId: _parentScreenId, ...screenJson } = screenResponse().screen;
+  return {
+    session: {
+      id: sessionId,
+      title: 'ECサイトのトップ画面',
+      createdBy: userId,
+      activeScreenJsonId: screenId,
+      createdAt: '2026-05-07T00:00:00.000Z',
+      updatedAt: '2026-05-07T00:00:00.000Z',
+    },
+    activeScreenJsonId: screenId,
+    activeVersion: 1,
+    screenJsons: [screenJson],
+    messages: [
+      {
+        id: '44444444-4444-4444-8444-444444444444',
+        sessionId,
+        screenJsonId: screenId,
+        role: 'assistant',
+        content: 'Flower Shop を保存しました。',
+        metadata: {
+          checkpointScreenJsonId: screenId,
+          checkpointLabel: 'このバージョンへ戻る',
+          generatedPage: 'Flower Shop',
+          version: 1,
+          trigger: 'initial-prompt',
+        },
+        createdAt: '2026-05-07T00:00:00.000Z',
+        updatedAt: '2026-05-07T00:00:00.000Z',
+      },
+    ],
+  };
+}
+
+function screenJsonResponse() {
+  const { parentScreenId: _parentScreenId, ...screenJson } = screenResponse().screen;
+  return {
+    screenJson,
+    schemaJson: JSON.stringify(screenResponse().screen.schema),
+  };
+}
+
 describe('screen history routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -69,7 +125,10 @@ describe('screen history routes', () => {
   function createApp() {
     const app = new OpenAPIHono<AppEnv>();
     app.onError(errorHandler);
+    app.route('/api/mcp', mcpToolsRouter);
     app.route('/api/screens', screenHistoryRouter);
+    app.route('/api/screen-jsons', screenJsonRouter);
+    app.route('/api/sessions', screenSessionRouter);
     return app;
   }
 
@@ -130,5 +189,73 @@ describe('screen history routes', () => {
         },
       }
     );
+  });
+
+  it('returns a persisted session conversation', async () => {
+    screenHistoryServiceMocks.conversation.mockResolvedValue(conversationResponse());
+
+    const res = await createApp().request(`/api/sessions/${sessionId}/conversation`);
+
+    expect(res.status).toBe(200);
+    expect(screenHistoryServiceMocks.conversation).toHaveBeenCalledWith(userId, sessionId);
+  });
+
+  it('edits the active session screen', async () => {
+    screenHistoryServiceMocks.edit.mockResolvedValue(screenResponse());
+
+    const res = await createApp().request(`/api/sessions/${sessionId}/edit`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ prompt: 'H1を小さくする' }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(screenHistoryServiceMocks.edit).toHaveBeenCalledWith(userId, sessionId, {
+      prompt: 'H1を小さくする',
+    });
+  });
+
+  it('restores a checkpoint without using the screen generation route', async () => {
+    screenHistoryServiceMocks.restoreCheckpoint.mockResolvedValue({
+      screen: screenResponse().screen,
+      conversation: conversationResponse(),
+    });
+
+    const res = await createApp().request(
+      `/api/sessions/${sessionId}/checkpoints/${screenId}/restore`,
+      { method: 'POST' }
+    );
+
+    expect(res.status).toBe(200);
+    expect(screenHistoryServiceMocks.restoreCheckpoint).toHaveBeenCalledWith(
+      userId,
+      sessionId,
+      screenId
+    );
+    expect(screenHistoryServiceMocks.generate).not.toHaveBeenCalled();
+  });
+
+  it('returns minified ScreenJSON through the ScreenJSON route', async () => {
+    screenHistoryServiceMocks.screenJson.mockResolvedValue(screenJsonResponse());
+
+    const res = await createApp().request(`/api/screen-jsons/${screenId}`);
+    const payload = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(payload.schemaJson).toBe(JSON.stringify(screenResponse().screen.schema));
+    expect(screenHistoryServiceMocks.screenJson).toHaveBeenCalledWith(userId, screenId);
+  });
+
+  it('exposes the get_screen_json MCP tool endpoint', async () => {
+    screenHistoryServiceMocks.screenJson.mockResolvedValue(screenJsonResponse());
+
+    const res = await createApp().request('/api/mcp/tools/get_screen_json', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ screenJsonId: screenId }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(screenHistoryServiceMocks.screenJson).toHaveBeenCalledWith(userId, screenId);
   });
 });

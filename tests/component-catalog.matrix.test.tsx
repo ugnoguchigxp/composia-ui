@@ -36,7 +36,28 @@ describe('component catalog matrix', () => {
     expect(spec.elements[spec.root].type).toBe(component);
     expect(validateAppUiSchemaCatalog(schema)).toEqual([]);
     expect(html).toContain(`${component} root fixture`);
+    expect(html).not.toContain('<h1');
     expect(html).toContain(`${component} child content`);
+  });
+
+  it('keeps generated page shell metadata out of the visible H1 header slot', () => {
+    const schema = appUiSchemaSchema.parse(createSchemaForPageShell('DashboardPage'));
+    const html = renderToStaticMarkup(<JsonRenderRenderer schema={schema} />);
+
+    expect(html).not.toContain('<h1');
+    expect(html).toContain('aria-label="DashboardPage root fixture"');
+  });
+
+  it('renders NavigationPanel as tab-style navigation instead of a button-card menu', () => {
+    const schema = appUiSchemaSchema.parse(createSchemaForSection('NavigationPanel'));
+    const html = renderToStaticMarkup(<JsonRenderRenderer schema={schema} />);
+
+    expect(html).toContain('sr-only');
+    expect(html).toContain('flex-wrap');
+    expect(html).toContain('border-b-2');
+    expect(html).not.toContain('overflow-x-auto');
+    expect(html).not.toContain('px-ui-button');
+    expect(html).not.toContain('rounded-lg border p-');
   });
 
   it.each(

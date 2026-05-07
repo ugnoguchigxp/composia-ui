@@ -43,6 +43,13 @@
       "when": 1778115287493,
       "tag": "0005_tiresome_smasher",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1778135802706,
+      "tag": "0006_giant_silhouette",
+      "breakpoints": true
     }
   ]
 }

@@ -2,9 +2,13 @@ import { createRoute, z } from '@hono/zod-openapi';
 import type { Context } from 'hono';
 import {
   screenActionGenerateRequestSchema,
+  screenCheckpointRestoreResponseSchema,
   screenChildrenResponseSchema,
+  screenConversationResponseSchema,
   screenDeleteResponseSchema,
+  screenEditRequestSchema,
   screenGenerateRequestSchema,
+  screenJsonResponseSchema,
   screenListResponseSchema,
   screenRegenerateRequestSchema,
   screenResponseSchema,
@@ -15,9 +19,18 @@ import { authMiddleware } from '../../middleware/auth';
 import { screenHistoryService } from './screen-history.service';
 
 const screenParamSchema = z.object({ screenId: z.string().uuid() }).strict();
+const sessionParamSchema = z.object({ sessionId: z.string().uuid() }).strict();
+const screenJsonParamSchema = z.object({ screenJsonId: z.string().uuid() }).strict();
 const actionParamSchema = z
   .object({ screenId: z.string().uuid(), actionId: z.string().min(1) })
   .strict();
+const sessionActionParamSchema = z
+  .object({ sessionId: z.string().uuid(), actionId: z.string().min(1) })
+  .strict();
+const checkpointParamSchema = z
+  .object({ sessionId: z.string().uuid(), screenJsonId: z.string().uuid() })
+  .strict();
+const mcpGetScreenJsonRequestSchema = z.object({ screenJsonId: z.string().uuid() }).strict();
 
 const listRoute = createRoute({
   method: 'get',
@@ -25,7 +38,7 @@ const listRoute = createRoute({
   responses: {
     200: {
       content: { 'application/json': { schema: screenListResponseSchema } },
-      description: 'List generated screens',
+      description: 'List prompt sessions and generated screens',
     },
   },
 });
@@ -37,7 +50,7 @@ const detailRoute = createRoute({
   responses: {
     200: {
       content: { 'application/json': { schema: screenResponseSchema } },
-      description: 'Get generated screen',
+      description: 'Get generated screen or ScreenJSON',
     },
   },
 });
@@ -49,7 +62,7 @@ const childrenRoute = createRoute({
   responses: {
     200: {
       content: { 'application/json': { schema: screenChildrenResponseSchema } },
-      description: 'List child screens',
+      description: 'List legacy child screens',
     },
   },
 });
@@ -69,7 +82,7 @@ const generateRoute = createRoute({
   responses: {
     200: {
       content: { 'application/json': { schema: screenResponseSchema } },
-      description: 'Generate and save a screen from a prompt',
+      description: 'Generate and save the first ScreenJSON for a session',
     },
   },
 });
@@ -90,7 +103,7 @@ const actionGenerateRoute = createRoute({
   responses: {
     200: {
       content: { 'application/json': { schema: screenResponseSchema } },
-      description: 'Generate and save a child screen from an action',
+      description: 'Generate and save the next ScreenJSON from a screen action',
     },
   },
 });
@@ -111,7 +124,7 @@ const regenerateRoute = createRoute({
   responses: {
     200: {
       content: { 'application/json': { schema: screenResponseSchema } },
-      description: 'Regenerate a screen',
+      description: 'Regenerate a ScreenJSON from a screen id',
     },
   },
 });
@@ -123,13 +136,139 @@ const deleteRoute = createRoute({
   responses: {
     200: {
       content: { 'application/json': { schema: screenDeleteResponseSchema } },
-      description: 'Delete generated screen',
+      description: 'Delete generated screen or ScreenJSON',
+    },
+  },
+});
+
+const conversationRoute = createRoute({
+  method: 'get',
+  path: '/:sessionId/conversation',
+  request: { params: sessionParamSchema },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: screenConversationResponseSchema } },
+      description: 'Get persisted ChatDock conversation and checkpoints for a session',
+    },
+  },
+});
+
+const editRoute = createRoute({
+  method: 'post',
+  path: '/:sessionId/edit',
+  request: {
+    params: sessionParamSchema,
+    body: {
+      content: {
+        'application/json': {
+          schema: screenEditRequestSchema,
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: screenResponseSchema } },
+      description: 'Edit the active ScreenJSON in a session',
+    },
+  },
+});
+
+const sessionActionGenerateRoute = createRoute({
+  method: 'post',
+  path: '/:sessionId/actions/:actionId/generate',
+  request: {
+    params: sessionActionParamSchema,
+    body: {
+      content: {
+        'application/json': {
+          schema: screenActionGenerateRequestSchema,
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: screenResponseSchema } },
+      description: 'Generate and save the next ScreenJSON from the active session screen',
+    },
+  },
+});
+
+const sessionRegenerateRoute = createRoute({
+  method: 'post',
+  path: '/:sessionId/regenerate',
+  request: {
+    params: sessionParamSchema,
+    body: {
+      content: {
+        'application/json': {
+          schema: screenRegenerateRequestSchema,
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: screenResponseSchema } },
+      description: 'Regenerate the active ScreenJSON in a session',
+    },
+  },
+});
+
+const restoreCheckpointRoute = createRoute({
+  method: 'post',
+  path: '/:sessionId/checkpoints/:screenJsonId/restore',
+  request: { params: checkpointParamSchema },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: screenCheckpointRestoreResponseSchema } },
+      description: 'Restore a ScreenJSON checkpoint without calling the AI provider',
+    },
+  },
+});
+
+const screenJsonRoute = createRoute({
+  method: 'get',
+  path: '/:screenJsonId',
+  request: { params: screenJsonParamSchema },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: screenJsonResponseSchema } },
+      description: 'Get ScreenJSON as minified JSON',
+    },
+  },
+});
+
+const mcpGetScreenJsonRoute = createRoute({
+  method: 'post',
+  path: '/tools/get_screen_json',
+  request: {
+    body: {
+      content: {
+        'application/json': {
+          schema: mcpGetScreenJsonRequestSchema,
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: screenJsonResponseSchema } },
+      description: 'MCP-compatible tool endpoint for reading a ScreenJSON',
     },
   },
 });
 
 const protectedScreensRouter = createOpenApiRouter();
+const protectedSessionsRouter = createOpenApiRouter();
+const protectedScreenJsonsRouter = createOpenApiRouter();
+const protectedMcpRouter = createOpenApiRouter();
+
 protectedScreensRouter.use('*', authMiddleware());
+protectedSessionsRouter.use('*', authMiddleware());
+protectedScreenJsonsRouter.use('*', authMiddleware());
+protectedMcpRouter.use('*', authMiddleware());
 
 function userId(c: Context<AppEnv>) {
   const user = c.get('user');
@@ -173,3 +312,55 @@ export const screenHistoryRouter = protectedScreensRouter
   .openapi(deleteRoute, async (c) =>
     c.json(await screenHistoryService.delete(userId(c), c.req.valid('param').screenId), 200)
   );
+
+export const screenSessionRouter = protectedSessionsRouter
+  .openapi(conversationRoute, async (c) =>
+    c.json(await screenHistoryService.conversation(userId(c), c.req.valid('param').sessionId), 200)
+  )
+  .openapi(editRoute, async (c) =>
+    c.json(
+      await screenHistoryService.edit(
+        userId(c),
+        c.req.valid('param').sessionId,
+        c.req.valid('json')
+      ),
+      200
+    )
+  )
+  .openapi(sessionActionGenerateRoute, async (c) => {
+    const { actionId, sessionId } = c.req.valid('param');
+    return c.json(
+      await screenHistoryService.generateFromSessionAction(
+        userId(c),
+        sessionId,
+        actionId,
+        c.req.valid('json')
+      ),
+      200
+    );
+  })
+  .openapi(sessionRegenerateRoute, async (c) =>
+    c.json(
+      await screenHistoryService.regenerateSession(
+        userId(c),
+        c.req.valid('param').sessionId,
+        c.req.valid('json')
+      ),
+      200
+    )
+  )
+  .openapi(restoreCheckpointRoute, async (c) => {
+    const { screenJsonId, sessionId } = c.req.valid('param');
+    return c.json(
+      await screenHistoryService.restoreCheckpoint(userId(c), sessionId, screenJsonId),
+      200
+    );
+  });
+
+export const screenJsonRouter = protectedScreenJsonsRouter.openapi(screenJsonRoute, async (c) =>
+  c.json(await screenHistoryService.screenJson(userId(c), c.req.valid('param').screenJsonId), 200)
+);
+
+export const mcpToolsRouter = protectedMcpRouter.openapi(mcpGetScreenJsonRoute, async (c) =>
+  c.json(await screenHistoryService.screenJson(userId(c), c.req.valid('json').screenJsonId), 200)
+);

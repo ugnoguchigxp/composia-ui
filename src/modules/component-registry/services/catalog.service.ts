@@ -115,7 +115,7 @@ export const appJsonRenderCatalog = defineCatalog(reactSchema, {
     },
     NavigationPanel: {
       props: componentPropsSchemas.NavigationPanel,
-      description: 'A section for internal navigation links.',
+      description: 'A compact tab-style section for local internal navigation links.',
     },
     EmptyState: {
       props: componentPropsSchemas.EmptyState,

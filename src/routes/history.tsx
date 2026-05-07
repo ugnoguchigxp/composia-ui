@@ -28,6 +28,22 @@ function HistoryPage() {
         .some((value) => value?.toLowerCase().includes(q))
     );
   }, [history.data?.screens, query]);
+  const sessions = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const all = history.data?.sessions ?? [];
+    if (!q) return all;
+    return all.filter((session) =>
+      [
+        session.title,
+        session.page,
+        session.prompt,
+        session.inferredIntent,
+        session.messageSearchText,
+      ]
+        .filter(Boolean)
+        .some((value) => value?.toLowerCase().includes(q))
+    );
+  }, [history.data?.sessions, query]);
 
   if (auth.isLoading) {
     return <div className="mx-auto max-w-6xl px-4 py-10 text-muted-foreground">Loading...</div>;
@@ -100,6 +116,7 @@ function HistoryPage() {
           isDeleting={deleteScreen.isPending}
           onDelete={(screenId) => deleteScreen.mutate(screenId)}
           screens={screens}
+          sessions={sessions}
         />
       )}
     </div>

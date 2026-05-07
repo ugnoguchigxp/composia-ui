@@ -20,7 +20,7 @@ export function SidebarPage({ props, children }: BaseComponentProps<SidebarPageP
     >
       <aside className="self-start rounded-lg border border-border bg-card p-4 lg:sticky lg:top-24">
         <div>
-          <h1 className="text-xl font-semibold text-foreground">{props.title}</h1>
+          <div className="font-semibold text-foreground text-sm">{props.title}</div>
           {props.description ? (
             <p className="mt-2 text-muted-foreground text-sm leading-6">{props.description}</p>
           ) : null}

@@ -1,7 +1,6 @@
 import type { BaseComponentProps } from '@json-render/react';
 import type { z } from 'zod';
 import type { componentPropsSchemas } from '../../services/catalog.service';
-import { visualIntentClassName } from '../../services/visual-intent.service';
 import {
   AppActionControl,
   findActionForLabel,
@@ -12,21 +11,19 @@ type NavigationPanelProps = z.infer<(typeof componentPropsSchemas)['NavigationPa
   RenderableAppActionProps;
 
 export function NavigationPanel({ props }: BaseComponentProps<NavigationPanelProps>) {
+  const tabClassName =
+    'inline-flex h-ui shrink-0 items-center border-transparent border-b-2 px-3 text-muted-foreground text-sm font-medium transition-colors hover:border-border hover:text-foreground';
+
   return (
-    <nav
-      className={visualIntentClassName(
-        props.visualIntent,
-        'rounded-lg border p-[var(--ui-card-padding)]'
-      )}
-    >
-      <h2 className="text-lg font-semibold">{props.title}</h2>
-      <div className="mt-4 flex flex-wrap gap-3">
+    <nav aria-label={props.title} className="border-border border-b pb-1">
+      <h2 className="sr-only">{props.title}</h2>
+      <div className="flex flex-wrap gap-x-1 gap-y-2">
         {props.links.map((link) => {
           const action = findActionForLabel(props.actions, link.label, link.href);
           return (
             <AppActionControl
               action={action}
-              className="inline-flex h-ui items-center rounded-md border border-border bg-background px-ui-button text-sm font-medium hover:bg-accent"
+              className={tabClassName}
               fallbackHref={link.href}
               fallbackLabel={link.label}
               key={action?.id ?? link.href}
@@ -41,11 +38,7 @@ export function NavigationPanel({ props }: BaseComponentProps<NavigationPanelPro
               )
           )
           .map((action) => (
-            <AppActionControl
-              action={action}
-              className="inline-flex h-ui items-center rounded-md border border-border bg-background px-ui-button text-sm font-medium hover:bg-accent"
-              key={action.id}
-            />
+            <AppActionControl action={action} className={tabClassName} key={action.id} />
           ))}
       </div>
     </nav>

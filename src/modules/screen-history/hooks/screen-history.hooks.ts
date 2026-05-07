@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   ScreenActionGenerateRequest,
+  ScreenEditRequest,
   ScreenGenerateRequest,
   ScreenRegenerateRequest,
 } from '../../../../shared/schemas/screen-history.schema';
@@ -8,8 +9,10 @@ import { screenHistoryRepository } from '../repositories/screen-history.reposito
 
 export const screenHistoryQueryKeys = {
   children: (screenId: string) => ['screen-history', screenId, 'children'] as const,
+  conversation: (sessionId: string) => ['screen-history', 'session', sessionId] as const,
   detail: (screenId: string) => ['screen-history', screenId] as const,
   list: ['screen-history', 'list'] as const,
+  screenJson: (screenJsonId: string) => ['screen-json', screenJsonId] as const,
 };
 
 export function useScreenHistory(enabled = true) {
@@ -33,6 +36,22 @@ export function useGeneratedScreenChildren(screenId: string | null, enabled = tr
     enabled: enabled && Boolean(screenId),
     queryKey: screenHistoryQueryKeys.children(screenId ?? ''),
     queryFn: () => screenHistoryRepository.children(screenId ?? ''),
+  });
+}
+
+export function useScreenConversation(sessionId: string | null, enabled = true) {
+  return useQuery({
+    enabled: enabled && Boolean(sessionId),
+    queryKey: screenHistoryQueryKeys.conversation(sessionId ?? ''),
+    queryFn: () => screenHistoryRepository.conversation(sessionId ?? ''),
+  });
+}
+
+export function useScreenJson(screenJsonId: string | null, enabled = true) {
+  return useQuery({
+    enabled: enabled && Boolean(screenJsonId),
+    queryKey: screenHistoryQueryKeys.screenJson(screenJsonId ?? ''),
+    queryFn: () => screenHistoryRepository.getScreenJson(screenJsonId ?? ''),
   });
 }
 
@@ -62,6 +81,35 @@ export function useGenerateScreenFromAction(screenId: string | null) {
   });
 }
 
+export function useGenerateScreenFromSessionAction(sessionId: string | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ actionId, input }: { actionId: string; input: ScreenActionGenerateRequest }) =>
+      screenHistoryRepository.generateFromSessionAction(sessionId ?? '', actionId, input),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: screenHistoryQueryKeys.list });
+      if (sessionId) {
+        queryClient.invalidateQueries({ queryKey: screenHistoryQueryKeys.conversation(sessionId) });
+      }
+      queryClient.setQueryData(screenHistoryQueryKeys.detail(data.screen.id), data);
+    },
+  });
+}
+
+export function useEditSessionScreen(sessionId: string | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: ScreenEditRequest) => screenHistoryRepository.edit(sessionId ?? '', input),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: screenHistoryQueryKeys.list });
+      if (sessionId) {
+        queryClient.invalidateQueries({ queryKey: screenHistoryQueryKeys.conversation(sessionId) });
+      }
+      queryClient.setQueryData(screenHistoryQueryKeys.detail(data.screen.id), data);
+    },
+  });
+}
+
 export function useRegenerateScreen(screenId: string | null) {
   const queryClient = useQueryClient();
   return useMutation({
@@ -73,6 +121,39 @@ export function useRegenerateScreen(screenId: string | null) {
         queryClient.invalidateQueries({ queryKey: screenHistoryQueryKeys.children(screenId) });
       }
       queryClient.setQueryData(screenHistoryQueryKeys.detail(data.screen.id), data);
+    },
+  });
+}
+
+export function useRegenerateSessionScreen(sessionId: string | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: ScreenRegenerateRequest) =>
+      screenHistoryRepository.regenerateSession(sessionId ?? '', input),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: screenHistoryQueryKeys.list });
+      if (sessionId) {
+        queryClient.invalidateQueries({ queryKey: screenHistoryQueryKeys.conversation(sessionId) });
+      }
+      queryClient.setQueryData(screenHistoryQueryKeys.detail(data.screen.id), data);
+    },
+  });
+}
+
+export function useRestoreScreenJsonCheckpoint(sessionId: string | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (screenJsonId: string) =>
+      screenHistoryRepository.restoreCheckpoint(sessionId ?? '', screenJsonId),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: screenHistoryQueryKeys.list });
+      if (sessionId) {
+        queryClient.setQueryData(screenHistoryQueryKeys.conversation(sessionId), data.conversation);
+      }
+      queryClient.setQueryData(screenHistoryQueryKeys.detail(data.screen.id), {
+        activities: [],
+        screen: data.screen,
+      });
     },
   });
 }

@@ -101,7 +101,7 @@ const sectionCatalogRules = [
   {
     component: 'NavigationPanel',
     sources: ['navigation'],
-    props: 'title, links[label,href]',
+    props: 'title, links[label,href] for compact local tab navigation only',
   },
   {
     component: 'EmptyState',
@@ -309,7 +309,7 @@ const componentInstructions = sectionCatalogRules
   .map((rule) => `- ${rule.component}: sources=${rule.sources.join('|')}; props=${rule.props}`)
   .join('\n');
 
-export const layoutSystemContextVersion = 'layout-system-context-v6';
+export const layoutSystemContextVersion = 'layout-system-context-v8';
 
 export const layoutSystemContext = `
 Return App UI Schema as strict JSON only. No Markdown or prose.
@@ -318,6 +318,10 @@ Do not write labels like "画面を生成", "ページを生成", "注文管理�
 Action/navigation labels must name the destination or intent, e.g. "注文管理", "障害対応", "花の商品を見る", "詳細を見る".
 Keep generation mechanics only in action.kind and intentHint, never in label fields.
 For FormSection select fields, options must always be objects like {"label":"高","value":"high"}; never return string arrays like ["高","中","低"].
+Keep page titles compact and workmanlike. Do not use oversized landing-page H1 or billboard headline patterns.
+Do not rely on the page-level title or intent as visible hero copy. Put user-facing content in sections only when it is needed.
+Do not create standalone menu sections made of button lists, such as "ショップメニュー" or "Shop menu". Put primary navigation in layout:"sidebar" with navigation.items, or use NavigationPanel only as compact local tab navigation.
+Do not add newsletter, email signup, メルマガ, or ニュースレター registration as a default landing-page filler pattern.
 Choose varied layouts. Use dashboards only for analytics-heavy prompts.
 Use sidebar + navigation.items for multi-area apps. Use hero/carousel/card-grid for product or browsing flows. Use master-detail/inbox, kanban, calendar, chat, editor-preview, comparison, form, stepper, or action footer when they fit the user request.
 `.trim();

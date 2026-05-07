@@ -23,6 +23,17 @@ function collectValuesByKey(value: unknown, key: string): unknown[] {
   ]);
 }
 
+function collectStrings(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.flatMap(collectStrings);
+  }
+
+  if (typeof value === 'string') return [value];
+  if (typeof value !== 'object' || value === null) return [];
+
+  return Object.values(value).flatMap(collectStrings);
+}
+
 describe('UI schema invariants', () => {
   it('keeps fixture hrefs app-relative', () => {
     let hrefCount = 0;
@@ -118,6 +129,20 @@ describe('UI schema invariants', () => {
 
       expect(
         visibleStrings.some((value) => forbidden.test(value)),
+        component
+      ).toBe(false);
+    }
+  });
+
+  it('keeps fixtures free of deprecated landing-page filler patterns', () => {
+    const deprecatedFiller =
+      /(newsletter|email signup|subscribe|ニュースレター|メルマガ|メールマガジン|購読)/i;
+
+    for (const component of Object.keys(sectionComponentFixtures) as SectionComponentName[]) {
+      const schema = createSchemaForSection(component);
+
+      expect(
+        collectStrings(schema).some((value) => deprecatedFiller.test(value)),
         component
       ).toBe(false);
     }

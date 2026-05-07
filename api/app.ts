@@ -12,7 +12,12 @@ import { rateLimiter } from './middleware/rate-limiter';
 import { aiRouter } from './modules/ai/ai.routes';
 import { cacheRouter } from './modules/cache/cache.routes';
 import { entitiesRouter, metadataRouter } from './modules/entities/entities.routes';
-import { screenHistoryRouter } from './modules/screen-history/screen-history.routes';
+import {
+  mcpToolsRouter,
+  screenHistoryRouter,
+  screenJsonRouter,
+  screenSessionRouter,
+} from './modules/screen-history/screen-history.routes';
 import { sourcesRouter } from './modules/sources/sources.routes';
 import { uiSchemaRouter } from './modules/ui-schema/ui-schema.routes';
 import { authRouter } from './routes/auth';
@@ -25,7 +30,10 @@ const apiRoutes = createOpenApiRouter()
   .route('/cache', cacheRouter)
   .route('/entities', entitiesRouter)
   .route('/metadata', metadataRouter)
+  .route('/mcp', mcpToolsRouter)
   .route('/screens', screenHistoryRouter)
+  .route('/screen-jsons', screenJsonRouter)
+  .route('/sessions', screenSessionRouter)
   .route('/sources', sourcesRouter)
   .route('/ui-schema', uiSchemaRouter)
   .route('/auth/oauth', oauthRouter)

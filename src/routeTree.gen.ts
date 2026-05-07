@@ -15,6 +15,7 @@ import { Route as HistoryRouteImport } from './routes/history'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as PromptScreenIdRouteImport } from './routes/prompt.$screenId'
 import { Route as OauthCallbackRouteImport } from './routes/oauth.callback'
+import { Route as PromptSessionSessionIdRouteImport } from './routes/prompt.session.$sessionId'
 
 const PromptRoute = PromptRouteImport.update({
   id: '/prompt',
@@ -46,6 +47,11 @@ const OauthCallbackRoute = OauthCallbackRouteImport.update({
   path: '/oauth/callback',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PromptSessionSessionIdRoute = PromptSessionSessionIdRouteImport.update({
+  id: '/session/$sessionId',
+  path: '/session/$sessionId',
+  getParentRoute: () => PromptRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -54,6 +60,7 @@ export interface FileRoutesByFullPath {
   '/prompt': typeof PromptRouteWithChildren
   '/oauth/callback': typeof OauthCallbackRoute
   '/prompt/$screenId': typeof PromptScreenIdRoute
+  '/prompt/session/$sessionId': typeof PromptSessionSessionIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -62,6 +69,7 @@ export interface FileRoutesByTo {
   '/prompt': typeof PromptRouteWithChildren
   '/oauth/callback': typeof OauthCallbackRoute
   '/prompt/$screenId': typeof PromptScreenIdRoute
+  '/prompt/session/$sessionId': typeof PromptSessionSessionIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -71,6 +79,7 @@ export interface FileRoutesById {
   '/prompt': typeof PromptRouteWithChildren
   '/oauth/callback': typeof OauthCallbackRoute
   '/prompt/$screenId': typeof PromptScreenIdRoute
+  '/prompt/session/$sessionId': typeof PromptSessionSessionIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -81,6 +90,7 @@ export interface FileRouteTypes {
     | '/prompt'
     | '/oauth/callback'
     | '/prompt/$screenId'
+    | '/prompt/session/$sessionId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -89,6 +99,7 @@ export interface FileRouteTypes {
     | '/prompt'
     | '/oauth/callback'
     | '/prompt/$screenId'
+    | '/prompt/session/$sessionId'
   id:
     | '__root__'
     | '/'
@@ -97,6 +108,7 @@ export interface FileRouteTypes {
     | '/prompt'
     | '/oauth/callback'
     | '/prompt/$screenId'
+    | '/prompt/session/$sessionId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -151,15 +163,24 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OauthCallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/prompt/session/$sessionId': {
+      id: '/prompt/session/$sessionId'
+      path: '/session/$sessionId'
+      fullPath: '/prompt/session/$sessionId'
+      preLoaderRoute: typeof PromptSessionSessionIdRouteImport
+      parentRoute: typeof PromptRoute
+    }
   }
 }
 
 interface PromptRouteChildren {
   PromptScreenIdRoute: typeof PromptScreenIdRoute
+  PromptSessionSessionIdRoute: typeof PromptSessionSessionIdRoute
 }
 
 const PromptRouteChildren: PromptRouteChildren = {
   PromptScreenIdRoute: PromptScreenIdRoute,
+  PromptSessionSessionIdRoute: PromptSessionSessionIdRoute,
 }
 
 const PromptRouteWithChildren =

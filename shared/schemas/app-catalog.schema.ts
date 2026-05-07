@@ -607,7 +607,7 @@ export const componentDefinitions = componentDefinitionSchema.array().parse([
   },
   {
     name: 'NavigationPanel',
-    description: 'Navigation panel section.',
+    description: 'Compact tab-style local navigation section.',
     allowedSources: ['navigation'],
     propsSchema: componentPropsSchemas.NavigationPanel,
   },
