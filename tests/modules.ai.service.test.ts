@@ -68,6 +68,64 @@ describe('ai service', () => {
     });
   });
 
+  it('normalizes string select options before catalog validation', async () => {
+    const service = createAiService({
+      generateLayout: async () => ({
+        page: 'Incident workflow',
+        intent: 'Create an incident response form',
+        layout: 'form',
+        sections: [
+          {
+            component: 'FormSection',
+            source: 'app',
+            props: {
+              title: 'Incident triage',
+              fields: [
+                { name: 'title', label: 'Title', type: 'text' },
+                {
+                  name: 'priority',
+                  label: 'Priority',
+                  type: 'select',
+                  options: ['高', '中', '低'],
+                  value: '高',
+                },
+              ],
+              submitLabel: 'Save',
+            },
+          },
+        ],
+      }),
+    });
+
+    await expect(service.generateLayout({ prompt: 'Make an incident form' })).resolves.toEqual(
+      expect.objectContaining({
+        schema: expect.objectContaining({
+          sections: [
+            expect.objectContaining({
+              component: 'FormSection',
+              props: expect.objectContaining({
+                fields: [
+                  { name: 'title', label: 'Title', type: 'text' },
+                  {
+                    name: 'priority',
+                    label: 'Priority',
+                    type: 'select',
+                    options: [
+                      { label: '高', value: '高' },
+                      { label: '中', value: '中' },
+                      { label: '低', value: '低' },
+                    ],
+                    value: '高',
+                  },
+                ],
+              }),
+            }),
+          ],
+        }),
+      })
+    );
+  });
+
   it('returns a validated cached layout without calling the provider', async () => {
     const cachedSchema = {
       page: 'Cached operations',

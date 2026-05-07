@@ -53,6 +53,22 @@ const metricSchema = z
   })
   .strict();
 
+const metadataValueSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
+const metadataEntrySchema = z
+  .object({
+    label: z.string().min(1),
+    value: metadataValueSchema,
+  })
+  .strict();
+const displayMetadataSchema = z.union([
+  z.string(),
+  z.number(),
+  z.boolean(),
+  metadataEntrySchema,
+  z.array(metadataEntrySchema).min(1).max(6),
+  z.record(z.string(), metadataValueSchema),
+]);
+
 const tableColumnSchema = z
   .object({
     key: z.string().min(1),
@@ -77,7 +93,7 @@ const cardGridItemSchema = z
     badge: z.string().optional(),
     href: appRelativeHrefSchema.optional(),
     image: imageAssetSchema.optional(),
-    meta: z.string().optional(),
+    meta: displayMetadataSchema.optional(),
   })
   .strict();
 
@@ -123,7 +139,7 @@ const masterDetailItemSchema = z
     id: z.string().min(1),
     title: z.string().min(1),
     description: z.string().optional(),
-    meta: z.string().optional(),
+    meta: displayMetadataSchema.optional(),
     status: z.string().optional(),
   })
   .strict();
@@ -133,7 +149,7 @@ const kanbanCardSchema = z
     title: z.string().min(1),
     description: z.string().optional(),
     assignee: z.string().optional(),
-    meta: z.string().optional(),
+    meta: displayMetadataSchema.optional(),
     tone: visualIntentSchema.shape.tone.optional(),
   })
   .strict();

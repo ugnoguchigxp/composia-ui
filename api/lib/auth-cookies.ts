@@ -4,6 +4,7 @@ import { config } from '../config';
 
 export const ACCESS_TOKEN_COOKIE_NAME = 'access_token';
 export const REFRESH_TOKEN_COOKIE_NAME = 'refresh_token';
+export const AUTH_HINT_COOKIE_NAME = 'auth_hint';
 
 const isSecureCookie =
   config.NODE_ENV === 'production' || Boolean(config.APP_URL?.startsWith('https://'));
@@ -54,9 +55,18 @@ export const setAuthCookies = (
     path: '/api/auth',
     ...(refreshCookieMaxAge ? { maxAge: refreshCookieMaxAge } : {}),
   });
+
+  setCookie(c, AUTH_HINT_COOKIE_NAME, 'true', {
+    httpOnly: false,
+    secure: isSecureCookie,
+    sameSite: config.COOKIE_SAME_SITE,
+    path: '/',
+    ...(refreshCookieMaxAge ? { maxAge: refreshCookieMaxAge } : {}),
+  });
 };
 
 export const clearAuthCookies = (c: Context) => {
   deleteCookie(c, ACCESS_TOKEN_COOKIE_NAME, { path: '/' });
   deleteCookie(c, REFRESH_TOKEN_COOKIE_NAME, { path: '/api/auth' });
+  deleteCookie(c, AUTH_HINT_COOKIE_NAME, { path: '/' });
 };

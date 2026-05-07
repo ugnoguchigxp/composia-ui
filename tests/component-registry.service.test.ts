@@ -104,6 +104,24 @@ describe('component registry service', () => {
     ]);
   });
 
+  it('accepts structured card metadata from AI output', () => {
+    expect(
+      validateComponentProps('CardGridSection', {
+        title: 'Products',
+        items: [
+          {
+            title: 'Seasonal bouquet',
+            meta: { label: 'Price', value: '¥4,800' },
+          },
+          {
+            title: 'Gift set',
+            meta: { stock: 'In stock', delivery: 'Tomorrow' },
+          },
+        ],
+      })
+    ).toEqual([]);
+  });
+
   it('rejects source bindings outside the component definition', () => {
     const schema = appUiSchemaSchema.parse({
       page: 'Operations',

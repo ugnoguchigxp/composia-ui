@@ -3,126 +3,118 @@ import { config } from '../../config';
 import { AppError } from '../../lib/errors';
 import { logger } from '../../lib/logger';
 
+export const aiJsonMaxOutputTokens = 8000;
+
 const sectionCatalogRules = [
   {
     component: 'KpiSummarySection',
     sources: ['summary', 'postgres', 'api'],
-    props:
-      'props { title?: string, items: [{ label: string, value: string | number, description?: string }] }',
+    props: 'title?, items[label,value,description?]',
   },
   {
     component: 'TimelineSection',
     sources: ['rss', 'api', 'markdown'],
-    props:
-      'props { title: string, items: [{ title: string, timestamp?: string, description?: string }] }',
+    props: 'title, items[title,timestamp?,description?]',
   },
   {
     component: 'InsightPanel',
     sources: ['summary', 'rss', 'postgres', 'api', 'markdown'],
-    props: 'props { title: string, body: string, action?: { label: string, href: string } }',
+    props: 'title, body, action?[label,href]',
   },
   {
     component: 'ImageSection',
     sources: ['app', 'api', 'markdown'],
-    props:
-      'props { title?: string, description?: string, image: { src: string, alt: string, caption?: string, credit?: string }, aspectRatio?: "wide" | "square" | "portrait" }. image.src must be a direct https://picsum.photos/seed/<short-kebab-topic>/1200/720 URL',
+    props: 'title?, description?, image[src,alt,caption?,credit?], aspectRatio?',
   },
   {
     component: 'SplitHeroSection',
     sources: ['app', 'api', 'markdown'],
-    props:
-      'props { eyebrow?: string, title: string, description?: string, image?: { src: string, alt: string, caption?: string, credit?: string }, primaryAction?: { label: string, href: string }, secondaryAction?: { label: string, href: string } }',
+    props: 'eyebrow?, title, description?, image?, primaryAction?, secondaryAction?',
   },
   {
     component: 'CarouselSection',
     sources: ['app', 'api', 'markdown', 'rss'],
-    props:
-      'props { title: string, description?: string, items: [{ title: string, description?: string, badge?: string, href?: string, image?: { src: string, alt: string, caption?: string, credit?: string } }] }. Use for products, articles, gallery items, recommendations, or browsing choices.',
+    props: 'title, description?, items[title,description?,badge?,href?,image?]',
   },
   {
     component: 'ProcessStepperSection',
     sources: ['summary', 'api', 'markdown'],
-    props:
-      'props { title: string, description?: string, steps: [{ title: string, description?: string, status?: "completed" | "current" | "upcoming" }] }. Use for workflows, onboarding, setup, ordering, support, or incident response flows.',
+    props: 'title, description?, steps[title,description?,status?]',
   },
   {
     component: 'CardGridSection',
     sources: ['app', 'api', 'markdown', 'rss', 'postgres'],
-    props:
-      'props { title: string, description?: string, items: [{ title: string, description?: string, badge?: string, href?: string, meta?: string, image?: { src: string, alt: string, caption?: string, credit?: string } }] }. Use for products, projects, templates, files, or selectable cards.',
+    props: 'title, description?, items[title,description?,badge?,href?,meta?,image?]',
   },
   {
     component: 'FilterBarSection',
     sources: ['app', 'api', 'postgres'],
-    props:
-      'props { title?: string, searchPlaceholder?: string, filters: [{ label: string, value: string }] }. Use before lists, grids, tables, kanban boards, or search result screens.',
+    props: 'title?, searchPlaceholder?, filters[label,value]',
   },
   {
     component: 'FormSection',
     sources: ['app', 'api', 'postgres'],
     props:
-      'props { title: string, description?: string, fields: [{ name: string, label: string, type?: "text" | "email" | "number" | "date" | "textarea" | "select" | "checkbox", placeholder?: string, value?: string | number | boolean, required?: boolean, options?: [{ label: string, value: string }] }], submitLabel?: string, secondaryAction?: { label: string, href: string } }. Use for create, edit, settings, checkout, signup, or application screens.',
+      'title, description?, fields[name,label,type?,placeholder?,value?,required?,options?], submitLabel?, secondaryAction?',
   },
   {
     component: 'MasterDetailSection',
     sources: ['app', 'api', 'postgres', 'markdown'],
     props:
-      'props { title: string, description?: string, items: [{ id: string, title: string, description?: string, meta?: string, status?: string }], detail: { title: string, description?: string, fields?: [{ label: string, value: string | number | boolean }] } }. Use for mail, tickets, CRM, customer records, files, and medical-like record browsers.',
+      'title, description?, items[id,title,description?,meta?,status?], detail[title,description?,fields?]',
   },
   {
     component: 'KanbanSection',
     sources: ['app', 'api', 'postgres'],
-    props:
-      'props { title: string, description?: string, columns: [{ title: string, cards: [{ title: string, description?: string, assignee?: string, meta?: string, tone?: "neutral" | "primary" | "success" | "warning" | "danger" }] }] }. Use for tasks, tickets, leads, hiring, project workflow, or operations boards.',
+    props: 'title, description?, columns[title,cards[title,description?,assignee?,meta?,tone?]]',
   },
   {
     component: 'CalendarSection',
     sources: ['app', 'api', 'postgres'],
-    props:
-      'props { title: string, description?: string, events: [{ title: string, date: string, time?: string, description?: string, tone?: "neutral" | "primary" | "success" | "warning" | "danger" }] }. Use for schedules, bookings, plans, deadlines, and event management.',
+    props: 'title, description?, events[title,date,time?,description?,tone?]',
   },
   {
     component: 'ChatPanelSection',
     sources: ['app', 'api', 'markdown'],
-    props:
-      'props { title: string, description?: string, messages: [{ author: string, role?: "user" | "assistant" | "system", content: string, timestamp?: string }], composerPlaceholder?: string }. Use for support chat, AI chat, customer conversations, and messaging.',
+    props: 'title, description?, messages[author,role?,content,timestamp?], composerPlaceholder?',
   },
   {
     component: 'EditorPreviewSection',
     sources: ['app', 'api', 'markdown'],
-    props:
-      'props { title: string, editorTitle?: string, editorContent: string, previewTitle?: string, previewContent: string }. Use for markdown editors, prompt editors, document drafting, code preview, and CMS authoring.',
+    props: 'title, editorTitle?, editorContent, previewTitle?, previewContent',
   },
   {
     component: 'ComparisonSection',
     sources: ['app', 'api', 'postgres', 'markdown'],
-    props:
-      'props { title: string, description?: string, columns: [{ title: string, description?: string, items: [{ label: string, value: string | number | boolean, tone?: "neutral" | "primary" | "success" | "warning" | "danger" }] }] }. Use for pricing, plan comparison, candidate comparison, version diff, or option selection.',
+    props: 'title, description?, columns[title,description?,items[label,value,tone?]]',
   },
   {
     component: 'ActionFooterSection',
     sources: ['app', 'summary', 'api'],
-    props:
-      'props { title?: string, description?: string, primaryAction?: { label: string, href: string }, secondaryAction?: { label: string, href: string } }. Use as a decision footer for wizard, form, checkout, import, or confirmation screens.',
+    props: 'title?, description?, primaryAction?, secondaryAction?',
   },
   {
     component: 'DataTableSection',
     sources: ['postgres', 'api'],
-    props:
-      'props { title: string, description?: string, columns: [{ key: string, label: string }], rows: object[] }',
+    props: 'title, description?, columns[key,label], rows?',
   },
   {
     component: 'NavigationPanel',
     sources: ['navigation'],
-    props: 'props { title: string, links: [{ label: string, href: string }] }',
+    props: 'title, links[label,href]',
   },
   {
     component: 'EmptyState',
     sources: ['app', 'summary', 'rss', 'postgres', 'api', 'markdown', 'navigation'],
-    props:
-      'props { title: string, description?: string, action?: { label: string, href: string } }',
+    props: 'title, description?, action?',
   },
 ] as const;
+
+const sectionComponentNames = sectionCatalogRules.map((rule) => rule.component);
+const sectionSources = Array.from(new Set(sectionCatalogRules.flatMap((rule) => rule.sources)));
+const nonFormSectionComponentNames = sectionComponentNames.filter(
+  (component) => component !== 'FormSection'
+);
 
 const visualIntentJsonSchema = {
   type: 'object',
@@ -137,7 +129,105 @@ const visualIntentJsonSchema = {
   },
 };
 
-const appUiSchemaJsonSchema = {
+const appRelativeHrefJsonSchema = { type: 'string', pattern: '^/(?!/)' };
+
+const actionLinkJsonSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['label', 'href'],
+  properties: {
+    label: { type: 'string', minLength: 1 },
+    href: appRelativeHrefJsonSchema,
+  },
+};
+
+const sectionActionsJsonSchema = {
+  type: 'array',
+  maxItems: 6,
+  items: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['id', 'label', 'kind'],
+    properties: {
+      id: { type: 'string', minLength: 1 },
+      label: { type: 'string', minLength: 1 },
+      kind: {
+        type: 'string',
+        enum: ['generate-screen', 'navigate', 'submit'],
+      },
+      intentHint: { type: 'string' },
+      target: appRelativeHrefJsonSchema,
+      carry: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          navigation: { type: 'boolean' },
+          visualIntent: { type: 'boolean' },
+          sourceContext: { type: 'boolean' },
+        },
+      },
+    },
+  },
+};
+
+const optionJsonSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['label', 'value'],
+  properties: {
+    label: { type: 'string', minLength: 1 },
+    value: { type: 'string', minLength: 1 },
+  },
+};
+
+const formFieldJsonSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['name', 'label'],
+  properties: {
+    name: { type: 'string', minLength: 1 },
+    label: { type: 'string', minLength: 1 },
+    type: {
+      type: 'string',
+      enum: ['text', 'email', 'number', 'date', 'textarea', 'select', 'checkbox'],
+    },
+    placeholder: { type: 'string' },
+    value: {
+      oneOf: [{ type: 'string' }, { type: 'number' }, { type: 'boolean' }],
+    },
+    required: { type: 'boolean' },
+    options: {
+      type: 'array',
+      items: optionJsonSchema,
+    },
+  },
+};
+
+const formSectionPropsJsonSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['title', 'fields'],
+  properties: {
+    title: { type: 'string', minLength: 1 },
+    description: { type: 'string' },
+    fields: {
+      type: 'array',
+      minItems: 1,
+      maxItems: 16,
+      items: formFieldJsonSchema,
+    },
+    submitLabel: { type: 'string' },
+    secondaryAction: actionLinkJsonSchema,
+  },
+};
+
+const commonSectionProperties = {
+  variant: { type: 'string' },
+  visualIntent: visualIntentJsonSchema,
+  actions: sectionActionsJsonSchema,
+};
+
+export const appUiSchemaJsonSchema = {
   type: 'object',
   additionalProperties: false,
   required: ['page', 'intent', 'layout', 'sections'],
@@ -171,7 +261,7 @@ const appUiSchemaJsonSchema = {
             required: ['label', 'href'],
             properties: {
               label: { type: 'string', minLength: 1 },
-              href: { type: 'string', pattern: '^/(?!/)' },
+              href: appRelativeHrefJsonSchema,
               description: { type: 'string' },
             },
           },
@@ -183,100 +273,63 @@ const appUiSchemaJsonSchema = {
       minItems: 1,
       maxItems: 8,
       items: {
-        oneOf: sectionCatalogRules.map((rule) => ({
-          type: 'object',
-          additionalProperties: false,
-          required: ['component', 'source', 'props'],
-          properties: {
-            component: { type: 'string', const: rule.component },
-            source: { type: 'string', enum: [...rule.sources] },
-            variant: { type: 'string' },
-            visualIntent: visualIntentJsonSchema,
-            actions: {
-              type: 'array',
-              maxItems: 6,
-              items: {
-                type: 'object',
-                additionalProperties: false,
-                required: ['id', 'label', 'kind'],
-                properties: {
-                  id: { type: 'string', minLength: 1 },
-                  label: { type: 'string', minLength: 1 },
-                  kind: {
-                    type: 'string',
-                    enum: ['generate-screen', 'navigate', 'submit'],
-                  },
-                  intentHint: { type: 'string' },
-                  target: { type: 'string', pattern: '^/(?!/)' },
-                  carry: {
-                    type: 'object',
-                    additionalProperties: false,
-                    properties: {
-                      navigation: { type: 'boolean' },
-                      visualIntent: { type: 'boolean' },
-                      sourceContext: { type: 'boolean' },
-                    },
-                  },
-                },
-              },
-            },
-            props: {
-              type: 'object',
-              additionalProperties: true,
+        oneOf: [
+          {
+            type: 'object',
+            additionalProperties: false,
+            required: ['component', 'source', 'props'],
+            properties: {
+              component: { type: 'string', const: 'FormSection' },
+              source: { type: 'string', enum: ['app', 'api', 'postgres'] },
+              ...commonSectionProperties,
+              props: formSectionPropsJsonSchema,
             },
           },
-        })),
+          {
+            type: 'object',
+            additionalProperties: false,
+            required: ['component', 'source', 'props'],
+            properties: {
+              component: { type: 'string', enum: nonFormSectionComponentNames },
+              source: { type: 'string', enum: sectionSources },
+              ...commonSectionProperties,
+              props: {
+                type: 'object',
+                additionalProperties: true,
+              },
+            },
+          },
+        ],
       },
     },
   },
 };
 
 const componentInstructions = sectionCatalogRules
-  .map(
-    (rule) =>
-      `- ${rule.component}: source must be one of ${rule.sources.map((source) => `"${source}"`).join(', ')}; ${rule.props}`
-  )
+  .map((rule) => `- ${rule.component}: sources=${rule.sources.join('|')}; props=${rule.props}`)
   .join('\n');
 
-export const layoutSystemContextVersion = 'layout-system-context-v5';
+export const layoutSystemContextVersion = 'layout-system-context-v6';
 
 export const layoutSystemContext = `
-You generate only an App UI Schema JSON object for a React app.
-Return strict JSON text only. Do not wrap the JSON in Markdown fences or explanatory text.
-The UI schema is rendered directly. Treat every title, link label, action label, button label, table column label, and empty-state action label as user-visible product copy.
-Do not expose implementation mechanics in visible labels. In particular, never mention that the app will generate, create, infer, or build a screen/page/UI in visible copy.
-For action labels and navigation labels, write the user's destination or intent. Use labels like "注文管理", "障害対応", "花の商品を見る", "詳細を見る", or "カートに進む".
-Do not write labels like "画面を生成", "ページを生成", "注文管理画面を生成", "障害対応画面を生成", "Generate screen", "Create page", or similar wording.
+Return App UI Schema as strict JSON only. No Markdown or prose.
+All labels are visible product copy. Never mention generate/create/infer/build screen/page/UI in visible labels.
+Do not write labels like "画面を生成", "ページを生成", "注文管理画面を生成", "Generate screen", or "Create page".
+Action/navigation labels must name the destination or intent, e.g. "注文管理", "障害対応", "花の商品を見る", "詳細を見る".
 Keep generation mechanics only in action.kind and intentHint, never in label fields.
-Choose a composition that fits the requested product, site, workflow, or tool. Do not default to dashboards with KPI cards and tables unless the prompt is clearly analytics-heavy.
-Use "sidebar" layout with navigation.items for apps with multiple work areas, settings, catalogs, admin-like flows, or tools that need persistent navigation.
-Use SplitHeroSection for product, venue, landing, EC, portfolio, or first-impression screens.
-Use CarouselSection for product browsing, article browsing, galleries, recommendations, courses, media, or selectable collections.
-Use ProcessStepperSection for onboarding, checkout, incident response, support, setup, or any sequential workflow.
-Use MasterDetailSection for mail, ticket, CRM, record, file, or inbox-like screens.
-Use FilterBarSection with CardGridSection, DataTableSection, KanbanSection, or MasterDetailSection when users need search, filtering, or browsing controls.
-Use CardGridSection for product lists, project lists, template galleries, files, or selectable tiles.
-Use FormSection for create/edit/settings/signup/checkout/application screens.
-Use KanbanSection for workflow boards, task boards, lead pipelines, and issue tracking.
-Use CalendarSection for schedules, bookings, deadlines, and event planning.
-Use ChatPanelSection for support, AI chat, messaging, or conversation review screens.
-Use EditorPreviewSection for markdown, CMS, document, prompt, code, or editor-preview workflows.
-Use ComparisonSection for plans, options, candidates, versions, or before/after comparisons.
-Use ActionFooterSection when a page needs a persistent confirmation or next-step decision area.
+For FormSection select fields, options must always be objects like {"label":"高","value":"high"}; never return string arrays like ["高","中","低"].
+Choose varied layouts. Use dashboards only for analytics-heavy prompts.
+Use sidebar + navigation.items for multi-area apps. Use hero/carousel/card-grid for product or browsing flows. Use master-detail/inbox, kanban, calendar, chat, editor-preview, comparison, form, stepper, or action footer when they fit the user request.
 `.trim();
 
 const layoutInstructions = `
 ${layoutSystemContext}
 
-Use high-level catalog components, not low-level Button/Card/Input/Grid components.
-Allowed components and required props:
+Use catalog components only. Allowed components:
 ${componentInstructions}
-Links must be app-relative paths beginning with a single slash, for example "/history".
-For "sidebar" layout, include navigation.items with useful destinations and use page sections for the main content.
-Vary the screen structure. Prefer a small number of well-chosen sections over repeating tables, KPI blocks, or generic card grids.
-When a button or link should lead to a newly inferred screen, also add a section actions item with kind "generate-screen", a stable kebab-case id, a destination-specific visible label, and a short intentHint for the expected next screen.
-Use ImageSection when imagery would make the requested UI easier to scan. Generate image.src with picsum.photos seed URLs only, for example "https://picsum.photos/seed/operations-dashboard/1200/720".
-Keep sections concise and use plausible static sample data when the prompt implies data that is not available.
+Links are app-relative paths like "/history". Images use https://picsum.photos/seed/<topic>/1200/720 only.
+For inferred next screens, add actions[{ kind:"generate-screen", id, label, target, intentHint }].
+Prefer 2-5 well-chosen sections with concise static sample data.
 `.trim();
 
 const summaryJsonSchema = {
@@ -470,7 +523,7 @@ function createOpenAiResponsesLayoutProvider(): AiLayoutProvider {
         model: config.OPENAI_MODEL,
         instructions,
         input,
-        max_output_tokens: 4000,
+        max_output_tokens: aiJsonMaxOutputTokens,
         text: {
           format: {
             type: 'json_schema',
@@ -482,7 +535,16 @@ function createOpenAiResponsesLayoutProvider(): AiLayoutProvider {
       }),
     });
 
-    logger.info({ name, model: config.OPENAI_MODEL, instructions, input }, 'OpenAI request sent');
+    logger.info(
+      {
+        name,
+        model: config.OPENAI_MODEL,
+        inputLength: input.length,
+        instructionsLength: instructions.length,
+        maxOutputTokens: aiJsonMaxOutputTokens,
+      },
+      'OpenAI request sent'
+    );
 
     const payload = await parseProviderResponse(response);
     logger.info({ name, payload }, 'OpenAI response received');
@@ -551,7 +613,7 @@ function createAzureOpenAiLayoutProvider(): AiLayoutProvider {
           { role: 'system', content: instructions },
           { role: 'user', content: input },
         ],
-        max_completion_tokens: 4000,
+        max_completion_tokens: aiJsonMaxOutputTokens,
         response_format: {
           type: 'json_schema',
           json_schema: {
@@ -563,7 +625,16 @@ function createAzureOpenAiLayoutProvider(): AiLayoutProvider {
       }),
     });
 
-    logger.info({ name, url, instructions, input }, 'Azure OpenAI request sent');
+    logger.info(
+      {
+        name,
+        url,
+        inputLength: input.length,
+        instructionsLength: instructions.length,
+        maxCompletionTokens: aiJsonMaxOutputTokens,
+      },
+      'Azure OpenAI request sent'
+    );
 
     const payload = await parseProviderResponse(response);
     logger.info({ name, payload }, 'Azure OpenAI response received');

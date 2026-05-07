@@ -9,6 +9,7 @@ import {
   findActionForLabel,
   type RenderableAppActionProps,
 } from '../AppActionControl';
+import { formatDisplayMetadata } from './display-metadata';
 
 type CardGridSectionProps = z.infer<(typeof componentPropsSchemas)['CardGridSection']> &
   RenderableAppActionProps;
@@ -30,6 +31,7 @@ export function CardGridSection({ props }: BaseComponentProps<CardGridSectionPro
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {props.items.map((item, index) => {
           const action = itemActions[index];
+          const meta = formatDisplayMetadata(item.meta);
           return (
             <article
               className="overflow-hidden rounded-md border border-border bg-background"
@@ -54,9 +56,7 @@ export function CardGridSection({ props }: BaseComponentProps<CardGridSectionPro
                     </span>
                   ) : null}
                 </div>
-                {item.meta ? (
-                  <div className="mt-1 text-muted-foreground text-xs">{item.meta}</div>
-                ) : null}
+                {meta ? <div className="mt-1 text-muted-foreground text-xs">{meta}</div> : null}
                 {item.description ? (
                   <p className="mt-2 line-clamp-3 text-muted-foreground text-sm leading-6">
                     {item.description}

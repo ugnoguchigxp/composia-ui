@@ -21,6 +21,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const initAuth = async () => {
+      // Check for session hint cookie to avoid unnecessary 401 errors on mount
+      if (!document.cookie.includes('auth_hint=true')) {
+        setIsLoading(false);
+        setUser(null);
+        return;
+      }
+
       try {
         const res = await client.auth.me.$get({});
         if (res.ok) {

@@ -14,9 +14,12 @@ export default defineConfig({
       include: [
         'api/lib/**/*.ts',
         'api/middleware/**/*.ts',
+        'api/modules/ai/**/*.ts',
         'api/services/oauth/**/*.ts',
         'api/services/token.service.ts',
         'api/services/auth.service.ts',
+        'src/modules/component-registry/**/*.{ts,tsx}',
+        'src/modules/ui-schema/**/*.{ts,tsx}',
         'src/lib/utils.ts',
         'shared/schemas/auth.schema.ts',
         'shared/schemas/**/*.ts',

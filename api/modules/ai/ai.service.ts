@@ -17,7 +17,7 @@ import {
 } from '../../../shared/schemas/ai.schema';
 import { assertAppUiSchemaCatalog } from '../../../shared/schemas/app-catalog.schema';
 import type { SourceDefinition } from '../../../shared/schemas/sources.schema';
-import { appUiSchemaSchema } from '../../../shared/schemas/ui-schema.schema';
+import { type AppUiSchema, appUiSchemaSchema } from '../../../shared/schemas/ui-schema.schema';
 import { AppError, ValidationError } from '../../lib/errors';
 import { cacheService } from '../cache/cache.service';
 import { entitiesRepository } from '../entities/entities.repository';
@@ -153,6 +153,56 @@ function completedActivity(id: string, label: string, detail?: string) {
   return { id, label, status: 'completed' as const, detail };
 }
 
+function normalizeOptionLikeValue(option: unknown) {
+  if (typeof option === 'string') {
+    const value = option.trim();
+    return value ? { label: value, value } : option;
+  }
+  return option;
+}
+
+function normalizeProviderSchema(schema: AppUiSchema): AppUiSchema {
+  return {
+    ...schema,
+    sections: schema.sections.map((section) => {
+      if (section.component === 'FormSection') {
+        const fields = Array.isArray(section.props.fields)
+          ? section.props.fields.map((field) => {
+              if (typeof field !== 'object' || field === null || !Array.isArray(field.options)) {
+                return field;
+              }
+
+              return {
+                ...field,
+                options: field.options.map(normalizeOptionLikeValue),
+              };
+            })
+          : section.props.fields;
+
+        return {
+          ...section,
+          props: {
+            ...section.props,
+            fields,
+          },
+        };
+      }
+
+      if (section.component === 'FilterBarSection' && Array.isArray(section.props.filters)) {
+        return {
+          ...section,
+          props: {
+            ...section.props,
+            filters: section.props.filters.map(normalizeOptionLikeValue),
+          },
+        };
+      }
+
+      return section;
+    }),
+  };
+}
+
 export function createAiService(
   provider: AiLayoutProvider,
   cache?: AiLayoutCache,
@@ -189,10 +239,11 @@ export function createAiService(
         const cached = await cache.get(cacheNamespace, cacheKey);
         const parsedCached = cached.entry ? appUiSchemaSchema.safeParse(cached.entry.value) : null;
         if (parsedCached?.success) {
+          const cachedSchema = normalizeProviderSchema(parsedCached.data);
           try {
-            assertAppUiSchemaCatalog(parsedCached.data);
+            assertAppUiSchemaCatalog(cachedSchema);
             return {
-              schema: parsedCached.data,
+              schema: cachedSchema,
               activities: [
                 {
                   id: 'layout-cache',
@@ -204,7 +255,7 @@ export function createAiService(
                   id: 'schema-validation',
                   label: 'App UI Schema validation',
                   status: 'completed',
-                  detail: `${parsedCached.data.sections.length} sections`,
+                  detail: `${cachedSchema.sections.length} sections`,
                 },
                 {
                   id: 'catalog-validation',
@@ -226,9 +277,10 @@ export function createAiService(
       if (!parsed.success) {
         throw new ValidationError('AI returned an invalid UI schema', parsed.error.flatten());
       }
+      const schema = normalizeProviderSchema(parsed.data);
 
       try {
-        assertAppUiSchemaCatalog(parsed.data);
+        assertAppUiSchemaCatalog(schema);
       } catch (error) {
         throw new ValidationError('AI returned a schema outside the component catalog', {
           reason: error instanceof Error ? error.message : 'Unknown catalog validation error',
@@ -238,12 +290,12 @@ export function createAiService(
       await cache?.set({
         namespace: cacheNamespace,
         key: cacheKey,
-        value: parsed.data,
+        value: schema,
         expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
       });
 
       return {
-        schema: parsed.data,
+        schema,
         activities: [
           {
             id: 'layout-cache',
@@ -268,7 +320,7 @@ export function createAiService(
             id: 'schema-validation',
             label: 'App UI Schema validation',
             status: 'completed',
-            detail: `${parsed.data.sections.length} sections`,
+            detail: `${schema.sections.length} sections`,
           },
           {
             id: 'catalog-validation',

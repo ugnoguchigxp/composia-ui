@@ -259,6 +259,40 @@ describe('ui schema renderer', () => {
     expect(html).toContain('Order management');
   });
 
+  it('renders card grid metadata objects from AI output', () => {
+    const html = renderToStaticMarkup(
+      <JsonRenderRenderer
+        schema={{
+          page: 'Product catalog',
+          intent: 'Browse products with structured metadata',
+          layout: 'screen',
+          sections: [
+            {
+              component: 'CardGridSection',
+              source: 'app',
+              props: {
+                title: 'Featured products',
+                items: [
+                  {
+                    title: 'Seasonal bouquet',
+                    meta: { label: 'Price', value: '¥4,800' },
+                  },
+                  {
+                    title: 'Gift set',
+                    meta: { stock: 'In stock', delivery: 'Tomorrow' },
+                  },
+                ],
+              },
+            },
+          ],
+        }}
+      />
+    );
+
+    expect(html).toContain('Price: ¥4,800');
+    expect(html).toContain('stock: In stock / delivery: Tomorrow');
+  });
+
   it('renders broad work app sections from the catalog', () => {
     const html = renderToStaticMarkup(
       <JsonRenderRenderer

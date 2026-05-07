@@ -61,7 +61,17 @@ describe('auth routes cookie flow', () => {
     expect(setCookies.length).toBeGreaterThanOrEqual(2);
     expect(setCookies.some((v) => v.includes('access_token=access-token'))).toBe(true);
     expect(setCookies.some((v) => v.includes('refresh_token=refresh-token'))).toBe(true);
-    expect(setCookies.every((v) => v.toLowerCase().includes('httponly'))).toBe(true);
+    expect(setCookies.some((v) => v.includes('auth_hint=true'))).toBe(true);
+    expect(
+      setCookies
+        .filter((v) => v.includes('access_token=') || v.includes('refresh_token='))
+        .every((v) => v.toLowerCase().includes('httponly'))
+    ).toBe(true);
+    expect(
+      setCookies
+        .filter((v) => v.includes('auth_hint='))
+        .every((v) => !v.toLowerCase().includes('httponly'))
+    ).toBe(true);
   });
 
   it('refresh fails with 401 when refresh cookie is missing', async () => {
