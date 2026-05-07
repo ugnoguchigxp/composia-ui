@@ -15,7 +15,10 @@ export const componentDefinitionSchema = z
     name: appUiComponentNameSchema,
     description: z.string().min(1),
     allowedSources: z.array(z.string().min(1)).default([]),
+    placement: z.enum(['page', 'section']),
     propsSchema: zodSchemaLike,
+    promptProps: z.string().min(1),
+    promptGuidance: z.string().min(1).optional(),
     variants: z.array(z.string().min(1)).optional(),
   })
   .strict();

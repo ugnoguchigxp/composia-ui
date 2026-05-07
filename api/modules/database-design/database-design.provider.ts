@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { AiActivity } from '../../../shared/schemas/ai.schema';
 import type { DataBindingDraft } from '../../../shared/schemas/data-binding.schema';
 import type {
@@ -13,7 +14,12 @@ import { logger } from '../../lib/logger';
 import { layoutSystemContextVersion, parseJsonText } from '../ai/ai.provider';
 
 const dbDesignInputTokenLimit = 24_000;
+const dbDesignMaxOutputTokens = 24_000;
+const dbDesignReasoningEffort = 'minimal';
+const dbDesignProviderProgressLogIntervalMs = 5000;
 const componentRegistryVersion = `component-registry-v2:${layoutSystemContextVersion}`;
+const dbDesignSystemInstructions =
+  'You design PostgreSQL schemas and UI data bindings. Return JSON only. Never create SQL.';
 
 export type DatabaseDesignProviderInput = {
   currentDatabaseSchema?: DatabaseSchemaJson | null;
@@ -42,6 +48,105 @@ function estimateTokens(text: string) {
 
 function providerError(message: string, details?: Record<string, unknown>) {
   return new AppError(502, 'AI_PROVIDER_ERROR', message, details);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function durationMs(startedAt: number) {
+  return Date.now() - startedAt;
+}
+
+function textPreview(text: string, limit = 500) {
+  return text.length > limit ? `${text.slice(0, limit)}...` : text;
+}
+
+function schemaSummary(schema?: DatabaseSchemaJson | null) {
+  if (!schema) return null;
+  return {
+    name: schema.name,
+    tableCount: schema.tables.length,
+    relationCount: schema.relations.length,
+    tables: schema.tables.map((table) => table.name),
+  };
+}
+
+function screenSummary(screen?: AppUiSchema | null) {
+  if (!screen) return null;
+  return {
+    page: screen.page,
+    layout: screen.layout,
+    sectionCount: screen.sections.length,
+    components: screen.sections.map((section) => section.component),
+  };
+}
+
+function responsePayloadSummary(payload: Record<string, unknown>) {
+  const choices = Array.isArray(payload.choices) ? payload.choices : [];
+  const output = Array.isArray(payload.output) ? payload.output : [];
+  const choiceSummaries = choices.map((choice) => {
+    if (typeof choice !== 'object' || choice === null) return { type: typeof choice };
+    const message = (choice as { message?: unknown }).message;
+    const content = isRecord(message) ? message.content : undefined;
+    return {
+      finishReason: (choice as { finish_reason?: unknown }).finish_reason,
+      messageKeys: isRecord(message) ? Object.keys(message) : [],
+      contentType: typeof content,
+      contentLength: typeof content === 'string' ? content.length : undefined,
+      contentFilterResults: (choice as { content_filter_results?: unknown }).content_filter_results,
+    };
+  });
+  return {
+    id: payload.id,
+    keys: Object.keys(payload),
+    model: payload.model,
+    outputTextLength: typeof payload.output_text === 'string' ? payload.output_text.length : null,
+    outputCount: output.length,
+    choicesCount: choices.length,
+    choices: choiceSummaries,
+    promptFilterResults: payload.prompt_filter_results,
+    usage: payload.usage,
+  };
+}
+
+function emptyTextCause(payload: Record<string, unknown>) {
+  const choices = Array.isArray(payload.choices) ? payload.choices : [];
+  const firstChoice = choices[0];
+  const finishReason =
+    typeof firstChoice === 'object' && firstChoice !== null
+      ? (firstChoice as { finish_reason?: unknown }).finish_reason
+      : undefined;
+  const usage = isRecord(payload.usage) ? payload.usage : {};
+  const completionTokens =
+    typeof usage.completion_tokens === 'number' ? usage.completion_tokens : undefined;
+  const completionDetails = isRecord(usage.completion_tokens_details)
+    ? usage.completion_tokens_details
+    : {};
+  const reasoningTokens =
+    typeof completionDetails.reasoning_tokens === 'number'
+      ? completionDetails.reasoning_tokens
+      : undefined;
+
+  if (finishReason === 'length' && completionTokens && reasoningTokens === completionTokens) {
+    return 'completion_budget_exhausted_by_reasoning';
+  }
+  if (finishReason === 'length') return 'completion_budget_exhausted';
+  return undefined;
+}
+
+function emptyTextDetails(
+  payload: Record<string, unknown>,
+  trace: ProviderTrace,
+  extractionPath: string
+) {
+  return {
+    cause: emptyTextCause(payload),
+    extractionPath,
+    payloadSummary: responsePayloadSummary(payload),
+    textChars: 0,
+    traceId: trace.traceId,
+  };
 }
 
 function slugifyIdentifier(value: string, fallback: string) {
@@ -358,8 +463,13 @@ function buildLlmInput(input: DatabaseDesignProviderInput) {
     'Use only catalog constraints, current database schema JSON, current screen JSON, and latest user instruction.',
     'Do not use prior conversation history.',
     'Return { "databaseSchema", "dataBindings", "screen"?, "rationale" }.',
+    'databaseSchema must be an object, never an array. Put table definitions in databaseSchema.tables.',
+    'Return compact minified JSON directly. Do not include explanations, Markdown, or step-by-step reasoning.',
+    'Prefer the smallest relational schema that satisfies the request. Do not add audit/log/RBAC tables unless the user explicitly asks for them.',
+    'rationale must be an object: { "databaseChanges": string[], "uiBindings": string[] }. Do not return rationale as a string.',
     'databaseSchema must model 1-to-many and many-to-many relations when the user intent requires them.',
-    'Use snake_case SQL identifiers. Do not prefix table names.',
+    'Use snake_case SQL identifiers. Do not prefix table names. Do not use reserved SQL words such as order, user, table, select, from, where, group, or limit as table or column names.',
+    'Every table must have exactly one primary key column. Prefer { "name": "id", "type": "uuid", "primaryKey": true, "default": { "kind": "uuid" } }.',
     '',
     json,
   ].join('\n');
@@ -370,11 +480,39 @@ function buildLlmInput(input: DatabaseDesignProviderInput) {
       maxTokens: dbDesignInputTokenLimit,
     });
   }
-  return prompt;
+  return {
+    estimatedTokens,
+    prompt,
+    promptChars: prompt.length,
+  };
 }
 
-function extractResponseText(payload: Record<string, unknown>) {
-  if (typeof payload.output_text === 'string') return payload.output_text;
+type BuiltLlmInput = ReturnType<typeof buildLlmInput>;
+
+type ProviderTrace = {
+  provider: 'openai' | 'azure-openai' | 'mock';
+  traceId: string;
+};
+
+function extractResponseText(payload: Record<string, unknown>, trace: ProviderTrace) {
+  logger.info(
+    { ...trace, payloadSummary: responsePayloadSummary(payload) },
+    'DBDesign provider extracting text output'
+  );
+  const returnText = (text: string, extractionPath: string) => {
+    logger.info(
+      { ...trace, extractionPath, textChars: text.length },
+      'DBDesign provider extracted text output'
+    );
+    if (!text.trim()) {
+      const details = emptyTextDetails(payload, trace, extractionPath);
+      logger.error({ ...trace, ...details }, 'DBDesign provider extracted empty text output');
+      throw providerError('AI provider returned empty text output', details);
+    }
+    return text;
+  };
+  if (typeof payload.output_text === 'string')
+    return returnText(payload.output_text, 'output_text');
   const output = Array.isArray(payload.output) ? payload.output : [];
   for (const item of output) {
     if (typeof item !== 'object' || item === null) continue;
@@ -387,7 +525,7 @@ function extractResponseText(payload: Record<string, unknown>) {
         contentItem !== null &&
         typeof (contentItem as { text?: unknown }).text === 'string'
       ) {
-        return (contentItem as { text: string }).text;
+        return returnText((contentItem as { text: string }).text, 'output.content.text');
       }
     }
   }
@@ -398,82 +536,251 @@ function extractResponseText(payload: Record<string, unknown>) {
     const message = (first as { message?: unknown }).message;
     if (typeof message === 'object' && message !== null) {
       const content = (message as { content?: unknown }).content;
-      if (typeof content === 'string') return content;
+      if (typeof content === 'string') {
+        return returnText(content, 'choices.message.content');
+      }
     }
   }
 
-  throw providerError('Database design provider did not include text output');
+  logger.error(
+    { ...trace, payload, payloadSummary: responsePayloadSummary(payload) },
+    'DBDesign provider response did not include text output'
+  );
+  throw providerError('Database design provider did not include text output', {
+    payloadSummary: responsePayloadSummary(payload),
+    traceId: trace.traceId,
+  });
 }
 
-async function parseProviderResponse(response: Response) {
+async function parseProviderResponse(response: Response, trace: ProviderTrace, startedAt: number) {
+  logger.info(
+    {
+      ...trace,
+      durationMs: durationMs(startedAt),
+      ok: response.ok,
+      status: response.status,
+      statusText: response.statusText,
+    },
+    'DBDesign provider HTTP response received'
+  );
   const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  logger.info(
+    {
+      ...trace,
+      durationMs: durationMs(startedAt),
+      payloadSummary: responsePayloadSummary(payload),
+    },
+    'DBDesign provider HTTP response JSON parsed'
+  );
   if (!response.ok) {
+    logger.error(
+      { ...trace, payload, status: response.status },
+      'DBDesign provider request failed'
+    );
     throw providerError('Database design provider request failed', {
       status: response.status,
       providerError: payload.error,
+      traceId: trace.traceId,
     });
   }
   return payload;
 }
 
-async function generateWithOpenAi(prompt: string) {
-  const response = await fetch('https://api.openai.com/v1/responses', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${config.OPENAI_API_KEY}`,
-      'Content-Type': 'application/json',
+function parseDraftResponseText(text: string, trace: ProviderTrace) {
+  logger.info(
+    { ...trace, textChars: text.length, outputPreview: textPreview(text) },
+    'DBDesign provider parsing draft JSON'
+  );
+  if (!text.trim()) {
+    logger.error(
+      { ...trace, textChars: text.length },
+      'DBDesign provider returned empty text before JSON parse'
+    );
+    throw providerError('AI provider returned empty text output', {
+      textChars: text.length,
+      traceId: trace.traceId,
+    });
+  }
+  const draft = parseJsonText(text);
+  logger.info(
+    {
+      ...trace,
+      topLevelKeys:
+        typeof draft === 'object' && draft !== null && !Array.isArray(draft)
+          ? Object.keys(draft)
+          : [],
     },
-    body: JSON.stringify({
-      model: config.OPENAI_MODEL,
-      instructions:
-        'You design PostgreSQL schemas and UI data bindings. Return JSON only. Never create SQL.',
-      input: prompt,
-      max_output_tokens: 8000,
-      text: { format: { type: 'json_object' } },
-    }),
-  });
-  const payload = await parseProviderResponse(response);
-  logger.info({ payload }, 'OpenAI database design response received');
-  return databaseDesignDraftResponseSchema.parse(parseJsonText(extractResponseText(payload)));
+    'DBDesign provider draft JSON parsed'
+  );
+  const parsed = databaseDesignDraftResponseSchema.safeParse(draft);
+  if (!parsed.success) {
+    logger.error(
+      { ...trace, issues: parsed.error.issues, outputPreview: textPreview(text, 1200) },
+      'DBDesign provider draft schema validation failed'
+    );
+    throw new ValidationError('AI returned an invalid database design draft', {
+      issues: parsed.error.issues,
+      traceId: trace.traceId,
+    });
+  }
+  logger.info(
+    {
+      ...trace,
+      bindingCount: parsed.data.dataBindings.length,
+      hasScreen: Boolean(parsed.data.screen),
+      relationCount: parsed.data.databaseSchema.relations.length,
+      tableCount: parsed.data.databaseSchema.tables.length,
+      tables: parsed.data.databaseSchema.tables.map((table) => table.name),
+    },
+    'DBDesign provider draft schema validation succeeded'
+  );
+  return parsed.data;
 }
 
-async function generateWithAzure(prompt: string) {
+async function fetchWithProgress(url: string, init: RequestInit, trace: ProviderTrace) {
+  const startedAt = Date.now();
+  logger.info({ ...trace, url }, 'DBDesign provider HTTP request started');
+  const progressTimer = setInterval(() => {
+    logger.info(
+      { ...trace, durationMs: durationMs(startedAt), url },
+      'DBDesign provider HTTP request still waiting'
+    );
+  }, dbDesignProviderProgressLogIntervalMs);
+  try {
+    const response = await fetch(url, init);
+    clearInterval(progressTimer);
+    return { response, startedAt };
+  } catch (error) {
+    clearInterval(progressTimer);
+    logger.error(
+      { ...trace, durationMs: durationMs(startedAt), err: error, url },
+      'DBDesign provider HTTP request threw'
+    );
+    throw error;
+  }
+}
+
+async function generateWithOpenAi(input: BuiltLlmInput, trace: ProviderTrace) {
+  logger.info(
+    {
+      ...trace,
+      estimatedTokens: input.estimatedTokens,
+      maxOutputTokens: dbDesignMaxOutputTokens,
+      model: config.OPENAI_MODEL,
+      promptChars: input.promptChars,
+      reasoningEffort: dbDesignReasoningEffort,
+    },
+    'DBDesign OpenAI generation started'
+  );
+  const openAiRequestBody = {
+    model: config.OPENAI_MODEL,
+    instructions: dbDesignSystemInstructions,
+    input: input.prompt,
+    max_output_tokens: dbDesignMaxOutputTokens,
+    reasoning: { effort: dbDesignReasoningEffort },
+    text: { format: { type: 'json_object' } },
+  };
+  logger.info(
+    {
+      ...trace,
+      requestBody: openAiRequestBody,
+    },
+    'DBDesign OpenAI prompt payload'
+  );
+  const { response, startedAt } = await fetchWithProgress(
+    'https://api.openai.com/v1/responses',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${config.OPENAI_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(openAiRequestBody),
+    },
+    trace
+  );
+  const payload = await parseProviderResponse(response, trace, startedAt);
+  return parseDraftResponseText(extractResponseText(payload, trace), trace);
+}
+
+async function generateWithAzure(input: BuiltLlmInput, trace: ProviderTrace) {
   const rawEndpoint = config.AZURE_OPENAI_ENDPOINT;
   const endpoint = rawEndpoint?.endsWith('/') ? rawEndpoint.slice(0, -1) : rawEndpoint;
   const deployment = encodeURIComponent(config.AZURE_OPENAI_DEPLOYMENT_NAME ?? '');
-  const response = await fetch(
-    `${endpoint}/openai/deployments/${deployment}/chat/completions?api-version=${encodeURIComponent(
-      config.AZURE_OPENAI_API_VERSION
-    )}`,
+  const url = `${endpoint}/openai/deployments/${deployment}/chat/completions?api-version=${encodeURIComponent(
+    config.AZURE_OPENAI_API_VERSION
+  )}`;
+  logger.info(
+    {
+      ...trace,
+      deployment: config.AZURE_OPENAI_DEPLOYMENT_NAME,
+      estimatedTokens: input.estimatedTokens,
+      maxCompletionTokens: dbDesignMaxOutputTokens,
+      promptChars: input.promptChars,
+      reasoningEffort: dbDesignReasoningEffort,
+    },
+    'DBDesign Azure OpenAI generation started'
+  );
+  const azureRequestBody = {
+    messages: [
+      {
+        role: 'system',
+        content: dbDesignSystemInstructions,
+      },
+      { role: 'user', content: input.prompt },
+    ],
+    max_completion_tokens: dbDesignMaxOutputTokens,
+    reasoning_effort: dbDesignReasoningEffort,
+    response_format: { type: 'json_object' },
+  };
+  logger.info(
+    {
+      ...trace,
+      requestBody: azureRequestBody,
+    },
+    'DBDesign Azure OpenAI prompt payload'
+  );
+  const { response, startedAt } = await fetchWithProgress(
+    url,
     {
       method: 'POST',
       headers: {
         'api-key': config.AZURE_OPENAI_API_KEY ?? '',
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        messages: [
-          {
-            role: 'system',
-            content:
-              'You design PostgreSQL schemas and UI data bindings. Return JSON only. Never create SQL.',
-          },
-          { role: 'user', content: prompt },
-        ],
-        max_completion_tokens: 8000,
-        response_format: { type: 'json_object' },
-      }),
-    }
+      body: JSON.stringify(azureRequestBody),
+    },
+    trace
   );
-  const payload = await parseProviderResponse(response);
-  logger.info({ payload }, 'Azure OpenAI database design response received');
-  return databaseDesignDraftResponseSchema.parse(parseJsonText(extractResponseText(payload)));
+  const payload = await parseProviderResponse(response, trace, startedAt);
+  return parseDraftResponseText(extractResponseText(payload, trace), trace);
 }
 
 export function createDefaultDatabaseDesignProvider(): DatabaseDesignProvider {
   return {
     propose: async (input) => {
+      const startedAt = Date.now();
+      const traceId = randomUUID();
+      logger.info(
+        {
+          traceId,
+          currentDatabaseSchema: schemaSummary(input.currentDatabaseSchema),
+          currentScreen: screenSummary(input.currentScreen),
+          promptChars: input.prompt.length,
+          source: input.source,
+        },
+        'DBDesign provider propose started'
+      );
       const llmInput = buildLlmInput(input);
+      logger.info(
+        {
+          traceId,
+          estimatedTokens: llmInput.estimatedTokens,
+          maxTokens: dbDesignInputTokenLimit,
+          promptChars: llmInput.promptChars,
+        },
+        'DBDesign provider prompt built'
+      );
       const activities: AiActivity[] = [
         {
           id: 'dbdesign-provider',
@@ -488,9 +795,23 @@ export function createDefaultDatabaseDesignProvider(): DatabaseDesignProvider {
         config.AZURE_OPENAI_ENDPOINT &&
         config.AZURE_OPENAI_DEPLOYMENT_NAME
       ) {
+        const trace: ProviderTrace = { provider: 'azure-openai', traceId };
+        logger.info(
+          {
+            ...trace,
+            deployment: config.AZURE_OPENAI_DEPLOYMENT_NAME,
+            providerPriority: 'azure-openai',
+          },
+          'DBDesign provider selected'
+        );
+        const draft = await generateWithAzure(llmInput, trace);
+        logger.info(
+          { ...trace, durationMs: durationMs(startedAt) },
+          'DBDesign provider propose completed'
+        );
         return {
           activities,
-          draft: await generateWithAzure(llmInput),
+          draft,
           providerMeta: {
             provider: 'azure-openai',
             model: config.AZURE_OPENAI_DEPLOYMENT_NAME,
@@ -500,9 +821,19 @@ export function createDefaultDatabaseDesignProvider(): DatabaseDesignProvider {
       }
 
       if (config.OPENAI_API_KEY) {
+        const trace: ProviderTrace = { provider: 'openai', traceId };
+        logger.info(
+          { ...trace, model: config.OPENAI_MODEL, providerPriority: 'openai' },
+          'DBDesign provider selected'
+        );
+        const draft = await generateWithOpenAi(llmInput, trace);
+        logger.info(
+          { ...trace, durationMs: durationMs(startedAt) },
+          'DBDesign provider propose completed'
+        );
         return {
           activities,
-          draft: await generateWithOpenAi(llmInput),
+          draft,
           providerMeta: {
             provider: 'openai',
             model: config.OPENAI_MODEL,
@@ -511,9 +842,20 @@ export function createDefaultDatabaseDesignProvider(): DatabaseDesignProvider {
         };
       }
 
+      logger.info({ provider: 'mock', traceId }, 'DBDesign provider selected');
+      const draft = deterministicDraft(input);
+      logger.info(
+        {
+          durationMs: durationMs(startedAt),
+          provider: 'mock',
+          traceId,
+          tableCount: draft.databaseSchema.tables.length,
+        },
+        'DBDesign provider propose completed'
+      );
       return {
         activities,
-        draft: deterministicDraft(input),
+        draft,
         providerMeta: { provider: 'mock', componentRegistryVersion },
       };
     },

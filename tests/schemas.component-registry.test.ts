@@ -8,9 +8,11 @@ describe('component registry schema', () => {
       name: 'InsightPanel',
       description: 'Insight panel',
       allowedSources: ['summary'],
+      placement: 'section',
       propsSchema: z.object({
         title: z.string(),
       }),
+      promptProps: 'title',
     });
 
     expect(definition.name).toBe('InsightPanel');

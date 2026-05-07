@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { DataBinding, DataBindingDraft } from '../../../shared/schemas/data-binding.schema';
 import type {
   DatabaseDesignConversationResponse,
@@ -12,6 +13,7 @@ import type {
 import type { AppUiSchema } from '../../../shared/schemas/ui-schema.schema';
 import { appUiSchemaSchema } from '../../../shared/schemas/ui-schema.schema';
 import { NotFoundError } from '../../lib/errors';
+import { logger } from '../../lib/logger';
 import {
   createDefaultDatabaseDesignProvider,
   type DatabaseDesignProvider,
@@ -193,6 +195,19 @@ export function createDatabaseDesignService(
     userId: string,
     input: DatabaseDesignProposeRequest
   ): Promise<DatabaseDesignResponse> => {
+    const traceId = randomUUID();
+    const startedAt = Date.now();
+    logger.info(
+      {
+        traceId,
+        designSessionId: input.designSessionId ?? null,
+        promptChars: input.prompt.length,
+        screenJsonId: input.screenJsonId ?? null,
+        source: input.source,
+        userId,
+      },
+      'DBDesign service propose started'
+    );
     const session = input.designSessionId
       ? await repo.findDesignSessionById(userId, input.designSessionId)
       : await repo.createDesignSession({
@@ -202,25 +217,78 @@ export function createDatabaseDesignService(
           title: titleFromPrompt(input.prompt),
         });
     if (!session) throw new NotFoundError('Database design session not found');
+    logger.info(
+      {
+        traceId,
+        activeDatabaseSchemaJsonId: session.activeDatabaseSchemaJsonId ?? null,
+        activeScreenJsonId: session.activeScreenJsonId ?? null,
+        designSessionId: session.id,
+      },
+      'DBDesign service session resolved'
+    );
 
     const screenRow = input.screenJsonId
       ? await repo.findScreenJsonById(userId, input.screenJsonId)
       : null;
     if (input.screenJsonId && !screenRow) throw new NotFoundError('ScreenJSON not found');
+    logger.info(
+      {
+        traceId,
+        foundScreenJsonId: screenRow?.screenJson.id ?? null,
+        screenSectionCount: screenRow?.screenJson.schema.sections.length ?? 0,
+      },
+      'DBDesign service screen context resolved'
+    );
 
     const previous = await repo.latestSchemaJsonForSession(session.id);
+    logger.info(
+      {
+        traceId,
+        previousSchemaJsonId: previous?.id ?? null,
+        previousTableCount: previous?.schema.tables.length ?? 0,
+        previousVersion: previous?.version ?? null,
+      },
+      'DBDesign service previous schema resolved'
+    );
+    logger.info({ traceId }, 'DBDesign service provider call starting');
     const generated = await provider.propose({
       currentDatabaseSchema: previous?.schema ?? null,
       currentScreen: screenRow?.screenJson.schema ?? null,
       prompt: input.prompt,
       source: input.source,
     });
+    logger.info(
+      {
+        traceId,
+        bindingCount: generated.draft.dataBindings.length,
+        hasScreen: Boolean(generated.draft.screen),
+        provider: generated.providerMeta.provider,
+        tableCount: generated.draft.databaseSchema.tables.length,
+      },
+      'DBDesign service provider call completed'
+    );
+    logger.info({ traceId }, 'DBDesign service database schema validation starting');
     const databaseSchema = validateDatabaseSchemaJson(generated.draft.databaseSchema);
+    logger.info(
+      {
+        traceId,
+        relationCount: databaseSchema.relations.length,
+        tableCount: databaseSchema.tables.length,
+        tables: databaseSchema.tables.map((table) => table.name),
+      },
+      'DBDesign service database schema validation completed'
+    );
+    logger.info({ traceId }, 'DBDesign service data binding validation starting');
     const draftBindings = validateDataBindingsForDatabaseSchema(
       databaseSchema,
       generated.draft.dataBindings
     );
+    logger.info(
+      { traceId, bindingCount: draftBindings.length },
+      'DBDesign service data binding validation completed'
+    );
     const version = await repo.nextSchemaVersion(session.id);
+    logger.info({ traceId, version }, 'DBDesign service schema version allocated');
     const schemaRecord = await repo.createSchemaJson({
       designSessionId: session.id,
       diffSummary: diffSummary(previous, databaseSchema),
@@ -230,6 +298,10 @@ export function createDatabaseDesignService(
       trigger: input.source === 'screen' ? 'screen-proposal' : 'dbdesign-proposal',
       version,
     });
+    logger.info(
+      { traceId, databaseSchemaJsonId: schemaRecord.id, version: schemaRecord.version },
+      'DBDesign service schema JSON persisted'
+    );
     const dataBindings = persistedDataBindings(draftBindings, schemaRecord);
     const persistedScreen = await persistBoundScreen({
       dataBindings,
@@ -239,11 +311,23 @@ export function createDatabaseDesignService(
       screenJsonId: input.screenJsonId,
       userId,
     });
+    logger.info(
+      { traceId, persistedScreenJsonId: persistedScreen?.id ?? null },
+      'DBDesign service bound screen persistence completed'
+    );
     const updatedSession = await repo.updateDesignSessionActive(session.id, {
       activeDatabaseSchemaJsonId: schemaRecord.id,
       activeScreenJsonId:
         persistedScreen?.id ?? input.screenJsonId ?? session.activeScreenJsonId ?? null,
     });
+    logger.info(
+      {
+        traceId,
+        activeDatabaseSchemaJsonId: updatedSession.activeDatabaseSchemaJsonId ?? null,
+        activeScreenJsonId: updatedSession.activeScreenJsonId ?? null,
+      },
+      'DBDesign service session active pointers updated'
+    );
     await repo.createMessages([
       {
         content: input.prompt,
@@ -269,6 +353,26 @@ export function createDatabaseDesignService(
         screenJsonId: persistedScreen?.id ?? input.screenJsonId ?? null,
       },
     ]);
+    logger.info({ traceId }, 'DBDesign service conversation messages persisted');
+    const migrationPreview = await migrationService.preview(schemaRecord);
+    logger.info(
+      {
+        traceId,
+        sqlChars: migrationPreview.sql.length,
+        warningCount: migrationPreview.warnings.length,
+      },
+      'DBDesign service migration preview generated'
+    );
+    const nextConversation = await conversation(userId, session.id);
+    logger.info(
+      {
+        traceId,
+        durationMs: Date.now() - startedAt,
+        messageCount: nextConversation.messages.length,
+        schemaVersionCount: nextConversation.databaseSchemaJsons.length,
+      },
+      'DBDesign service propose completed'
+    );
 
     return {
       session: mapSession(updatedSession),
@@ -277,8 +381,8 @@ export function createDatabaseDesignService(
       screenJsonId: persistedScreen?.id ?? input.screenJsonId ?? null,
       dataBindings,
       activities: generated.activities,
-      migrationPreview: await migrationService.preview(schemaRecord),
-      conversation: await conversation(userId, session.id),
+      migrationPreview,
+      conversation: nextConversation,
     };
   };
 

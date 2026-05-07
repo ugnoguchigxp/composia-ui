@@ -6,8 +6,8 @@ export const FONT_SCALE_PRESETS = {
 
 export const DENSITY_PRESETS = {
   compact: { label: 'Compact', value: '0.75' },
-  default: { label: 'Default', value: '1' },
-  comfortable: { label: 'Comfortable', value: '1.25' },
+  normal: { label: 'Normal', value: '1' },
+  spacious: { label: 'Spacious', value: '1.25' },
 } as const;
 
 export const RADIUS_PRESETS = {
@@ -33,9 +33,9 @@ export const SHADOW_PRESETS = {
   },
 } as const;
 
-// --- Design Sync Sync v2.1: SSoT Foundations ---
+// --- Theme token helpers ---
 
-/** Pencil.dev Theme Axes */
+/** Theme axes retained for token generation experiments outside the root runtime path. */
 export const THEME_AXES = {
   Mode: ['Light', 'Dark'],
   Base: ['Neutral', 'Gray', 'Stone', 'Zinc', 'Slate'],
@@ -262,11 +262,11 @@ export const COLOR_TOKENS = {
  * テーマ定義と生成情報のマッピング。
  */
 export const THEME_DEFINITIONS = {
-  light: { label: 'Light', className: 'theme-light', axes: { mode: 'Light' } },
-  dark: { label: 'Dark', className: 'theme-dark', axes: { mode: 'Dark' } },
-  'tokyo-night': {
+  light: { label: 'Light', dataTheme: null, axes: { mode: 'Light' } },
+  dark: { label: 'Dark', dataTheme: 'dark', axes: { mode: 'Dark' } },
+  tokyonight: {
     label: 'Tokyo Night',
-    className: 'theme-tokyo-night',
+    dataTheme: 'tokyonight',
     axes: { mode: 'Dark' },
     overrides: {
       background: '#1a1b26',
@@ -274,6 +274,22 @@ export const THEME_DEFINITIONS = {
       border: '#24283b',
       primary: '#7aa2f7',
     },
+  },
+  eclipse: { label: 'Eclipse', dataTheme: 'eclipse', axes: { mode: 'Light' } },
+  macosclassic: { label: 'macOS Classic', dataTheme: 'macosclassic', axes: { mode: 'Light' } },
+  fire: { label: 'Fire', dataTheme: 'fire', axes: { mode: 'Dark' } },
+  classicterminal: {
+    label: 'Classic Terminal',
+    dataTheme: 'classicterminal',
+    axes: { mode: 'Dark' },
+  },
+  sakurabloom: { label: 'Sakura Bloom', dataTheme: 'sakurabloom', axes: { mode: 'Light' } },
+  leafmint: { label: 'Leaf Mint', dataTheme: 'leafmint', axes: { mode: 'Light' } },
+  lattecream: { label: 'Latte Cream', dataTheme: 'lattecream', axes: { mode: 'Light' } },
+  sunshineOrange: {
+    label: 'Sunshine Orange',
+    dataTheme: 'sunshineOrange',
+    axes: { mode: 'Light' },
   },
 } as const;
 
@@ -288,7 +304,7 @@ export type ColorThemeKey = keyof typeof COLOR_THEME_PRESETS;
 export const DESIGN_TOKEN_DEFAULTS = {
   colorTheme: 'light',
   fontScale: 'default',
-  density: 'default',
+  density: 'normal',
   radius: 'default',
   shadow: 'subtle',
 } as const satisfies {
@@ -326,6 +342,13 @@ export function applyDensityAndScaleTokens(
   rootElement.style.setProperty('--spacing-unit', DENSITY_PRESETS[options.density].value);
   rootElement.style.setProperty('--radius-factor', RADIUS_PRESETS[options.radius].value);
   rootElement.style.setProperty('--shadow-md', SHADOW_PRESETS[options.shadow].var);
+
+  // Set data-density for CSS selectors
+  if (options.density === 'normal') {
+    rootElement.removeAttribute('data-density');
+  } else {
+    rootElement.setAttribute('data-density', options.density);
+  }
 }
 
 export function applyColorTheme(theme: ColorThemeKey, root?: HTMLElement | null) {
@@ -333,10 +356,18 @@ export function applyColorTheme(theme: ColorThemeKey, root?: HTMLElement | null)
   if (!rootElement) {
     return;
   }
-  for (const className of rootElement.classList) {
+
+  // Remove legacy theme-* classes
+  for (const className of Array.from(rootElement.classList)) {
     if (className.startsWith('theme-')) {
       rootElement.classList.remove(className);
     }
   }
-  rootElement.classList.add(COLOR_THEME_PRESETS[theme].className);
+
+  const dataTheme = COLOR_THEME_PRESETS[theme].dataTheme;
+  if (!dataTheme) {
+    rootElement.removeAttribute('data-theme');
+  } else {
+    rootElement.setAttribute('data-theme', dataTheme);
+  }
 }

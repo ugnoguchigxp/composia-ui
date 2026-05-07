@@ -5,6 +5,7 @@ import {
 } from '../api/modules/database-design/database-schema-validator.service';
 import type { DataBindingDraft } from '../shared/schemas/data-binding.schema';
 import type { DatabaseSchemaJson } from '../shared/schemas/database-design.schema';
+import { databaseDesignDraftResponseSchema } from '../shared/schemas/database-design.schema';
 
 function validSchema(): DatabaseSchemaJson {
   return {
@@ -138,5 +139,250 @@ describe('database schema validator', () => {
     expect(() => validateDataBindingsForDatabaseSchema(validSchema(), bindings)).toThrow(
       'Data binding proposal is invalid'
     );
+  });
+
+  it('normalizes string rationale from LLM draft output', () => {
+    const draft = databaseDesignDraftResponseSchema.parse({
+      databaseSchema: validSchema(),
+      dataBindings: [],
+      rationale: 'products and categories tables are proposed',
+    });
+
+    expect(draft.rationale).toEqual({
+      databaseChanges: ['products and categories tables are proposed'],
+      uiBindings: [],
+    });
+  });
+
+  it('normalizes SQL-like LLM draft output before strict validation', () => {
+    const draft = databaseDesignDraftResponseSchema.parse({
+      databaseSchema: {
+        name: 'commerce_schema',
+        purpose: 'Manage commerce data',
+        tables: [
+          {
+            name: 'products',
+            columns: [
+              {
+                name: 'id',
+                type: 'uuid',
+                primary_key: true,
+                not_null: true,
+                default: 'gen_random_uuid()',
+              },
+              {
+                name: 'name',
+                type: 'string',
+                not_null: true,
+              },
+              {
+                name: 'price',
+                type: 'decimal',
+                not_null: true,
+                default: 0,
+              },
+              {
+                name: 'active',
+                type: 'bool',
+                default: true,
+              },
+            ],
+          },
+        ],
+      },
+      dataBindings: {
+        products_list: {
+          table: 'products',
+          operation: 'select',
+          fields: { name: true, price: true },
+        },
+      },
+      rationale: {
+        summary: 'products table is proposed',
+        notes: ['data binding is attached'],
+      },
+    });
+
+    const product = draft.databaseSchema.tables[0];
+    expect(product.label).toBe('Products');
+    expect(product.columns[1]?.label).toBe('Name');
+    expect(product.columns[1]?.type).toBe('text');
+    expect(product.columns[2]?.default).toEqual({ kind: 'literal', value: 0 });
+    expect(product.columns[3]?.type).toBe('boolean');
+    expect(draft.dataBindings).toEqual([
+      {
+        id: 'products_list',
+        table: 'products',
+        operation: 'list',
+        fields: ['name', 'price'],
+        relations: [],
+        filters: [],
+        sort: [],
+        limit: 50,
+      },
+    ]);
+    expect(draft.rationale.databaseChanges).toEqual([
+      'products table is proposed',
+      'data binding is attached',
+    ]);
+  });
+
+  it('adds missing primary keys and rewrites reserved column identifiers', () => {
+    const draft = databaseDesignDraftResponseSchema.parse({
+      databaseSchema: {
+        name: 'forum_schema',
+        purpose: 'Manage forum data',
+        tables: [
+          {
+            name: 'categories',
+            columns: [
+              { name: 'name', type: 'string', not_null: true },
+              { name: 'order', type: 'integer', default: 0 },
+            ],
+            indexes: ['idx_categories_order'],
+            ui: { displayField: 'name', defaultSortField: 'order' },
+          },
+          {
+            name: 'post_tags',
+            columns: [
+              { name: 'post_id', type: 'foreign_key', not_null: true },
+              { name: 'tag_id', type: 'foreign_key', not_null: true },
+            ],
+            indexes: [{ columns: ['post_id', 'tag_id'], unique: true }],
+          },
+        ],
+      },
+      dataBindings: [
+        {
+          id: 'categories_list',
+          table: 'categories',
+          operation: 'select',
+          fields: ['name', 'order'],
+          sort: { field: 'order' },
+        },
+      ],
+      rationale: 'forum tables are proposed',
+    });
+
+    expect(validateDatabaseSchemaJson(draft.databaseSchema).tables).toHaveLength(2);
+    expect(draft.databaseSchema.tables[0]?.columns.map((column) => column.name)).toEqual([
+      'id',
+      'name',
+      'sort_order',
+    ]);
+    expect(draft.databaseSchema.tables[0]?.indexes).toEqual([
+      { name: 'categories_sort_order_idx', columns: ['sort_order'], unique: false },
+    ]);
+    expect(draft.databaseSchema.tables[0]?.ui.defaultSortField).toBe('sort_order');
+    expect(draft.databaseSchema.tables[1]?.columns[0]?.name).toBe('id');
+    expect(draft.dataBindings[0]?.fields).toEqual(['name', 'sort_order']);
+    expect(draft.dataBindings[0]?.sort).toEqual([{ field: 'sort_order', direction: 'asc' }]);
+    expect(() =>
+      validateDataBindingsForDatabaseSchema(draft.databaseSchema, draft.dataBindings)
+    ).not.toThrow();
+  });
+
+  it('wraps table arrays returned as databaseSchema into a schema object', () => {
+    const draft = databaseDesignDraftResponseSchema.parse({
+      databaseSchema: [
+        {
+          name: 'users',
+          columns: [
+            { name: 'email', type: 'string', not_null: true, unique: true },
+            { name: 'display_name', type: 'string' },
+          ],
+        },
+        {
+          name: 'posts',
+          columns: [
+            { name: 'user_id', type: 'foreign_key', not_null: true },
+            { name: 'title', type: 'string', not_null: true },
+          ],
+        },
+      ],
+      dataBindings: [],
+      rationale: 'forum tables are proposed',
+    });
+
+    expect(draft.databaseSchema.name).toBe('users_schema');
+    expect(draft.databaseSchema.tables.map((table) => table.name)).toEqual(['users', 'posts']);
+    expect(draft.databaseSchema.tables[0]?.columns[0]?.name).toBe('id');
+    expect(draft.databaseSchema.tables[1]?.columns[0]?.name).toBe('id');
+    expect(() => validateDatabaseSchemaJson(draft.databaseSchema)).not.toThrow();
+  });
+
+  it('normalizes DBDesign drafts that include binding summaries and string indexes', () => {
+    const draft = databaseDesignDraftResponseSchema.parse({
+      screen: {
+        bindingsSummary: 'products and categories are bound to the current screen',
+        componentsBound: ['DataTableSection'],
+      },
+      databaseSchema: {
+        label: 'Commerce',
+        purpose: 'Manage product merchandising',
+        tables: [
+          {
+            name: 'products',
+            columns: [
+              { name: 'id', type: 'uuid', primary_key: true, not_null: true },
+              { name: 'name', type: 'string', not_null: true },
+              { name: 'category_id', type: 'foreign_key', not_null: true },
+            ],
+            indexes: ['products_name_idx', 'idx_products_category_id'],
+          },
+        ],
+      },
+      dataBindings: [
+        {
+          id: 'products_grid',
+          targetTable: 'products',
+          bindingType: 'read',
+          fields: ['products.name', 'category-id', '利用不可'],
+        },
+        {
+          id: 'products_form',
+          tableName: 'products',
+          type: 'form',
+          fields: { name: true, category_id: true },
+        },
+        {
+          id: 'component_binding',
+          operation: 'read',
+          fields: ['name'],
+        },
+      ],
+      rationale: {
+        summary: 'products table is proposed',
+      },
+    });
+
+    expect(draft.screen).toBeUndefined();
+    expect(draft.databaseSchema.name).toBe('commerce');
+    expect(draft.databaseSchema.tables[0]?.indexes).toEqual([
+      { name: 'products_name_idx', columns: ['name'], unique: false },
+      { name: 'products_category_id_idx', columns: ['category_id'], unique: false },
+    ]);
+    expect(draft.dataBindings).toEqual([
+      {
+        id: 'products_grid',
+        table: 'products',
+        operation: 'list',
+        fields: ['name', 'category_id'],
+        relations: [],
+        filters: [],
+        sort: [],
+        limit: 50,
+      },
+      {
+        id: 'products_form',
+        table: 'products',
+        operation: 'create',
+        fields: ['name', 'category_id'],
+        relations: [],
+        filters: [],
+        sort: [],
+        limit: 50,
+      },
+    ]);
   });
 });

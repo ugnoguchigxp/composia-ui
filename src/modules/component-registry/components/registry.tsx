@@ -1,4 +1,6 @@
 import { defineRegistry } from '@json-render/react';
+import type { ComponentType } from 'react';
+import type { AppComponentName } from '../../../../shared/schemas/app-catalog.schema';
 import { appJsonRenderCatalog } from '../services/catalog.service';
 import { PageShell } from './pages/PageShell';
 import { SidebarPage } from './pages/SidebarPage';
@@ -24,34 +26,37 @@ import { ProcessStepperSection } from './sections/ProcessStepperSection';
 import { SplitHeroSection } from './sections/SplitHeroSection';
 import { TimelineSection } from './sections/TimelineSection';
 
+export const appJsonRenderComponentMap = {
+  DashboardPage: PageShell,
+  EntityListPage: PageShell,
+  EntityDetailPage: PageShell,
+  EditableFormPage: PageShell,
+  ArticleFeedPage: PageShell,
+  SidebarPage,
+  KpiSummarySection,
+  TimelineSection,
+  InsightPanel,
+  ImageSection,
+  SplitHeroSection,
+  CarouselSection,
+  ProcessStepperSection,
+  CardGridSection,
+  FilterBarSection,
+  FormSection,
+  MasterDetailSection,
+  KanbanSection,
+  CalendarSection,
+  ChatPanelSection,
+  EditorPreviewSection,
+  ComparisonSection,
+  ActionFooterSection,
+  DataTableSection,
+  NavigationPanel,
+  EmptyState,
+  ErrorState,
+  // biome-ignore lint/suspicious/noExplicitAny: json-render registry components each own distinct prop schemas.
+} satisfies Record<AppComponentName, ComponentType<any>>;
+
 export const { registry: appJsonRenderRegistry } = defineRegistry(appJsonRenderCatalog, {
-  components: {
-    DashboardPage: PageShell,
-    EntityListPage: PageShell,
-    EntityDetailPage: PageShell,
-    EditableFormPage: PageShell,
-    ArticleFeedPage: PageShell,
-    SidebarPage,
-    KpiSummarySection,
-    TimelineSection,
-    InsightPanel,
-    ImageSection,
-    SplitHeroSection,
-    CarouselSection,
-    ProcessStepperSection,
-    CardGridSection,
-    FilterBarSection,
-    FormSection,
-    MasterDetailSection,
-    KanbanSection,
-    CalendarSection,
-    ChatPanelSection,
-    EditorPreviewSection,
-    ComparisonSection,
-    ActionFooterSection,
-    DataTableSection,
-    NavigationPanel,
-    EmptyState,
-    ErrorState,
-  },
+  components: appJsonRenderComponentMap,
 });

@@ -15,7 +15,10 @@ import {
   aiNavigationResponseSchema,
   aiSummaryResponseSchema,
 } from '../../../shared/schemas/ai.schema';
-import { assertAppUiSchemaCatalog } from '../../../shared/schemas/app-catalog.schema';
+import {
+  appCatalogVersion,
+  assertAppUiSchemaCatalog,
+} from '../../../shared/schemas/app-catalog.schema';
 import type { SourceDefinition } from '../../../shared/schemas/sources.schema';
 import { type AppUiSchema, appUiSchemaSchema } from '../../../shared/schemas/ui-schema.schema';
 import { AppError, ValidationError } from '../../lib/errors';
@@ -48,7 +51,7 @@ export type AiContextReader = {
 };
 
 const cacheNamespace = 'ai-layout';
-const componentRegistryVersion = `component-registry-v2:${layoutSystemContextVersion}`;
+const componentRegistryVersion = `component-registry-v2:${layoutSystemContextVersion}:${appCatalogVersion}`;
 
 function cacheKeyForPrompt(prompt: string, context?: AiSourceContext) {
   return createHash('sha256')

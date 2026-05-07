@@ -1,117 +1,22 @@
 import { jsonrepair } from 'jsonrepair';
+import { componentDefinitions } from '../../../shared/schemas/app-catalog.schema';
 import { config } from '../../config';
 import { AppError } from '../../lib/errors';
 import { logger } from '../../lib/logger';
 
 export const aiJsonMaxOutputTokens = 8000;
 
-const sectionCatalogRules = [
-  {
-    component: 'KpiSummarySection',
-    sources: ['summary', 'postgres', 'api'],
-    props: 'title?, items[label,value,description?]',
-  },
-  {
-    component: 'TimelineSection',
-    sources: ['rss', 'api', 'markdown'],
-    props: 'title, items[title,timestamp?,description?]',
-  },
-  {
-    component: 'InsightPanel',
-    sources: ['summary', 'rss', 'postgres', 'api', 'markdown'],
-    props: 'title, body, action?[label,href]',
-  },
-  {
-    component: 'ImageSection',
-    sources: ['app', 'api', 'markdown'],
-    props: 'title?, description?, image[src,alt,caption?,credit?], aspectRatio?',
-  },
-  {
-    component: 'SplitHeroSection',
-    sources: ['app', 'api', 'markdown'],
-    props: 'eyebrow?, title, description?, image?, primaryAction?, secondaryAction?',
-  },
-  {
-    component: 'CarouselSection',
-    sources: ['app', 'api', 'markdown', 'rss'],
-    props: 'title, description?, items[title,description?,badge?,href?,image?]',
-  },
-  {
-    component: 'ProcessStepperSection',
-    sources: ['summary', 'api', 'markdown'],
-    props: 'title, description?, steps[title,description?,status?]',
-  },
-  {
-    component: 'CardGridSection',
-    sources: ['app', 'api', 'markdown', 'rss', 'postgres'],
-    props: 'title, description?, items[title,description?,badge?,href?,meta?,image?]',
-  },
-  {
-    component: 'FilterBarSection',
-    sources: ['app', 'api', 'postgres'],
-    props: 'title?, searchPlaceholder?, filters[label,value]',
-  },
-  {
-    component: 'FormSection',
-    sources: ['app', 'api', 'postgres'],
-    props:
-      'title, description?, fields[name,label,type?,placeholder?,value?,required?,options?], submitLabel?, secondaryAction?',
-  },
-  {
-    component: 'MasterDetailSection',
-    sources: ['app', 'api', 'postgres', 'markdown'],
-    props:
-      'title, description?, items[id,title,description?,meta?,status?], detail[title,description?,fields?]',
-  },
-  {
-    component: 'KanbanSection',
-    sources: ['app', 'api', 'postgres'],
-    props: 'title, description?, columns[title,cards[title,description?,assignee?,meta?,tone?]]',
-  },
-  {
-    component: 'CalendarSection',
-    sources: ['app', 'api', 'postgres'],
-    props: 'title, description?, events[title,date,time?,description?,tone?]',
-  },
-  {
-    component: 'ChatPanelSection',
-    sources: ['app', 'api', 'markdown'],
-    props: 'title, description?, messages[author,role?,content,timestamp?], composerPlaceholder?',
-  },
-  {
-    component: 'EditorPreviewSection',
-    sources: ['app', 'api', 'markdown'],
-    props: 'title, editorTitle?, editorContent, previewTitle?, previewContent',
-  },
-  {
-    component: 'ComparisonSection',
-    sources: ['app', 'api', 'postgres', 'markdown'],
-    props: 'title, description?, columns[title,description?,items[label,value,tone?]]',
-  },
-  {
-    component: 'ActionFooterSection',
-    sources: ['app', 'summary', 'api'],
-    props: 'title?, description?, primaryAction?, secondaryAction?',
-  },
-  {
-    component: 'DataTableSection',
-    sources: ['postgres', 'api'],
-    props: 'title, description?, columns[key,label], rows?',
-  },
-  {
-    component: 'NavigationPanel',
-    sources: ['navigation'],
-    props: 'title, links[label,href] for compact local tab navigation only',
-  },
-  {
-    component: 'EmptyState',
-    sources: ['app', 'summary', 'rss', 'postgres', 'api', 'markdown', 'navigation'],
-    props: 'title, description?, action?',
-  },
-] as const;
-
-const sectionComponentNames = sectionCatalogRules.map((rule) => rule.component);
-const sectionSources = Array.from(new Set(sectionCatalogRules.flatMap((rule) => rule.sources)));
+const sectionComponentDefinitions = componentDefinitions.filter(
+  (definition) => definition.placement === 'section'
+);
+const formSectionDefinition = sectionComponentDefinitions.find(
+  (definition) => definition.name === 'FormSection'
+);
+const sectionComponentNames = sectionComponentDefinitions.map((definition) => definition.name);
+const formSectionSources = formSectionDefinition?.allowedSources ?? [];
+const sectionSources = Array.from(
+  new Set(sectionComponentDefinitions.flatMap((definition) => definition.allowedSources))
+);
 const nonFormSectionComponentNames = sectionComponentNames.filter(
   (component) => component !== 'FormSection'
 );
@@ -281,7 +186,7 @@ export const appUiSchemaJsonSchema = {
             required: ['component', 'source', 'props'],
             properties: {
               component: { type: 'string', const: 'FormSection' },
-              source: { type: 'string', enum: ['app', 'api', 'postgres'] },
+              source: { type: 'string', enum: formSectionSources },
               ...commonSectionProperties,
               props: formSectionPropsJsonSchema,
             },
@@ -306,8 +211,11 @@ export const appUiSchemaJsonSchema = {
   },
 };
 
-const componentInstructions = sectionCatalogRules
-  .map((rule) => `- ${rule.component}: sources=${rule.sources.join('|')}; props=${rule.props}`)
+const componentInstructions = sectionComponentDefinitions
+  .map((definition) => {
+    const guidance = definition.promptGuidance ? `; guidance=${definition.promptGuidance}` : '';
+    return `- ${definition.name}: sources=${definition.allowedSources.join('|')}; props=${definition.promptProps}${guidance}`;
+  })
   .join('\n');
 
 export const layoutSystemContextVersion = 'layout-system-context-v8';

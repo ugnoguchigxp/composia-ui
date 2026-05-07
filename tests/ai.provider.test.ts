@@ -5,6 +5,7 @@ import {
   layoutSystemContext,
   parseJsonText,
 } from '../api/modules/ai/ai.provider';
+import { componentDefinitions } from '../shared/schemas/app-catalog.schema';
 
 describe('ai provider system context', () => {
   it('keeps generation mechanics out of visible UI labels', () => {
@@ -38,6 +39,9 @@ describe('ai provider system context', () => {
     const formSection = sectionItem.oneOf.find(
       (item) => (item.properties.component as { const?: string }).const === 'FormSection'
     );
+    const formSectionDefinition = componentDefinitions.find(
+      (definition) => definition.name === 'FormSection'
+    );
 
     expect(formSection?.properties.props.properties.fields.items.properties.options.items).toEqual(
       expect.objectContaining({
@@ -49,6 +53,29 @@ describe('ai provider system context', () => {
         }),
       })
     );
+    expect((formSection?.properties.source as { enum?: string[] }).enum).toEqual(
+      formSectionDefinition?.allowedSources
+    );
+  });
+
+  it('offers only section components to the layout provider sections array', () => {
+    const sectionItem = appUiSchemaJsonSchema.properties.sections.items;
+    const nonFormSection = sectionItem.oneOf.find(
+      (item) => (item.properties.component as { enum?: string[] }).enum
+    );
+    const providerSectionNames =
+      (nonFormSection?.properties.component as { enum?: string[] }).enum ?? [];
+    const catalogSectionNames = componentDefinitions
+      .filter(
+        (definition) => definition.placement === 'section' && definition.name !== 'FormSection'
+      )
+      .map((definition) => definition.name)
+      .sort();
+
+    expect([...providerSectionNames].sort()).toEqual(catalogSectionNames);
+    expect(providerSectionNames).toContain('InsightPanel');
+    expect(providerSectionNames).not.toContain('DashboardPage');
+    expect(layoutSystemContext).not.toContain('Allowed components:');
   });
 
   it('repairs minor provider JSON syntax errors before schema validation', () => {
