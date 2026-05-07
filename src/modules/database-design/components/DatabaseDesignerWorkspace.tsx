@@ -329,6 +329,7 @@ function DraftList({
               <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
                 <Badge>{sourceLabel(draft.source)}</Badge>
                 <Badge>{draft.tableCount} tables</Badge>
+                {draft.boundScreenJsonId ? <Badge tone="success">bound UI</Badge> : null}
                 {draft.historicallyAppliedAt ? <Badge>applied history</Badge> : null}
                 <Badge tone={draft.currentMatch ? 'success' : 'warning'}>
                   {draft.currentMatch ? 'current match' : `${draft.gap.blockingCount} gaps`}
@@ -584,11 +585,13 @@ function DraftDetail({
         {isLoading ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : null}
         <div className="flex flex-wrap gap-1.5 text-xs">
           <Badge>{sourceLabel(selectedDraft.source)}</Badge>
+          {selectedDraft.boundScreenJsonId ? <Badge tone="success">bound UI</Badge> : null}
           {selectedDraft.historicallyAppliedAt ? <Badge>applied history</Badge> : null}
           <Badge tone={selectedDraft.currentMatch ? 'success' : 'warning'}>
             {selectedDraft.currentMatch ? 'current match' : 'out of sync'}
           </Badge>
         </div>
+        <BoundUiSummary selectedDraft={selectedDraft} />
         {draft ? (
           <>
             <div className="grid gap-2 text-sm">
@@ -653,6 +656,36 @@ function DraftDetail({
       </div>
     </section>
   );
+}
+
+function BoundUiSummary({ selectedDraft }: { selectedDraft: DatabaseDraftSummary }) {
+  if (selectedDraft.boundScreenJsonId && selectedDraft.boundPromptSessionId) {
+    return (
+      <div className="rounded-md border border-border bg-background p-3 text-sm">
+        <div className="font-medium">Bound UI</div>
+        <p className="mt-1 text-muted-foreground text-xs">
+          この Draft から保存された ScreenJSON を開いて runtime binding を確認できます。
+        </p>
+        <Link
+          className="mt-3 inline-flex h-8 items-center rounded-md border border-border px-3 text-xs font-medium hover:bg-secondary"
+          params={{ sessionId: selectedDraft.boundPromptSessionId } as never}
+          to={'/prompt/session/$sessionId' as never}
+        >
+          UI を開く
+        </Link>
+      </div>
+    );
+  }
+
+  if (selectedDraft.sourceScreenJsonId) {
+    return (
+      <div className="rounded-md border border-border bg-background p-3 text-muted-foreground text-sm">
+        UI binding はまだ保存されていません。
+      </div>
+    );
+  }
+
+  return null;
 }
 
 function DraftBindingSummary({ dataBindings }: { dataBindings: DataBinding[] }) {

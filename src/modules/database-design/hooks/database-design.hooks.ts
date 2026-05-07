@@ -1,4 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { DataBinding } from '../../../../shared/schemas/data-binding.schema';
 import type {
   DatabaseDesignEditRequest,
   DatabaseDesignProposeRequest,
@@ -72,6 +73,16 @@ export function useSandboxRows(table: string | null, enabled = true) {
     enabled: enabled && Boolean(table),
     queryKey: databaseDesignQueryKeys.rows(table ?? ''),
     queryFn: () => databaseDesignRepository.sandboxRows(table ?? ''),
+  });
+}
+
+export function useSandboxBindingRows(bindings: DataBinding[], enabled = true) {
+  return useQueries({
+    queries: bindings.map((binding) => ({
+      enabled,
+      queryKey: [...databaseDesignQueryKeys.rows(binding.table), binding.limit] as const,
+      queryFn: () => databaseDesignRepository.sandboxRows(binding.table, binding.limit),
+    })),
   });
 }
 

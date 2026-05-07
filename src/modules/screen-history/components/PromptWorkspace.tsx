@@ -22,6 +22,11 @@ import type {
 import type { AppAction } from '../../../../shared/schemas/ui-schema.schema';
 import { useAuth } from '../../../lib/auth';
 import { cn } from '../../../lib/utils';
+import {
+  useInsertSandboxRow,
+  useSandboxBindingRows,
+  useSandboxState,
+} from '../../database-design/hooks/database-design.hooks';
 import { JsonRenderRenderer } from '../../ui-schema/components/JsonRenderRenderer';
 import {
   useEditSessionScreen,
@@ -32,6 +37,13 @@ import {
   useRestoreScreenJsonCheckpoint,
   useScreenConversation,
 } from '../hooks/screen-history.hooks';
+import {
+  type BindingRuntimeIssue,
+  bindingRuntimeIsReady,
+  bindingRuntimeIssue,
+  resolveScreenRuntimeBindings,
+  submitBindingRuntimeIssue,
+} from '../services/binding-runtime.service';
 
 type WorkspaceScreen = GeneratedScreen | ScreenJson;
 
@@ -44,6 +56,11 @@ type ChatMessage = {
 
 type DockActivity = Omit<AiActivity, 'status'> & {
   status: AiActivity['status'] | 'pending' | 'running';
+};
+
+type BindingNotice = {
+  message: string;
+  tone: 'error' | 'success';
 };
 
 const defaultPrompt =
@@ -159,6 +176,8 @@ export function PromptWorkspace({
       ? activeConversationScreen
       : (screenQuery.data?.screen ?? activeConversationScreen)) ??
     null;
+  const sandboxState = useSandboxState(Boolean(auth.user && activeScreen?.dataBindings.length));
+  const insertSandboxRow = useInsertSandboxRow();
   const persistedMessages = useMemo(() => {
     const conversation = conversationQuery.data;
     if (!conversation) return [];
@@ -186,6 +205,50 @@ export function PromptWorkspace({
   const displayMessages =
     persistedMessages.length > 0 ? [...persistedMessages, ...localOverlayMessages] : messages;
   const activeScreenJsonId = conversationQuery.data?.activeScreenJsonId ?? activeScreen?.id ?? null;
+  const [bindingNotice, setBindingNotice] = useState<BindingNotice | null>(null);
+  const [pendingBindingId, setPendingBindingId] = useState<string | null>(null);
+  const bindingResolution = useMemo(
+    () =>
+      activeScreen
+        ? resolveScreenRuntimeBindings(activeScreen.schema, activeScreen.dataBindings)
+        : { issues: [], runtimeBindings: [] },
+    [activeScreen]
+  );
+  const runtimeBindings = bindingResolution.runtimeBindings;
+  const readyListBindings = useMemo(
+    () =>
+      runtimeBindings.filter(
+        (binding) =>
+          binding.operation === 'list' && bindingRuntimeIsReady(binding, sandboxState.data)
+      ),
+    [runtimeBindings, sandboxState.data]
+  );
+  const rowQueries = useSandboxBindingRows(
+    readyListBindings,
+    Boolean(auth.user && readyListBindings.length > 0)
+  );
+  const bindingRows = useMemo(() => {
+    const entries = readyListBindings.flatMap((binding, index) => {
+      const query = rowQueries[index];
+      return query?.data ? [[binding.id, query.data.rows] as const] : [];
+    });
+    return Object.fromEntries(entries);
+  }, [readyListBindings, rowQueries]);
+  const bindingIssues = useMemo(() => {
+    const issues = [
+      ...bindingResolution.issues,
+      ...runtimeBindings
+        .map((binding) => bindingRuntimeIssue(binding, sandboxState.data))
+        .filter((issue): issue is BindingRuntimeIssue => Boolean(issue)),
+    ];
+    for (const [index, binding] of readyListBindings.entries()) {
+      const error = rowQueries[index]?.error;
+      if (error instanceof Error) {
+        issues.push({ bindingId: binding.id, message: error.message });
+      }
+    }
+    return issues;
+  }, [bindingResolution.issues, readyListBindings, rowQueries, runtimeBindings, sandboxState.data]);
   const isPending =
     generateScreen.isPending ||
     generateFromAction.isPending ||
@@ -402,6 +465,52 @@ export function PromptWorkspace({
     [openSession, restoreCheckpoint, routeSessionId]
   );
 
+  const handleSubmitBinding = useCallback(
+    (dataBindingId: string, value: Record<string, unknown>) => {
+      const binding = activeScreen?.dataBindings.find((item) => item.id === dataBindingId);
+      if (!binding) {
+        setBindingNotice({
+          tone: 'error',
+          message: `${dataBindingId} binding が現在の ScreenJSON に存在しません。`,
+        });
+        return;
+      }
+      if (binding.operation !== 'create') {
+        setBindingNotice({
+          tone: 'error',
+          message: `${dataBindingId} は create binding ではありません。`,
+        });
+        return;
+      }
+      const issue = submitBindingRuntimeIssue(binding, sandboxState.data);
+      if (issue) {
+        setBindingNotice({ tone: 'error', message: issue.message });
+        return;
+      }
+      setPendingBindingId(dataBindingId);
+      setBindingNotice(null);
+      insertSandboxRow.mutate(
+        { bindingId: dataBindingId, table: binding.table, value },
+        {
+          onError: (error) => {
+            setBindingNotice({
+              tone: 'error',
+              message: error instanceof Error ? error.message : 'Sandbox row could not be saved.',
+            });
+          },
+          onSettled: () => setPendingBindingId(null),
+          onSuccess: () => {
+            setBindingNotice({
+              tone: 'success',
+              message: `${binding.table} に保存しました。`,
+            });
+          },
+        }
+      );
+    },
+    [activeScreen?.dataBindings, insertSandboxRow, sandboxState.data]
+  );
+
   useEffect(() => {
     if (persistedMessageKey) {
       setMessages([initialAssistantMessage]);
@@ -468,11 +577,21 @@ export function PromptWorkspace({
 
     if (activeScreen) {
       return (
-        <JsonRenderRenderer
-          onAction={handleAction}
-          pendingActionId={pendingActionId}
-          schema={activeScreen.schema}
-        />
+        <>
+          <BindingRuntimeBanner
+            activeScreenJsonId={activeScreen.id}
+            issues={bindingIssues}
+            notice={bindingNotice}
+          />
+          <JsonRenderRenderer
+            bindingRows={bindingRows}
+            onAction={handleAction}
+            onSubmitBinding={handleSubmitBinding}
+            pendingActionId={pendingActionId}
+            pendingBindingId={pendingBindingId}
+            schema={activeScreen.schema}
+          />
+        </>
       );
     }
 
@@ -488,9 +607,14 @@ export function PromptWorkspace({
     );
   }, [
     activeScreen,
+    bindingIssues,
+    bindingNotice,
+    bindingRows,
     conversationQuery.error,
     conversationQuery.isLoading,
+    handleSubmitBinding,
     handleAction,
+    pendingBindingId,
     pendingActionId,
     screenId,
     screenQuery.error,
@@ -547,6 +671,63 @@ export function PromptWorkspace({
         sessionTitle={conversationQuery.data?.session.title}
       />
     </div>
+  );
+}
+
+function BindingRuntimeBanner({
+  activeScreenJsonId,
+  issues,
+  notice,
+}: {
+  activeScreenJsonId: string;
+  issues: BindingRuntimeIssue[];
+  notice: BindingNotice | null;
+}) {
+  if (issues.length === 0 && !notice) return null;
+
+  return (
+    <section
+      className={cn(
+        'mb-4 rounded-lg border px-4 py-3 text-sm',
+        notice?.tone === 'success' && issues.length === 0
+          ? 'border-emerald-500/30 bg-emerald-500/10'
+          : 'border-amber-500/30 bg-amber-500/10'
+      )}
+    >
+      {notice ? (
+        <p
+          className={cn(
+            'font-medium',
+            notice.tone === 'success' ? 'text-emerald-700' : 'text-amber-800'
+          )}
+        >
+          {notice.message}
+        </p>
+      ) : null}
+      {issues.length > 0 ? (
+        <div className="grid gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="font-medium text-amber-800">
+              この UI の binding は現在の SandboxDB に未適用です。
+            </p>
+            <Link
+              className="inline-flex h-8 items-center rounded-md border border-amber-600/30 bg-background px-3 text-xs font-medium hover:bg-secondary"
+              search={{ screenJsonId: activeScreenJsonId } as never}
+              to={'/dbdesign' as never}
+            >
+              DBDesign を開く
+            </Link>
+          </div>
+          <div className="grid gap-1 text-amber-900/80 text-xs">
+            {issues.map((issue) => (
+              <p key={`${issue.bindingId}-${issue.message}`}>
+                <span className="font-mono">{issue.bindingId}</span>: {issue.message}
+              </p>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </section>
   );
 }
 

@@ -25,11 +25,13 @@ import {
   type DatabaseSchemaJsonRecord,
   databaseDesignRepository,
   type SandboxMigrationRunRecord,
+  type ScreenJsonWithPromptSessionRecord,
 } from './database-design.repository';
 import { detectDatabaseDraftGap } from './database-draft-gap.service';
 import {
   validateDataBindingsForDatabaseSchema,
   validateDatabaseSchemaJson,
+  validateScreenDataBindingReferences,
 } from './database-schema-validator.service';
 import {
   createSandboxMigrationService,
@@ -149,6 +151,22 @@ function sourceScreenJsonIdBySchemaId(
   return screenJsonIdBySchemaId;
 }
 
+function boundScreenBySchemaId(
+  rows: Awaited<ReturnType<DatabaseDesignRepository['listBoundScreenJsonsBySchemaJsonIds']>>
+) {
+  const screenBySchemaId = new Map<string, { promptSessionId: string; screenJsonId: string }>();
+  for (const row of rows) {
+    if (!row.databaseSchemaJsonId) continue;
+    if (!screenBySchemaId.has(row.databaseSchemaJsonId)) {
+      screenBySchemaId.set(row.databaseSchemaJsonId, {
+        promptSessionId: row.promptSessionId,
+        screenJsonId: row.screenJsonId,
+      });
+    }
+  }
+  return screenBySchemaId;
+}
+
 function diffSummary(
   previous: DatabaseSchemaJsonRecord | null,
   next: DatabaseSchemaJsonRecord['schema']
@@ -169,6 +187,40 @@ export function createDatabaseDesignService(
   migrationService: SandboxMigrationService,
   sandboxQueryService: SandboxQueryService
 ) {
+  const persistBoundScreenJson = async (input: {
+    dataBindings: DataBinding[];
+    prompt: string;
+    schemaRecord: DatabaseSchemaJsonRecord;
+    screen: DatabaseDesignResponse['screen'];
+    screenRow: ScreenJsonWithPromptSessionRecord | null;
+  }) => {
+    if (!input.screen || !input.screenRow) return null;
+
+    await repo.deleteScreenJsonsAfterVersion(
+      input.screenRow.session.id,
+      input.screenRow.screenJson.version
+    );
+    const version = await repo.nextScreenJsonVersion(input.screenRow.session.id);
+    const screenJson = await repo.createScreenJson({
+      action: input.screenRow.screenJson.action ?? null,
+      contextSnapshot: {
+        ...input.screenRow.screenJson.contextSnapshot,
+        previousScreen: input.screenRow.screenJson.schema,
+      },
+      dataBindings: input.dataBindings,
+      databaseSchemaJsonId: input.schemaRecord.id,
+      inferredIntent: input.screen.intent,
+      prompt: input.prompt,
+      providerMeta: input.schemaRecord.providerMeta,
+      schema: input.screen,
+      sessionId: input.screenRow.session.id,
+      trigger: 'chat-edit',
+      version,
+    });
+    await repo.updatePromptSessionActiveScreenJson(input.screenRow.session.id, screenJson.id);
+    return screenJson;
+  };
+
   const conversation = async (
     userId: string,
     designSessionId: string
@@ -283,6 +335,7 @@ export function createDatabaseDesignService(
       databaseSchema,
       generated.draft.dataBindings
     );
+    validateScreenDataBindingReferences(generated.draft.screen, draftBindings);
     logger.info(
       { traceId, bindingCount: draftBindings.length },
       'DBDesign service data binding validation completed'
@@ -309,9 +362,18 @@ export function createDatabaseDesignService(
       { traceId, databaseSchemaJsonId: schemaRecord.id, version: schemaRecord.version },
       'DBDesign service schema JSON persisted'
     );
+    const boundScreenJson = await persistBoundScreenJson({
+      dataBindings,
+      prompt: input.prompt,
+      schemaRecord,
+      screen: generated.draft.screen,
+      screenRow,
+    });
+    const activeScreenJsonId =
+      boundScreenJson?.id ?? session.activeScreenJsonId ?? input.screenJsonId ?? null;
     const updatedSession = await repo.updateDesignSessionActive(session.id, {
       activeDatabaseSchemaJsonId: schemaRecord.id,
-      activeScreenJsonId: session.activeScreenJsonId ?? input.screenJsonId ?? null,
+      activeScreenJsonId,
     });
     logger.info(
       {
@@ -336,11 +398,14 @@ export function createDatabaseDesignService(
         designSessionId: session.id,
         metadata: {
           checkpointDatabaseSchemaJsonId: schemaRecord.id,
+          checkpointScreenJsonId: boundScreenJson?.id,
           checkpointLabel,
+          screenVersion: boundScreenJson?.version,
+          databaseSchemaVersion: schemaRecord.version,
           trigger: input.source === 'screen' ? 'screen-proposal' : 'dbdesign-proposal',
         },
         role: 'assistant',
-        screenJsonId: input.screenJsonId ?? null,
+        screenJsonId: boundScreenJson?.id ?? input.screenJsonId ?? null,
       },
     ]);
     logger.info({ traceId }, 'DBDesign service conversation messages persisted');
@@ -359,7 +424,7 @@ export function createDatabaseDesignService(
       session: mapSession(updatedSession),
       databaseSchemaJson: mapSchemaJson(schemaRecord),
       screen: generated.draft.screen,
-      screenJsonId: input.screenJsonId ?? null,
+      screenJsonId: boundScreenJson?.id ?? input.screenJsonId ?? null,
       dataBindings,
       activities: generated.activities,
       conversation: nextConversation,
@@ -369,17 +434,20 @@ export function createDatabaseDesignService(
   const listDrafts = async (userId: string) => {
     const rows = await repo.listSchemaJsonsForUser(userId);
     const ids = rows.map((row) => row.databaseSchemaJson.id);
-    const [sandboxState, migrationRuns, sourceScreenRows] = await Promise.all([
+    const [sandboxState, migrationRuns, sourceScreenRows, boundScreenRows] = await Promise.all([
       sandboxQueryService.state(),
       repo.listMigrationRunsBySchemaJsonIds(ids),
       repo.listSourceScreenJsonIdsBySchemaJsonIds(ids),
+      repo.listBoundScreenJsonsBySchemaJsonIds(ids),
     ]);
     const appliedAtBySchemaId = historicalAppliedAtBySchemaId(migrationRuns);
     const sourceScreenBySchemaId = sourceScreenJsonIdBySchemaId(sourceScreenRows);
+    const boundScreenBySchema = boundScreenBySchemaId(boundScreenRows);
     return {
       drafts: rows.map(({ databaseSchemaJson }) => {
         const gap = detectDatabaseDraftGap(databaseSchemaJson.schema, sandboxState);
         const historicallyAppliedAt = appliedAtBySchemaId.get(databaseSchemaJson.id);
+        const boundScreen = boundScreenBySchema.get(databaseSchemaJson.id);
         return {
           id: databaseSchemaJson.id,
           designSessionId: databaseSchemaJson.designSessionId,
@@ -389,6 +457,8 @@ export function createDatabaseDesignService(
           createdAt: dateIso(databaseSchemaJson.createdAt),
           tableCount: databaseSchemaJson.schema.tables.length,
           sourceScreenJsonId: sourceScreenBySchemaId.get(databaseSchemaJson.id) ?? null,
+          boundScreenJsonId: boundScreen?.screenJsonId ?? null,
+          boundPromptSessionId: boundScreen?.promptSessionId ?? null,
           historicallyAppliedAt: historicallyAppliedAt ? dateIso(historicallyAppliedAt) : null,
           currentMatch: gap.currentMatch,
           gap,

@@ -131,6 +131,94 @@ describe('ui schema renderer', () => {
     expect(html).toContain('Name');
   });
 
+  it('injects binding rows into DataTableSection ahead of static rows', () => {
+    const schema = appUiSchemaSchema.parse({
+      page: 'Bound rows',
+      intent: 'Render sandbox rows through a binding',
+      layout: 'dashboard',
+      sections: [
+        {
+          component: 'DataTableSection',
+          dataBindingId: 'products_list',
+          source: 'postgres',
+          props: {
+            title: 'Products',
+            columns: [{ key: 'name', label: 'Name' }],
+            rows: [{ name: 'Static product' }],
+          },
+        },
+      ],
+    });
+    const spec = appUiSchemaToJsonRenderSpec(schema, {
+      bindingRows: { products_list: [{ id: '1', name: 'Sandbox product' }] },
+    });
+    const html = renderToStaticMarkup(
+      <JsonRenderRenderer
+        bindingRows={{ products_list: [{ id: '1', name: 'Sandbox product' }] }}
+        schema={schema}
+      />
+    );
+
+    expect(spec.elements['section-datatablesection-0']?.props.rows).toEqual([
+      { id: '1', name: 'Sandbox product' },
+    ]);
+    expect(html).toContain('Sandbox product');
+    expect(html).not.toContain('Static product');
+  });
+
+  it('keeps static rows while binding rows are unavailable', () => {
+    const schema = appUiSchemaSchema.parse({
+      page: 'Static fallback',
+      intent: 'Render static rows until binding rows are loaded',
+      layout: 'dashboard',
+      sections: [
+        {
+          component: 'DataTableSection',
+          dataBindingId: 'products_list',
+          source: 'postgres',
+          props: {
+            title: 'Products',
+            columns: [{ key: 'name', label: 'Name' }],
+            rows: [{ name: 'Static product' }],
+          },
+        },
+      ],
+    });
+    const spec = appUiSchemaToJsonRenderSpec(schema, { bindingRows: {} });
+    const html = renderToStaticMarkup(<JsonRenderRenderer bindingRows={{}} schema={schema} />);
+
+    expect(spec.elements['section-datatablesection-0']?.props.rows).toEqual([
+      { name: 'Static product' },
+    ]);
+    expect(html).toContain('Static product');
+  });
+
+  it('does not inject binding rows into unsupported components', () => {
+    const schema = appUiSchemaSchema.parse({
+      page: 'Create product',
+      intent: 'Render a bound create form',
+      layout: 'form',
+      sections: [
+        {
+          component: 'FormSection',
+          dataBindingId: 'products_create',
+          source: 'postgres',
+          props: {
+            title: 'Product',
+            fields: [{ name: 'name', label: 'Name', type: 'text' }],
+            submitLabel: 'Save',
+          },
+        },
+      ],
+    });
+    const spec = appUiSchemaToJsonRenderSpec(schema, {
+      bindingRows: { products_create: [{ id: '1', name: 'Sandbox product' }] },
+    });
+
+    expect(spec.elements['section-formsection-0']?.props.dataBindingId).toBe('products_create');
+    expect(spec.elements['section-formsection-0']?.props.rows).toBeUndefined();
+  });
+
   it('renders action labels as provided by the schema', () => {
     const html = renderToStaticMarkup(
       <JsonRenderRenderer

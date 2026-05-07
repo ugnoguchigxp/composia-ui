@@ -6,6 +6,7 @@ import type {
   DatabaseTable,
 } from '../../../shared/schemas/database-design.schema';
 import { databaseSchemaJsonSchema } from '../../../shared/schemas/database-design.schema';
+import type { AppUiSchema } from '../../../shared/schemas/ui-schema.schema';
 import { ValidationError } from '../../lib/errors';
 
 const reservedIdentifiers = new Set([
@@ -212,6 +213,10 @@ export function validateDataBindingsForDatabaseSchema(
   const tables = new Map(schema.tables.map((table) => [table.name, table]));
   const relations = new Map(schema.relations.map((relation) => [relation.name, relation]));
 
+  for (const duplicate of duplicates(bindings.map((binding) => binding.id))) {
+    issues.push(`Duplicate data binding "${duplicate}"`);
+  }
+
   for (const binding of bindings) {
     const table = tables.get(binding.table);
     if (!table) {
@@ -247,4 +252,25 @@ export function validateDataBindingsForDatabaseSchema(
   }
 
   return bindings;
+}
+
+export function validateScreenDataBindingReferences(
+  screen: AppUiSchema | undefined,
+  bindings: Pick<DataBindingDraft, 'id'>[]
+) {
+  if (!screen) return;
+
+  const bindingIds = new Set(bindings.map((binding) => binding.id));
+  const issues = screen.sections.flatMap((section, index) => {
+    if (!section.dataBindingId || bindingIds.has(section.dataBindingId)) return [];
+    return [
+      `Screen section ${index + 1} (${section.component}) references missing data binding "${
+        section.dataBindingId
+      }"`,
+    ];
+  });
+
+  if (issues.length > 0) {
+    throw new ValidationError('Screen data binding proposal is invalid', { issues });
+  }
 }

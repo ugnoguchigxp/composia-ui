@@ -30,6 +30,12 @@ export type DatabaseDesignSourceScreenRecord = {
   screenJsonId: string | null;
 };
 
+export type DatabaseDesignBoundScreenRecord = {
+  databaseSchemaJsonId: string | null;
+  promptSessionId: string;
+  screenJsonId: string;
+};
+
 export type DatabaseDesignRepository = {
   createDesignSession: (
     input: typeof databaseDesignSessions.$inferInsert
@@ -73,6 +79,9 @@ export type DatabaseDesignRepository = {
   listSourceScreenJsonIdsBySchemaJsonIds: (
     databaseSchemaJsonIds: string[]
   ) => Promise<DatabaseDesignSourceScreenRecord[]>;
+  listBoundScreenJsonsBySchemaJsonIds: (
+    databaseSchemaJsonIds: string[]
+  ) => Promise<DatabaseDesignBoundScreenRecord[]>;
   markAppliedMigrationRunsReverted: () => Promise<void>;
   markManagedObjectsDropped: (ids: string[]) => Promise<void>;
   replaceManagedObjects: (
@@ -247,6 +256,18 @@ export const databaseDesignRepository: DatabaseDesignRepository = {
         )
       )
       .orderBy(asc(databaseDesignMessages.createdAt));
+  },
+  listBoundScreenJsonsBySchemaJsonIds: async (databaseSchemaJsonIds) => {
+    if (databaseSchemaJsonIds.length === 0) return [];
+    return db
+      .select({
+        databaseSchemaJsonId: screenJsons.databaseSchemaJsonId,
+        promptSessionId: screenJsons.sessionId,
+        screenJsonId: screenJsons.id,
+      })
+      .from(screenJsons)
+      .where(inArray(screenJsons.databaseSchemaJsonId, databaseSchemaJsonIds))
+      .orderBy(desc(screenJsons.version), desc(screenJsons.createdAt));
   },
   markAppliedMigrationRunsReverted: async () => {
     await db

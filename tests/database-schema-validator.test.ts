@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   validateDataBindingsForDatabaseSchema,
   validateDatabaseSchemaJson,
+  validateScreenDataBindingReferences,
 } from '../api/modules/database-design/database-schema-validator.service';
 import type { DataBindingDraft } from '../shared/schemas/data-binding.schema';
 import type { DatabaseSchemaJson } from '../shared/schemas/database-design.schema';
@@ -139,6 +140,59 @@ describe('database schema validator', () => {
     expect(() => validateDataBindingsForDatabaseSchema(validSchema(), bindings)).toThrow(
       'Data binding proposal is invalid'
     );
+  });
+
+  it('rejects duplicate data binding ids', () => {
+    const bindings: DataBindingDraft[] = [
+      {
+        id: 'products_list',
+        table: 'products',
+        operation: 'list',
+        fields: ['name'],
+        relations: [],
+        filters: [],
+        sort: [],
+        limit: 50,
+      },
+      {
+        id: 'products_list',
+        table: 'products',
+        operation: 'create',
+        fields: ['name'],
+        relations: [],
+        filters: [],
+        sort: [],
+        limit: 50,
+      },
+    ];
+
+    expect(() => validateDataBindingsForDatabaseSchema(validSchema(), bindings)).toThrow(
+      'Data binding proposal is invalid'
+    );
+  });
+
+  it('rejects screens that reference missing data binding ids', () => {
+    expect(() =>
+      validateScreenDataBindingReferences(
+        {
+          page: 'Products',
+          intent: 'Manage products',
+          layout: 'entity-list',
+          sections: [
+            {
+              component: 'DataTableSection',
+              dataBindingId: 'missing_list',
+              source: 'postgres',
+              props: {
+                title: 'Products',
+                columns: [{ key: 'name', label: 'Name' }],
+              },
+            },
+          ],
+        },
+        [{ id: 'products_list' }]
+      )
+    ).toThrow('Screen data binding proposal is invalid');
   });
 
   it('normalizes string rationale from LLM draft output', () => {

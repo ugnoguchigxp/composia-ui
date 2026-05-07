@@ -934,6 +934,8 @@ export const databaseDraftSummarySchema = z
     createdAt: z.string().datetime(),
     tableCount: z.number().int().min(0),
     sourceScreenJsonId: z.string().uuid().nullable().default(null),
+    boundScreenJsonId: z.string().uuid().nullable().default(null),
+    boundPromptSessionId: z.string().uuid().nullable().default(null),
     historicallyAppliedAt: z.string().datetime().nullable().default(null),
     currentMatch: z.boolean(),
     gap: databaseDraftGapSummarySchema,
