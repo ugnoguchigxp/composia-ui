@@ -223,6 +223,7 @@ const formSectionPropsJsonSchema = {
 
 const commonSectionProperties = {
   variant: { type: 'string' },
+  dataBindingId: { type: 'string', pattern: '^[a-z][a-z0-9_]*$' },
   visualIntent: visualIntentJsonSchema,
   actions: sectionActionsJsonSchema,
 };

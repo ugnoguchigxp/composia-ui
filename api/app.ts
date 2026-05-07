@@ -11,6 +11,11 @@ import { loggerMiddleware } from './middleware/logger';
 import { rateLimiter } from './middleware/rate-limiter';
 import { aiRouter } from './modules/ai/ai.routes';
 import { cacheRouter } from './modules/cache/cache.routes';
+import {
+  databaseDesignMcpRouter,
+  databaseDesignRouter,
+  sandboxDatabaseRouter,
+} from './modules/database-design/database-design.routes';
 import { entitiesRouter, metadataRouter } from './modules/entities/entities.routes';
 import {
   mcpToolsRouter,
@@ -28,9 +33,12 @@ const apiRoutes = createOpenApiRouter()
   .route('/health', healthRouter)
   .route('/ai', aiRouter)
   .route('/cache', cacheRouter)
+  .route('/database-design', databaseDesignRouter)
   .route('/entities', entitiesRouter)
   .route('/metadata', metadataRouter)
   .route('/mcp', mcpToolsRouter)
+  .route('/mcp', databaseDesignMcpRouter)
+  .route('/sandbox-db', sandboxDatabaseRouter)
   .route('/screens', screenHistoryRouter)
   .route('/screen-jsons', screenJsonRouter)
   .route('/sessions', screenSessionRouter)

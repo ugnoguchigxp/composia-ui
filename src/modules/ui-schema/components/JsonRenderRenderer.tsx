@@ -8,7 +8,10 @@ import { appJsonRenderRegistry } from '../../component-registry/components/regis
 import { appUiSchemaToJsonRenderSpec } from '../services/ui-schema-to-json-render.service';
 
 type JsonRenderRendererProps = {
+  bindingRows?: Record<string, Record<string, unknown>[]>;
   onAction?: (action: AppAction) => void;
+  onSubmitBinding?: (dataBindingId: string, value: Record<string, unknown>) => void;
+  pendingBindingId?: string | null;
   pendingActionId?: string | null;
   schema: AppUiSchema;
 };
@@ -31,7 +34,14 @@ function UnknownComponentFallback({ element }: ComponentRenderProps) {
   );
 }
 
-export function JsonRenderRenderer({ onAction, pendingActionId, schema }: JsonRenderRendererProps) {
+export function JsonRenderRenderer({
+  bindingRows,
+  onAction,
+  onSubmitBinding,
+  pendingBindingId,
+  pendingActionId,
+  schema,
+}: JsonRenderRendererProps) {
   const result = useMemo<{ spec: Spec | null; error: string | null }>(() => {
     const parsed = appUiSchemaSchema.safeParse(schema);
     if (!parsed.success) {
@@ -40,20 +50,25 @@ export function JsonRenderRenderer({ onAction, pendingActionId, schema }: JsonRe
 
     try {
       return {
-        spec: appUiSchemaToJsonRenderSpec(parsed.data),
+        spec: appUiSchemaToJsonRenderSpec(parsed.data, { bindingRows }),
         error: null,
       };
     } catch (error) {
       return { spec: null, error: error instanceof Error ? error.message : 'Invalid UI schema' };
     }
-  }, [schema]);
+  }, [bindingRows, schema]);
 
   if (result.error) {
     return <RendererError description={result.error} title="UI schema validation failed" />;
   }
 
   return (
-    <AppActionRenderProvider onAction={onAction} pendingActionId={pendingActionId}>
+    <AppActionRenderProvider
+      onAction={onAction}
+      onSubmitBinding={onSubmitBinding}
+      pendingActionId={pendingActionId}
+      pendingBindingId={pendingBindingId}
+    >
       <JSONUIProvider initialState={result.spec?.state ?? {}} registry={appJsonRenderRegistry}>
         <Renderer
           fallback={UnknownComponentFallback}

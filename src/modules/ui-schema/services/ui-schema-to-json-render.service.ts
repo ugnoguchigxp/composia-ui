@@ -3,6 +3,10 @@ import type { AppUiLayout, AppUiSchema } from '../../../../shared/schemas/ui-sch
 import { appUiSchemaSchema } from '../../../../shared/schemas/ui-schema.schema';
 import { assertAppUiSchemaCatalog } from '../../component-registry/services/registry.service';
 
+export type AppUiSchemaToJsonRenderOptions = {
+  bindingRows?: Record<string, Record<string, unknown>[]>;
+};
+
 const layoutComponentMap: Record<AppUiLayout, string> = {
   dashboard: 'DashboardPage',
   'entity-list': 'EntityListPage',
@@ -42,7 +46,10 @@ function slugifyAscii(value: string) {
   return output;
 }
 
-export function appUiSchemaToJsonRenderSpec(input: AppUiSchema): Spec {
+export function appUiSchemaToJsonRenderSpec(
+  input: AppUiSchema,
+  options: AppUiSchemaToJsonRenderOptions = {}
+): Spec {
   const schema = appUiSchemaSchema.parse(input);
   assertAppUiSchemaCatalog(schema);
 
@@ -71,12 +78,17 @@ export function appUiSchemaToJsonRenderSpec(input: AppUiSchema): Spec {
       ...Object.fromEntries(
         schema.sections.map((section, index) => {
           const key = childKeys[index];
+          const rows = section.dataBindingId
+            ? options.bindingRows?.[section.dataBindingId]
+            : undefined;
           return [
             key,
             {
               type: section.component,
               props: {
                 ...section.props,
+                ...(rows && section.component === 'DataTableSection' ? { rows } : {}),
+                dataBindingId: section.dataBindingId,
                 actions: section.actions ?? [],
                 visualIntent: section.visualIntent ?? pageVisualIntent,
               },

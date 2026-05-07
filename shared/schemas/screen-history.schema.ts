@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { aiActivitySchema, aiSourceContextSchema } from './ai.schema';
+import { dataBindingSchema } from './data-binding.schema';
 import { appActionSchema, appUiSchemaSchema } from './ui-schema.schema';
 
 export const screenTriggerSchema = z.enum([
@@ -43,6 +44,8 @@ export const generatedScreenSchema = z
     inferredIntent: z.string().min(1),
     action: generatedScreenActionSchema.nullable().optional(),
     schema: appUiSchemaSchema,
+    databaseSchemaJsonId: z.string().uuid().nullable().default(null),
+    dataBindings: z.array(dataBindingSchema).default([]),
     contextSnapshot: aiSourceContextSchema
       .extend({
         previousScreen: appUiSchemaSchema.optional(),
@@ -65,6 +68,8 @@ export const screenJsonSchema = z
     inferredIntent: z.string().min(1),
     action: generatedScreenActionSchema.nullable().optional(),
     schema: appUiSchemaSchema,
+    databaseSchemaJsonId: z.string().uuid().nullable().default(null),
+    dataBindings: z.array(dataBindingSchema).default([]),
     contextSnapshot: aiSourceContextSchema
       .extend({
         previousScreen: appUiSchemaSchema.optional(),

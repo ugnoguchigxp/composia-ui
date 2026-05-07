@@ -56,6 +56,28 @@ describe('ui schema', () => {
     });
   });
 
+  it('validates optional data binding ids on sections', () => {
+    const parsed = appUiSchemaSchema.parse({
+      page: 'Products',
+      intent: 'List products from sandbox DB',
+      layout: 'entity-list',
+      sections: [
+        {
+          component: 'DataTableSection',
+          source: 'postgres',
+          dataBindingId: 'products_list',
+          props: {
+            title: 'Products',
+            columns: [{ key: 'name', label: 'Name' }],
+            rows: [],
+          },
+        },
+      ],
+    });
+
+    expect(parsed.sections[0].dataBindingId).toBe('products_list');
+  });
+
   it('rejects unsafe action targets', () => {
     expect(() =>
       appUiSchemaSchema.parse({

@@ -1,4 +1,5 @@
 import type { BaseComponentProps } from '@json-render/react';
+import { type FormEvent, useEffect, useState } from 'react';
 import type { z } from 'zod';
 import type { componentPropsSchemas } from '../../services/catalog.service';
 import { visualIntentClassName } from '../../services/visual-intent.service';
@@ -8,18 +9,42 @@ import {
   excludeRenderedActions,
   findActionForLabel,
   type RenderableAppActionProps,
+  useAppActionRenderContext,
 } from '../AppActionControl';
 
 type FormSectionProps = z.infer<(typeof componentPropsSchemas)['FormSection']> &
   RenderableAppActionProps;
 
 export function FormSection({ props }: BaseComponentProps<FormSectionProps>) {
+  const { onSubmitBinding, pendingBindingId } = useAppActionRenderContext();
   const secondaryAction = findActionForLabel(
     props.actions,
     props.secondaryAction?.label,
     props.secondaryAction?.href
   );
   const extraActions = excludeRenderedActions(props.actions, [secondaryAction]);
+  const [values, setValues] = useState<Record<string, unknown>>(() =>
+    valuesFromFields(props.fields)
+  );
+  const isSubmitting = Boolean(props.dataBindingId && pendingBindingId === props.dataBindingId);
+  const canSubmit = !props.dataBindingId || Boolean(onSubmitBinding && !isSubmitting);
+
+  useEffect(() => {
+    setValues(valuesFromFields(props.fields));
+  }, [props.fields]);
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!props.dataBindingId || !onSubmitBinding) return;
+    const payload = Object.fromEntries(
+      props.fields.flatMap((field) => {
+        const value = values[field.name];
+        if ((value === '' || value === undefined) && !field.required) return [];
+        return [[field.name, field.type === 'checkbox' ? Boolean(value) : value]];
+      })
+    );
+    onSubmitBinding(props.dataBindingId, payload);
+  };
 
   return (
     <section className={visualIntentClassName(props.visualIntent, 'rounded-lg border p-5')}>
@@ -29,7 +54,7 @@ export function FormSection({ props }: BaseComponentProps<FormSectionProps>) {
           <p className="mt-1 text-muted-foreground text-sm leading-6">{props.description}</p>
         ) : null}
       </div>
-      <form className="grid gap-4 md:grid-cols-2">
+      <form className="grid gap-4 md:grid-cols-2" onSubmit={handleSubmit}>
         {props.fields.map((field) => (
           <div
             className={field.type === 'textarea' ? 'grid gap-2 md:col-span-2' : 'grid gap-2'}
@@ -39,15 +64,20 @@ export function FormSection({ props }: BaseComponentProps<FormSectionProps>) {
               {field.label}
               {field.required ? <span className="text-destructive"> *</span> : null}
             </span>
-            <FormField field={field} />
+            <FormField
+              field={field}
+              onChange={(value) => setValues((current) => ({ ...current, [field.name]: value }))}
+              value={values[field.name]}
+            />
           </div>
         ))}
         <div className="flex flex-wrap gap-3 pt-2 md:col-span-2">
           <button
-            className="inline-flex h-ui items-center rounded-md bg-primary px-ui-button text-primary-foreground text-sm font-medium"
-            type="button"
+            className="inline-flex h-ui items-center rounded-md bg-primary px-ui-button text-primary-foreground text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={!canSubmit}
+            type="submit"
           >
-            {props.submitLabel ?? 'Submit'}
+            {isSubmitting ? '保存中...' : (props.submitLabel ?? 'Submit')}
           </button>
           <AppActionControl
             action={secondaryAction}
@@ -62,18 +92,31 @@ export function FormSection({ props }: BaseComponentProps<FormSectionProps>) {
   );
 }
 
-function FormField({ field }: { field: FormSectionProps['fields'][number] }) {
-  const commonClass =
-    'h-ui rounded-md border border-input bg-background px-3 text-sm outline-none disabled:opacity-100';
+function valuesFromFields(fields: FormSectionProps['fields']) {
+  return Object.fromEntries(
+    fields.map((field) => [field.name, field.value ?? (field.type === 'checkbox' ? false : '')])
+  );
+}
+
+function FormField({
+  field,
+  onChange,
+  value,
+}: {
+  field: FormSectionProps['fields'][number];
+  onChange: (value: unknown) => void;
+  value: unknown;
+}) {
+  const commonClass = 'h-ui rounded-md border border-input bg-background px-3 text-sm outline-none';
 
   if (field.type === 'textarea') {
     return (
       <textarea
         aria-label={field.label}
         className="min-h-28 rounded-md border border-input bg-background px-3 py-2 text-sm outline-none"
+        onChange={(event) => onChange(event.target.value)}
         placeholder={field.placeholder}
-        readOnly
-        value={String(field.value ?? '')}
+        value={String(value ?? '')}
       />
     );
   }
@@ -83,9 +126,10 @@ function FormField({ field }: { field: FormSectionProps['fields'][number] }) {
       <select
         aria-label={field.label}
         className={commonClass}
-        disabled
-        value={String(field.value ?? '')}
+        onChange={(event) => onChange(event.target.value)}
+        value={String(value ?? '')}
       >
+        <option value="">Select</option>
         {(field.options ?? []).map((option) => (
           <option key={option.value} value={option.value}>
             {option.label}
@@ -99,9 +143,9 @@ function FormField({ field }: { field: FormSectionProps['fields'][number] }) {
     return (
       <input
         aria-label={field.label}
-        checked={Boolean(field.value)}
+        checked={Boolean(value)}
         className="h-5 w-5 rounded border-input"
-        disabled
+        onChange={(event) => onChange(event.target.checked)}
         type="checkbox"
       />
     );
@@ -111,10 +155,10 @@ function FormField({ field }: { field: FormSectionProps['fields'][number] }) {
     <input
       aria-label={field.label}
       className={commonClass}
+      onChange={(event) => onChange(event.target.value)}
       placeholder={field.placeholder}
-      readOnly
       type={field.type}
-      value={String(field.value ?? '')}
+      value={String(value ?? '')}
     />
   );
 }

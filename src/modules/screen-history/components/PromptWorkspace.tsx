@@ -4,6 +4,7 @@ import {
   Bot,
   CheckCircle2,
   ChevronDown,
+  Database,
   History,
   Loader2,
   MessageSquare,
@@ -611,6 +612,17 @@ function ChatDock({
           ) : null}
         </div>
         <div className="flex items-center gap-1">
+          <Link
+            aria-label="Open DBDesign"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-secondary"
+            search={
+              activeScreenJsonId ? ({ screenJsonId: activeScreenJsonId } as never) : undefined
+            }
+            title="テーブル定義"
+            to={'/dbdesign' as never}
+          >
+            <Database className="h-4 w-4" />
+          </Link>
           <Link
             aria-label="Open history"
             className="inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-secondary"

@@ -9,6 +9,12 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
+import type { DataBinding } from '../../shared/schemas/data-binding.schema';
+import type {
+  DatabaseDesignMessage,
+  DatabaseSchemaDiffSummary,
+  DatabaseSchemaJson,
+} from '../../shared/schemas/database-design.schema';
 import type {
   GeneratedScreen,
   PromptSessionMessage,
@@ -148,6 +154,56 @@ export const promptSessions = pgTable(
   })
 );
 
+export const databaseDesignSessions = pgTable(
+  'database_design_sessions',
+  {
+    ...commonColumns,
+    title: text('title').notNull(),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    activeDatabaseSchemaJsonId: uuid('active_database_schema_json_id'),
+    activeScreenJsonId: uuid('active_screen_json_id'),
+  },
+  (table) => ({
+    createdByIdx: index('database_design_sessions_created_by_idx').on(table.createdBy),
+  })
+);
+
+export const databaseSchemaJsons = pgTable(
+  'database_schema_jsons',
+  {
+    ...commonColumns,
+    designSessionId: uuid('design_session_id')
+      .notNull()
+      .references(() => databaseDesignSessions.id, { onDelete: 'cascade' }),
+    version: integer('version').notNull(),
+    prompt: text('prompt').notNull(),
+    trigger: text('trigger').notNull(),
+    schema: jsonb('schema').$type<DatabaseSchemaJson>().notNull(),
+    diffSummary: jsonb('diff_summary').$type<DatabaseSchemaDiffSummary>().notNull().default({
+      addedTables: [],
+      changedTables: [],
+      removedTables: [],
+      destructive: false,
+    }),
+    providerMeta: jsonb('provider_meta')
+      .$type<{
+        provider: 'openai' | 'azure-openai' | 'mock';
+        model?: string;
+        componentRegistryVersion: string;
+      }>()
+      .notNull(),
+  },
+  (table) => ({
+    designSessionIdx: index('database_schema_jsons_design_session_idx').on(table.designSessionId),
+    designSessionVersionUniqueIdx: uniqueIndex('database_schema_jsons_session_version_uidx').on(
+      table.designSessionId,
+      table.version
+    ),
+  })
+);
+
 export const screenJsons = pgTable(
   'screen_jsons',
   {
@@ -161,15 +217,100 @@ export const screenJsons = pgTable(
     inferredIntent: text('inferred_intent').notNull(),
     action: jsonb('action').$type<ScreenJson['action']>(),
     schema: jsonb('schema').$type<AppUiSchema>().notNull(),
+    databaseSchemaJsonId: uuid('database_schema_json_id').references(() => databaseSchemaJsons.id, {
+      onDelete: 'set null',
+    }),
+    dataBindings: jsonb('data_bindings').$type<DataBinding[]>().notNull().default([]),
     contextSnapshot: jsonb('context_snapshot').$type<ScreenJson['contextSnapshot']>().notNull(),
     providerMeta: jsonb('provider_meta').$type<ScreenJson['providerMeta']>().notNull(),
   },
   (table) => ({
+    databaseSchemaJsonIdx: index('screen_jsons_database_schema_json_idx').on(
+      table.databaseSchemaJsonId
+    ),
     sessionIdx: index('screen_jsons_session_idx').on(table.sessionId),
     sessionVersionUniqueIdx: uniqueIndex('screen_jsons_session_version_uidx').on(
       table.sessionId,
       table.version
     ),
+  })
+);
+
+export const databaseDesignMessages = pgTable(
+  'database_design_messages',
+  {
+    ...commonColumns,
+    designSessionId: uuid('design_session_id')
+      .notNull()
+      .references(() => databaseDesignSessions.id, { onDelete: 'cascade' }),
+    databaseSchemaJsonId: uuid('database_schema_json_id').references(() => databaseSchemaJsons.id, {
+      onDelete: 'cascade',
+    }),
+    screenJsonId: uuid('screen_json_id').references(() => screenJsons.id, {
+      onDelete: 'cascade',
+    }),
+    role: text('role').notNull(),
+    content: text('content').notNull(),
+    metadata: jsonb('metadata').$type<DatabaseDesignMessage['metadata']>().notNull().default({}),
+  },
+  (table) => ({
+    createdAtIdx: index('database_design_messages_created_at_idx').on(table.createdAt),
+    databaseSchemaJsonIdx: index('database_design_messages_database_schema_json_idx').on(
+      table.databaseSchemaJsonId
+    ),
+    designSessionIdx: index('database_design_messages_design_session_idx').on(
+      table.designSessionId
+    ),
+    screenJsonIdx: index('database_design_messages_screen_json_idx').on(table.screenJsonId),
+  })
+);
+
+export const sandboxMigrationRuns = pgTable(
+  'sandbox_migration_runs',
+  {
+    ...commonColumns,
+    databaseSchemaJsonId: uuid('database_schema_json_id')
+      .notNull()
+      .references(() => databaseSchemaJsons.id, { onDelete: 'cascade' }),
+    status: text('status').notNull(),
+    fromVersion: integer('from_version'),
+    toVersion: integer('to_version').notNull(),
+    sql: text('sql').notNull(),
+    checksum: text('checksum').notNull(),
+    appliedAt: timestamp('applied_at'),
+    errorMessage: text('error_message'),
+  },
+  (table) => ({
+    checksumIdx: index('sandbox_migration_runs_checksum_idx').on(table.checksum),
+    databaseSchemaJsonIdx: index('sandbox_migration_runs_database_schema_json_idx').on(
+      table.databaseSchemaJsonId
+    ),
+  })
+);
+
+export const sandboxManagedObjects = pgTable(
+  'sandbox_managed_objects',
+  {
+    ...commonColumns,
+    databaseSchemaJsonId: uuid('database_schema_json_id').references(() => databaseSchemaJsons.id, {
+      onDelete: 'set null',
+    }),
+    migrationRunId: uuid('migration_run_id').references(() => sandboxMigrationRuns.id, {
+      onDelete: 'set null',
+    }),
+    objectType: text('object_type').notNull(),
+    objectKey: text('object_key').notNull(),
+    objectName: text('object_name').notNull(),
+    parentObjectName: text('parent_object_name'),
+    status: text('status').notNull(),
+  },
+  (table) => ({
+    databaseSchemaJsonIdx: index('sandbox_managed_objects_database_schema_json_idx').on(
+      table.databaseSchemaJsonId
+    ),
+    migrationRunIdx: index('sandbox_managed_objects_migration_run_idx').on(table.migrationRunId),
+    objectKeyUniqueIdx: uniqueIndex('sandbox_managed_objects_object_key_uidx').on(table.objectKey),
+    objectNameIdx: index('sandbox_managed_objects_object_name_idx').on(table.objectName),
   })
 );
 

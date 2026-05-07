@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { dataBindingIdentifierSchema } from './data-binding.schema';
 import { visualIntentSchema } from './visual-intent.schema';
 
 const appRelativePathSchema = z
@@ -65,6 +66,7 @@ export const appUiSchemaSectionSchema = z
     source: z.string().min(1),
     variant: z.string().min(1).optional(),
     props: z.record(z.string(), z.unknown()).default({}),
+    dataBindingId: dataBindingIdentifierSchema.optional(),
     actions: z.array(appActionSchema).optional(),
     visualIntent: visualIntentSchema.optional(),
   })

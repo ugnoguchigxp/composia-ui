@@ -12,6 +12,8 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as PromptRouteImport } from './routes/prompt'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as HistoryRouteImport } from './routes/history'
+import { Route as DbdesignRouteImport } from './routes/dbdesign'
+import { Route as DatabaseRouteImport } from './routes/database'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as PromptScreenIdRouteImport } from './routes/prompt.$screenId'
 import { Route as OauthCallbackRouteImport } from './routes/oauth.callback'
@@ -30,6 +32,16 @@ const LoginRoute = LoginRouteImport.update({
 const HistoryRoute = HistoryRouteImport.update({
   id: '/history',
   path: '/history',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DbdesignRoute = DbdesignRouteImport.update({
+  id: '/dbdesign',
+  path: '/dbdesign',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DatabaseRoute = DatabaseRouteImport.update({
+  id: '/database',
+  path: '/database',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -55,6 +67,8 @@ const PromptSessionSessionIdRoute = PromptSessionSessionIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/database': typeof DatabaseRoute
+  '/dbdesign': typeof DbdesignRoute
   '/history': typeof HistoryRoute
   '/login': typeof LoginRoute
   '/prompt': typeof PromptRouteWithChildren
@@ -64,6 +78,8 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/database': typeof DatabaseRoute
+  '/dbdesign': typeof DbdesignRoute
   '/history': typeof HistoryRoute
   '/login': typeof LoginRoute
   '/prompt': typeof PromptRouteWithChildren
@@ -74,6 +90,8 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/database': typeof DatabaseRoute
+  '/dbdesign': typeof DbdesignRoute
   '/history': typeof HistoryRoute
   '/login': typeof LoginRoute
   '/prompt': typeof PromptRouteWithChildren
@@ -85,6 +103,8 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/database'
+    | '/dbdesign'
     | '/history'
     | '/login'
     | '/prompt'
@@ -94,6 +114,8 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/database'
+    | '/dbdesign'
     | '/history'
     | '/login'
     | '/prompt'
@@ -103,6 +125,8 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/database'
+    | '/dbdesign'
     | '/history'
     | '/login'
     | '/prompt'
@@ -113,6 +137,8 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  DatabaseRoute: typeof DatabaseRoute
+  DbdesignRoute: typeof DbdesignRoute
   HistoryRoute: typeof HistoryRoute
   LoginRoute: typeof LoginRoute
   PromptRoute: typeof PromptRouteWithChildren
@@ -140,6 +166,20 @@ declare module '@tanstack/react-router' {
       path: '/history'
       fullPath: '/history'
       preLoaderRoute: typeof HistoryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/dbdesign': {
+      id: '/dbdesign'
+      path: '/dbdesign'
+      fullPath: '/dbdesign'
+      preLoaderRoute: typeof DbdesignRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/database': {
+      id: '/database'
+      path: '/database'
+      fullPath: '/database'
+      preLoaderRoute: typeof DatabaseRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -188,6 +228,8 @@ const PromptRouteWithChildren =
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  DatabaseRoute: DatabaseRoute,
+  DbdesignRoute: DbdesignRoute,
   HistoryRoute: HistoryRoute,
   LoginRoute: LoginRoute,
   PromptRoute: PromptRouteWithChildren,

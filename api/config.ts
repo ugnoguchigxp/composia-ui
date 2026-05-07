@@ -8,6 +8,11 @@ const envSchema = z
     NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
     PORT: z.coerce.number().default(3000),
     DATABASE_URL: z.string(),
+    SANDBOX_DATABASE_URL: z.string().trim().optional(),
+    SANDBOX_DATABASE_RESET_ALLOWED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
     JWT_SECRET: z.string().min(32),
     JWT_ACCESS_EXPIRES_IN: z
       .string()

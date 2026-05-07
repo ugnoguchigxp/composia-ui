@@ -4,10 +4,13 @@ import { cn } from '../../../lib/utils';
 
 export type RenderableAppActionProps = {
   actions?: AppAction[];
+  dataBindingId?: string;
 };
 
 type AppActionContextValue = {
   onAction?: (action: AppAction) => void;
+  onSubmitBinding?: (dataBindingId: string, value: Record<string, unknown>) => void;
+  pendingBindingId?: string | null;
   pendingActionId?: string | null;
 };
 
@@ -17,12 +20,20 @@ export function AppActionRenderProvider({
   children,
   onAction,
   pendingActionId,
+  pendingBindingId,
+  onSubmitBinding,
 }: AppActionContextValue & { children: ReactNode }) {
   return (
-    <AppActionRenderContext.Provider value={{ onAction, pendingActionId }}>
+    <AppActionRenderContext.Provider
+      value={{ onAction, onSubmitBinding, pendingActionId, pendingBindingId }}
+    >
       {children}
     </AppActionRenderContext.Provider>
   );
+}
+
+export function useAppActionRenderContext() {
+  return useContext(AppActionRenderContext);
 }
 
 type AppActionControlProps = {
