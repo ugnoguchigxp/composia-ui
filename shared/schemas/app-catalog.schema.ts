@@ -97,14 +97,6 @@ const cardGridItemSchema = z
   })
   .strict();
 
-const processStepSchema = z
-  .object({
-    title: z.string().min(1),
-    description: z.string().optional(),
-    status: z.enum(['completed', 'current', 'upcoming']).optional(),
-  })
-  .strict();
-
 const optionSchema = z
   .object({
     label: z.string().min(1),
@@ -134,13 +126,14 @@ const keyValueSchema = z
   })
   .strict();
 
-const masterDetailItemSchema = z
+const stepperStepSchema = z
   .object({
     id: z.string().min(1),
     title: z.string().min(1),
     description: z.string().optional(),
+    status: z.enum(['completed', 'current', 'upcoming']).optional(),
+    disabled: z.boolean().optional(),
     meta: displayMetadataSchema.optional(),
-    status: z.string().optional(),
   })
   .strict();
 
@@ -168,6 +161,26 @@ const calendarEventSchema = z
     time: z.string().optional(),
     description: z.string().optional(),
     tone: visualIntentSchema.shape.tone.optional(),
+  })
+  .strict();
+
+const scheduleEntrySchema = z
+  .object({
+    date: z.string().min(1),
+    title: z.string().min(1),
+    amount: z.union([z.string(), z.number()]),
+    status: z.enum(['scheduled', 'processing', 'paid', 'overdue']).default('scheduled'),
+  })
+  .strict();
+
+const holdingRecordSchema = z
+  .object({
+    ticker: z.string().min(1),
+    name: z.string().min(1),
+    quantityLabel: z.string().min(1),
+    acquiredLabel: z.string().min(1),
+    category: z.enum(['Stock', 'ETF', 'REIT']).default('Stock'),
+    value: z.union([z.string(), z.number()]),
   })
   .strict();
 
@@ -203,6 +216,89 @@ const progressItemSchema = z
     max: z.number().positive().default(100),
     description: z.string().optional(),
     tone: visualIntentSchema.shape.tone.optional(),
+  })
+  .strict();
+
+const accordionItemSchema = z
+  .object({
+    id: z.string().min(1),
+    title: z.string().min(1),
+    content: z.string().min(1),
+    meta: z.string().optional(),
+  })
+  .strict();
+
+const controlPanelModeSchema = z
+  .object({
+    id: z.string().min(1),
+    label: z.string().min(1),
+  })
+  .strict();
+
+const controlPanelControlSchema = z
+  .object({
+    id: z.string().min(1),
+    label: z.string().min(1),
+    icon: z.enum(['sun', 'thermometer', 'volume', 'timer']).default('sun'),
+    value: z.number().min(0).max(100),
+    min: z.number().default(0),
+    max: z.number().default(100),
+    step: z.number().positive().default(1),
+  })
+  .strict();
+
+const chartInsightItemSchema = z
+  .object({
+    title: z.string().min(1),
+    body: z.string().min(1),
+  })
+  .strict();
+
+const statsTrendCardSchema = z
+  .object({
+    label: z.string().min(1),
+    value: z.union([z.string(), z.number()]),
+    delta: z.string().min(1),
+    deltaTone: z.enum(['neutral', 'primary', 'success', 'warning', 'danger']).default('neutral'),
+    period: z.string().min(1).default('vs prev'),
+  })
+  .strict();
+
+const activityFeedItemSchema = z
+  .object({
+    actor: z.string().min(1),
+    action: z.string().min(1),
+    target: z.string().min(1),
+    status: z.enum(['success', 'warning', 'danger', 'neutral']).default('neutral'),
+    timestamp: z.string().min(1),
+  })
+  .strict();
+
+const notificationItemSchema = z
+  .object({
+    id: z.string().min(1),
+    title: z.string().min(1),
+    body: z.string().optional(),
+    level: z.enum(['info', 'success', 'warning', 'danger']).default('info'),
+    read: z.boolean().default(false),
+    timestamp: z.string().optional(),
+  })
+  .strict();
+
+const quickActionItemSchema = z
+  .object({
+    id: z.string().min(1),
+    label: z.string().min(1),
+    description: z.string().optional(),
+    icon: z.enum(['play', 'download', 'refresh-cw', 'settings', 'shield']).default('play'),
+  })
+  .strict();
+
+const checkoutLineItemSchema = z
+  .object({
+    label: z.string().min(1),
+    value: z.union([z.string(), z.number()]),
+    emphasize: z.boolean().default(false),
   })
   .strict();
 
@@ -282,6 +378,18 @@ export const componentPropsSchemas = {
       visualIntent: visualIntentSchema.optional(),
     })
     .strict(),
+  ChartInsightSection: z
+    .object({
+      title: z.string().min(1),
+      description: z.string().optional(),
+      chartType: z.enum(['bar', 'pie']).default('bar'),
+      valueLabel: z.string().min(1).default('Value'),
+      data: z.array(chartDatumSchema).max(12).default([]),
+      insights: z.array(chartInsightItemSchema).max(6).default([]),
+      actions: renderActionsSchema,
+      visualIntent: visualIntentSchema.optional(),
+    })
+    .strict(),
   ProgressListSection: z
     .object({
       title: z.string().min(1),
@@ -349,11 +457,16 @@ export const componentPropsSchemas = {
       visualIntent: visualIntentSchema.optional(),
     })
     .strict(),
-  ProcessStepperSection: z
+  StepperSection: z
     .object({
       title: z.string().min(1),
       description: z.string().optional(),
-      steps: z.array(processStepSchema).max(8).default([]),
+      steps: z.array(stepperStepSchema).max(12).default([]),
+      orientation: z.enum(['horizontal', 'vertical']).default('horizontal'),
+      variant: z.enum(['split', 'accordion']).default('split'),
+      activeStepId: z.string().min(1).optional(),
+      compactOnMobile: z.boolean().default(true),
+      inlineContentOnVerticalMobile: z.boolean().default(true),
       actions: renderActionsSchema,
       visualIntent: visualIntentSchema.optional(),
     })
@@ -378,23 +491,6 @@ export const componentPropsSchemas = {
       visualIntent: visualIntentSchema.optional(),
     })
     .strict(),
-  MasterDetailSection: z
-    .object({
-      title: z.string().min(1),
-      description: z.string().optional(),
-      items: z.array(masterDetailItemSchema).max(20).default([]),
-      detail: z
-        .object({
-          title: z.string().min(1),
-          description: z.string().optional(),
-          fields: z.array(keyValueSchema).default([]),
-        })
-        .strict()
-        .default({ title: '詳細', fields: [] }),
-      actions: renderActionsSchema,
-      visualIntent: visualIntentSchema.optional(),
-    })
-    .strict(),
   KanbanSection: z
     .object({
       title: z.string().min(1),
@@ -409,6 +505,108 @@ export const componentPropsSchemas = {
       title: z.string().min(1),
       description: z.string().optional(),
       events: z.array(calendarEventSchema).max(20).default([]),
+      actions: renderActionsSchema,
+      visualIntent: visualIntentSchema.optional(),
+    })
+    .strict(),
+  ScheduleSection: z
+    .object({
+      title: z.string().min(1).default('Upcoming Schedule'),
+      description: z.string().default('Select a date to view scheduled items.'),
+      monthLabel: z.string().min(1).default('May 2026'),
+      weekDays: z
+        .array(z.string().min(1))
+        .length(7)
+        .default(['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']),
+      days: z
+        .array(z.number().int())
+        .length(42)
+        .default([
+          26, 27, 28, 29, 30, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+          21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 1, 2, 3, 4, 5, 6,
+        ]),
+      selectedDay: z.number().int().default(8),
+      entries: z.array(scheduleEntrySchema).max(20).default([]),
+      actions: renderActionsSchema,
+      visualIntent: visualIntentSchema.optional(),
+    })
+    .strict(),
+  HoldingsListSection: z
+    .object({
+      searchPlaceholder: z.string().min(1).default('Search holdings or tickers...'),
+      tabs: z.array(z.enum(['Stocks', 'ETFs', 'REITs'])).default(['Stocks', 'ETFs', 'REITs']),
+      activeTab: z.enum(['Stocks', 'ETFs', 'REITs']).default('ETFs'),
+      holdings: z.array(holdingRecordSchema).max(40).default([]),
+      actions: renderActionsSchema,
+      visualIntent: visualIntentSchema.optional(),
+    })
+    .strict(),
+  AccordionSection: z
+    .object({
+      title: z.string().min(1),
+      description: z.string().optional(),
+      type: z.enum(['single', 'multiple']).default('single'),
+      defaultExpandedIds: z.array(z.string().min(1)).default([]),
+      items: z.array(accordionItemSchema).max(20).default([]),
+      actions: renderActionsSchema,
+      visualIntent: visualIntentSchema.optional(),
+    })
+    .strict(),
+  ControlPanelSection: z
+    .object({
+      title: z.string().min(1),
+      description: z.string().optional(),
+      enabled: z.boolean().default(true),
+      modes: z.array(controlPanelModeSchema).max(8).default([]),
+      activeModeId: z.string().min(1).optional(),
+      controls: z.array(controlPanelControlSchema).max(12).default([]),
+      actions: renderActionsSchema,
+      visualIntent: visualIntentSchema.optional(),
+    })
+    .strict(),
+  StatsTrendCardsSection: z
+    .object({
+      title: z.string().min(1),
+      description: z.string().optional(),
+      cards: z.array(statsTrendCardSchema).max(8).default([]),
+      actions: renderActionsSchema,
+      visualIntent: visualIntentSchema.optional(),
+    })
+    .strict(),
+  ActivityFeedSection: z
+    .object({
+      title: z.string().min(1),
+      description: z.string().optional(),
+      items: z.array(activityFeedItemSchema).max(30).default([]),
+      actions: renderActionsSchema,
+      visualIntent: visualIntentSchema.optional(),
+    })
+    .strict(),
+  NotificationCenterSection: z
+    .object({
+      title: z.string().min(1),
+      description: z.string().optional(),
+      items: z.array(notificationItemSchema).max(30).default([]),
+      actions: renderActionsSchema,
+      visualIntent: visualIntentSchema.optional(),
+    })
+    .strict(),
+  QuickActionsSection: z
+    .object({
+      title: z.string().min(1),
+      description: z.string().optional(),
+      items: z.array(quickActionItemSchema).max(16).default([]),
+      actions: renderActionsSchema,
+      visualIntent: visualIntentSchema.optional(),
+    })
+    .strict(),
+  CheckoutSummarySection: z
+    .object({
+      title: z.string().min(1).default('Order Summary'),
+      description: z.string().optional(),
+      lines: z.array(checkoutLineItemSchema).max(20).default([]),
+      primaryActionLabel: z.string().min(1).default('Proceed to Payment'),
+      secondaryActionLabel: z.string().min(1).default('Edit Cart'),
       actions: renderActionsSchema,
       visualIntent: visualIntentSchema.optional(),
     })
@@ -501,7 +699,7 @@ export const componentPropsSchemas = {
 
 export type AppComponentName = keyof typeof componentPropsSchemas;
 
-export const appCatalogVersion = 'app-catalog-v8';
+export const appCatalogVersion = 'app-catalog-v11';
 
 export const componentDefinitions = componentDefinitionSchema.array().parse([
   {
@@ -573,6 +771,16 @@ export const componentDefinitions = componentDefinitionSchema.array().parse([
     variants: ['bar', 'line', 'area', 'pie', 'radar'],
   },
   {
+    name: 'ChartInsightSection',
+    description: 'Bar or pie chart with companion insight text blocks.',
+    allowedSources: ['summary', 'postgres', 'api', 'app'],
+    placement: 'section',
+    propsSchema: componentPropsSchemas.ChartInsightSection,
+    promptProps:
+      'title, description?, chartType?, valueLabel?, data[label,value]?, insights[title,body]?',
+    variants: ['bar-with-insights', 'pie-with-insights'],
+  },
+  {
     name: 'ProgressListSection',
     description: 'A progress and completion list for goals, setup status, quotas, or score bands.',
     allowedSources: ['summary', 'postgres', 'api', 'app'],
@@ -623,13 +831,15 @@ export const componentDefinitions = componentDefinitionSchema.array().parse([
     promptProps: 'title, description?, items[title,description?,badge?,href?,image?]?',
   },
   {
-    name: 'ProcessStepperSection',
+    name: 'StepperSection',
     description:
-      'A stepper for workflows, onboarding, setup, ordering, or incident response flows.',
-    allowedSources: ['summary', 'api', 'markdown'],
+      'A design-system migrated stepper for workflows, onboarding, setup, ordering, or incident response.',
+    allowedSources: ['summary', 'api', 'markdown', 'app'],
     placement: 'section',
-    propsSchema: componentPropsSchemas.ProcessStepperSection,
-    promptProps: 'title, description?, steps[title,description?,status?]?',
+    propsSchema: componentPropsSchemas.StepperSection,
+    promptProps:
+      'title, description?, steps[id,title,description?,status?,disabled?,meta?]?, orientation?, variant?, activeStepId?, compactOnMobile?, inlineContentOnVerticalMobile?',
+    variants: ['vertical-split', 'vertical-accordion', 'horizontal'],
   },
   {
     name: 'CardGridSection',
@@ -649,15 +859,6 @@ export const componentDefinitions = componentDefinitionSchema.array().parse([
       'title, description?, fields[name,label,type?,placeholder?,value?,required?,options?]?, submitLabel?, secondaryAction?',
   },
   {
-    name: 'MasterDetailSection',
-    description: 'A master-detail split for tickets, customers, messages, records, or documents.',
-    allowedSources: ['app', 'api', 'postgres', 'markdown'],
-    placement: 'section',
-    propsSchema: componentPropsSchemas.MasterDetailSection,
-    promptProps:
-      'title, description?, items[id,title,description?,meta?,status?]?, detail[title,description?,fields?]?',
-  },
-  {
     name: 'KanbanSection',
     description: 'A kanban board for work items, tickets, leads, tasks, or workflows.',
     allowedSources: ['app', 'api', 'postgres'],
@@ -673,6 +874,91 @@ export const componentDefinitions = componentDefinitionSchema.array().parse([
     placement: 'section',
     propsSchema: componentPropsSchemas.CalendarSection,
     promptProps: 'title, description?, events[title,date,time?,description?,tone?]?',
+  },
+  {
+    name: 'ScheduleSection',
+    description: 'A month calendar card for upcoming scheduled items.',
+    allowedSources: ['app', 'api', 'postgres'],
+    placement: 'section',
+    propsSchema: componentPropsSchemas.ScheduleSection,
+    promptProps:
+      'title?, description?, monthLabel?, weekDays?, days?, selectedDay?, entries[date,title,amount,status?]?',
+    variants: ['upcoming-schedule-monthly'],
+  },
+  {
+    name: 'HoldingsListSection',
+    description: 'A searchable holdings list with category tabs and value columns.',
+    allowedSources: ['app', 'api', 'postgres', 'summary'],
+    placement: 'section',
+    propsSchema: componentPropsSchemas.HoldingsListSection,
+    promptProps:
+      'searchPlaceholder?, tabs?, activeTab?, holdings[ticker,name,quantityLabel,acquiredLabel,category?,value]?',
+    variants: ['portfolio-holdings-list'],
+  },
+  {
+    name: 'AccordionSection',
+    description: 'Accordion section for FAQs, policy notes, and collapsible detail groups.',
+    allowedSources: ['app', 'api', 'markdown', 'summary'],
+    placement: 'section',
+    propsSchema: componentPropsSchemas.AccordionSection,
+    promptProps: 'title, description?, type?, defaultExpandedIds?, items[id,title,content,meta?]?',
+    variants: ['faq-accordion', 'details-accordion'],
+  },
+  {
+    name: 'ControlPanelSection',
+    description: 'A settings control panel with switch, mode tabs, and range controls.',
+    allowedSources: ['app', 'api', 'summary'],
+    placement: 'section',
+    propsSchema: componentPropsSchemas.ControlPanelSection,
+    promptProps:
+      'title, description?, enabled?, modes[id,label]?, activeModeId?, controls[id,label,icon?,value,min?,max?,step?]?',
+    variants: ['ambient-control-panel', 'settings-sliders'],
+  },
+  {
+    name: 'StatsTrendCardsSection',
+    description: 'Metric cards with comparison deltas and period labels.',
+    allowedSources: ['summary', 'api', 'postgres', 'app'],
+    placement: 'section',
+    propsSchema: componentPropsSchemas.StatsTrendCardsSection,
+    promptProps: 'title, description?, cards[label,value,delta,deltaTone?,period?]?',
+    variants: ['kpi-trends'],
+  },
+  {
+    name: 'ActivityFeedSection',
+    description: 'Operational activity feed with actor/action/target/status.',
+    allowedSources: ['summary', 'api', 'postgres', 'app'],
+    placement: 'section',
+    propsSchema: componentPropsSchemas.ActivityFeedSection,
+    promptProps: 'title, description?, items[actor,action,target,status?,timestamp]?',
+    variants: ['audit-activity-feed'],
+  },
+  {
+    name: 'NotificationCenterSection',
+    description: 'Notification list with read-state and severity levels.',
+    allowedSources: ['summary', 'api', 'app'],
+    placement: 'section',
+    propsSchema: componentPropsSchemas.NotificationCenterSection,
+    promptProps: 'title, description?, items[id,title,body?,level?,read?,timestamp?]?',
+    variants: ['notification-center'],
+  },
+  {
+    name: 'QuickActionsSection',
+    description: 'Grid of icon-based immediate actions.',
+    allowedSources: ['app', 'api', 'summary'],
+    placement: 'section',
+    propsSchema: componentPropsSchemas.QuickActionsSection,
+    promptProps: 'title, description?, items[id,label,description?,icon?]?',
+    variants: ['quick-actions-grid'],
+  },
+  {
+    name: 'CheckoutSummarySection',
+    description: 'Checkout amount summary with total emphasis and action row.',
+    allowedSources: ['app', 'api', 'postgres'],
+    placement: 'section',
+    propsSchema: componentPropsSchemas.CheckoutSummarySection,
+    promptProps:
+      'title?, description?, lines[label,value,emphasize?]?, primaryActionLabel?, secondaryActionLabel?',
+    variants: ['checkout-summary'],
   },
   {
     name: 'ChatPanelSection',

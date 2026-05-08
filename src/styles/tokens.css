@@ -35,6 +35,13 @@
   --ui-badge-padding-x: 0.5rem;
   --ui-badge-padding-y: 0.25rem;
   --ui-card-padding: 1.5rem;
+  --ui-section-padding-x: 1.25rem;
+  --ui-section-padding-y: 1.25rem;
+  --ui-section-header-padding-x: 1.25rem;
+  --ui-section-header-padding-y: 0.875rem;
+  --ui-section-gap: 1rem;
+  --ui-section-radius: var(--radius);
+  --ui-section-control-height: 2.75rem;
   /* 24px */
   --ui-drawer-width-left: 320px;
   --ui-drawer-width-right: 420px;
@@ -81,6 +88,13 @@
   --ui-badge-padding-x: 0.25rem;
   --ui-badge-padding-y: 0px;
   --ui-card-padding: 1rem;
+  --ui-section-padding-x: 1rem;
+  --ui-section-padding-y: 1rem;
+  --ui-section-header-padding-x: 1rem;
+  --ui-section-header-padding-y: 0.75rem;
+  --ui-section-gap: 0.75rem;
+  --ui-section-radius: var(--radius);
+  --ui-section-control-height: 2.25rem;
   --ui-drawer-width-left: 280px;
   --ui-drawer-width-right: 384px;
   --ui-step-circle-size: 2rem;
@@ -118,6 +132,13 @@
   --ui-badge-padding-x: 0.75rem;
   --ui-badge-padding-y: 0.5rem;
   --ui-card-padding: 2rem;
+  --ui-section-padding-x: 1.5rem;
+  --ui-section-padding-y: 1.5rem;
+  --ui-section-header-padding-x: 1.5rem;
+  --ui-section-header-padding-y: 1rem;
+  --ui-section-gap: 1.25rem;
+  --ui-section-radius: var(--radius);
+  --ui-section-control-height: 3rem;
   --ui-drawer-width-left: 360px;
   --ui-drawer-width-right: 560px;
   --ui-step-circle-size: 3rem;
@@ -162,6 +183,13 @@
   /* 24px */
   /* 22px */
   --ui-card-padding: 1.5rem;
+  --ui-section-padding-x: 1.25rem;
+  --ui-section-padding-y: 1.25rem;
+  --ui-section-header-padding-x: 1.25rem;
+  --ui-section-header-padding-y: 0.875rem;
+  --ui-section-gap: 1rem;
+  --ui-section-radius: var(--radius);
+  --ui-section-control-height: 2.75rem;
   --ui-drawer-width-left: 320px;
   --ui-drawer-width-right: 420px;
   --ui-step-circle-size: 2.75rem;

@@ -41,6 +41,10 @@ const envSchema = z
     AZURE_OPENAI_ENDPOINT: z.string().trim().url().optional(),
     AZURE_OPENAI_DEPLOYMENT_NAME: z.string().trim().optional(),
     AZURE_OPENAI_API_VERSION: z.string().trim().default('2024-10-21'),
+    ANTHROPIC_API_KEY: z.string().trim().optional(),
+    ANTHROPIC_MODEL: z.string().trim().default('claude-3-7-sonnet-latest'),
+    GOOGLE_AI_API_KEY: z.string().trim().optional(),
+    GOOGLE_AI_MODEL: z.string().trim().default('gemini-2.0-flash-exp'),
   })
   .superRefine((env, ctx) => {
     const hasGoogleId = Boolean(env.GOOGLE_CLIENT_ID);

@@ -49,6 +49,10 @@ export const appJsonRenderCatalog = defineCatalog(reactSchema, {
       props: componentPropsSchemas.ChartSection,
       description: 'A Recharts-backed section for numeric charts and score comparisons.',
     },
+    ChartInsightSection: {
+      props: componentPropsSchemas.ChartInsightSection,
+      description: 'A bar or pie chart paired with textual insights and highlights.',
+    },
     ProgressListSection: {
       props: componentPropsSchemas.ProgressListSection,
       description: 'A section that renders progress, quota, completion, or health rows.',
@@ -73,9 +77,9 @@ export const appJsonRenderCatalog = defineCatalog(reactSchema, {
       props: componentPropsSchemas.CarouselSection,
       description: 'A horizontal carousel for products, content, or recommendations.',
     },
-    ProcessStepperSection: {
-      props: componentPropsSchemas.ProcessStepperSection,
-      description: 'A stepper for workflows, setup, ordering, or incident processes.',
+    StepperSection: {
+      props: componentPropsSchemas.StepperSection,
+      description: 'A migrated stepper section for workflows, setup, ordering, and process UI.',
     },
     CardGridSection: {
       props: componentPropsSchemas.CardGridSection,
@@ -85,10 +89,6 @@ export const appJsonRenderCatalog = defineCatalog(reactSchema, {
       props: componentPropsSchemas.FormSection,
       description: 'A structured form for create, edit, settings, checkout, or applications.',
     },
-    MasterDetailSection: {
-      props: componentPropsSchemas.MasterDetailSection,
-      description: 'A master-detail split for records, tickets, messages, or documents.',
-    },
     KanbanSection: {
       props: componentPropsSchemas.KanbanSection,
       description: 'A kanban board for tasks, tickets, leads, or workflow states.',
@@ -96,6 +96,42 @@ export const appJsonRenderCatalog = defineCatalog(reactSchema, {
     CalendarSection: {
       props: componentPropsSchemas.CalendarSection,
       description: 'A schedule or calendar agenda for events, deadlines, and bookings.',
+    },
+    ScheduleSection: {
+      props: componentPropsSchemas.ScheduleSection,
+      description: 'A monthly schedule calendar with selectable day highlights.',
+    },
+    HoldingsListSection: {
+      props: componentPropsSchemas.HoldingsListSection,
+      description: 'A holdings list with search input, category tabs, and value-focused rows.',
+    },
+    AccordionSection: {
+      props: componentPropsSchemas.AccordionSection,
+      description: 'A collapsible accordion list for FAQs and grouped detail notes.',
+    },
+    StatsTrendCardsSection: {
+      props: componentPropsSchemas.StatsTrendCardsSection,
+      description: 'A section for key performance indicators with trend deltas and periods.',
+    },
+    ActivityFeedSection: {
+      props: componentPropsSchemas.ActivityFeedSection,
+      description: 'A chronological list of recent activities, actions, and status updates.',
+    },
+    NotificationCenterSection: {
+      props: componentPropsSchemas.NotificationCenterSection,
+      description: 'A central list of system notifications, alerts, and level-coded messages.',
+    },
+    QuickActionsSection: {
+      props: componentPropsSchemas.QuickActionsSection,
+      description: 'A grid or list of immediate task shortcuts and command buttons.',
+    },
+    CheckoutSummarySection: {
+      props: componentPropsSchemas.CheckoutSummarySection,
+      description: 'A summary of line items, taxes, and totals for checkout and payment.',
+    },
+    ControlPanelSection: {
+      props: componentPropsSchemas.ControlPanelSection,
+      description: 'A settings panel with mode tabs, master switch, and slider controls.',
     },
     ChatPanelSection: {
       props: componentPropsSchemas.ChatPanelSection,

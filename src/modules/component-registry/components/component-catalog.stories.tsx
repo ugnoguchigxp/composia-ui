@@ -52,22 +52,31 @@ function sectionStory(component: SectionComponentName): Story {
 
 export const KpiSummarySection = sectionStory('KpiSummarySection');
 export const ChartSection = sectionStory('ChartSection');
+export const ChartInsightSection = sectionStory('ChartInsightSection');
 export const ProgressListSection = sectionStory('ProgressListSection');
 export const TimelineSection = sectionStory('TimelineSection');
 export const InsightPanel = sectionStory('InsightPanel');
 export const ImageSection = sectionStory('ImageSection');
 export const SplitHeroSection = sectionStory('SplitHeroSection');
 export const CarouselSection = sectionStory('CarouselSection');
-export const ProcessStepperSection = sectionStory('ProcessStepperSection');
+export const StepperSection = sectionStory('StepperSection');
 export const CardGridSection = sectionStory('CardGridSection');
 export const FormSection = sectionStory('FormSection');
-export const MasterDetailSection = sectionStory('MasterDetailSection');
 export const KanbanSection = sectionStory('KanbanSection');
 export const CalendarSection = sectionStory('CalendarSection');
+export const ScheduleSection = sectionStory('ScheduleSection');
+export const HoldingsListSection = sectionStory('HoldingsListSection');
+export const AccordionSection = sectionStory('AccordionSection');
+export const ControlPanelSection = sectionStory('ControlPanelSection');
 export const ChatPanelSection = sectionStory('ChatPanelSection');
 export const EditorPreviewSection = sectionStory('EditorPreviewSection');
 export const ComparisonSection = sectionStory('ComparisonSection');
 export const DataTableSection = sectionStory('DataTableSection');
+export const StatsTrendCardsSection = sectionStory('StatsTrendCardsSection');
+export const ActivityFeedSection = sectionStory('ActivityFeedSection');
+export const NotificationCenterSection = sectionStory('NotificationCenterSection');
+export const QuickActionsSection = sectionStory('QuickActionsSection');
+export const CheckoutSummarySection = sectionStory('CheckoutSummarySection');
 export const NavigationPanel = sectionStory('NavigationPanel');
 export const MainSearchNavigationSection = sectionStory('MainSearchNavigationSection');
 export const EmptyState = sectionStory('EmptyState');
@@ -187,6 +196,49 @@ export const AnalyticsComposition: Story = {
                 tone: 'success',
               },
             ],
+          },
+        },
+      ],
+    },
+  },
+};
+
+export const SectionEdgeCases: Story = {
+  args: {
+    schema: {
+      page: 'Section edge cases',
+      intent: 'Validate empty and boundary-safe section rendering',
+      layout: 'screen',
+      sections: [
+        {
+          component: 'MainSearchNavigationSection',
+          source: 'app',
+          props: {
+            searchPlaceholder: 'Search catalog',
+            searchButtonLabel: 'Go',
+            categories: [],
+            links: [],
+          },
+        },
+        {
+          component: 'StepperSection',
+          source: 'app',
+          props: {
+            title: 'Setup workflow',
+            orientation: 'horizontal',
+            steps: [],
+          },
+        },
+        {
+          component: 'DataTableSection',
+          source: 'api',
+          props: {
+            title: 'Latest records',
+            columns: [
+              { key: 'name', label: 'Name' },
+              { key: 'status', label: 'Status' },
+            ],
+            rows: [],
           },
         },
       ],

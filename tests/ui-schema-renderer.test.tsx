@@ -650,23 +650,27 @@ describe('ui schema renderer', () => {
           layout: 'screen',
           sections: [
             {
-              component: 'MasterDetailSection',
+              component: 'StepperSection',
               source: 'app',
               props: {
-                title: 'Ticket queue',
-                items: [
+                title: 'Ticket response workflow',
+                steps: [
                   {
-                    id: 'ticket-1',
-                    title: 'Checkout failure',
-                    description: 'Payment provider timeout',
-                    status: 'High',
+                    id: 'collect',
+                    title: 'Collect signals',
+                    description: 'Review payment provider and gateway logs',
+                    status: 'completed',
+                  },
+                  {
+                    id: 'triage',
+                    title: 'Triage issue',
+                    description: 'Identify failing checkout segment and assign owner',
+                    status: 'current',
                   },
                 ],
-                detail: {
-                  title: 'Checkout failure',
-                  description: 'Investigate recent payment errors.',
-                  fields: [{ label: 'Owner', value: 'Support' }],
-                },
+                activeStepId: 'triage',
+                orientation: 'vertical',
+                variant: 'split',
               },
             },
             {
@@ -734,7 +738,7 @@ describe('ui schema renderer', () => {
       />
     );
 
-    expect(html).toContain('Ticket queue');
+    expect(html).toContain('Ticket response workflow');
     expect(html).toContain('Incident board');
     expect(html).toContain('Support conversation');
     expect(html).toContain('Reply draft');

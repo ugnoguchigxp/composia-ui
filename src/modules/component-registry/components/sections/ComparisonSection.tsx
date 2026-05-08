@@ -1,23 +1,25 @@
 import type { BaseComponentProps } from '@json-render/react';
 import type { z } from 'zod';
 import type { componentPropsSchemas } from '../../services/catalog.service';
-import { visualIntentClassName } from '../../services/visual-intent.service';
 import { AppActionList } from '../AppActionControl';
+import { SectionShell } from './SectionShell';
 
 type ComparisonSectionProps = z.infer<(typeof componentPropsSchemas)['ComparisonSection']>;
 
 export function ComparisonSection({ props }: BaseComponentProps<ComparisonSectionProps>) {
   return (
-    <section className={visualIntentClassName(props.visualIntent, 'rounded-lg border p-5')}>
-      <div className="mb-5">
-        <h2 className="text-lg font-semibold">{props.title}</h2>
-        {props.description ? (
-          <p className="mt-1 text-muted-foreground text-sm leading-6">{props.description}</p>
-        ) : null}
-      </div>
+    <SectionShell
+      bodyClassName="space-y-[var(--ui-section-gap)]"
+      description={props.description}
+      title={props.title}
+      visualIntent={props.visualIntent}
+    >
       <div className="grid gap-4 md:grid-cols-[repeat(auto-fit,minmax(12rem,1fr))]">
         {props.columns.map((column) => (
-          <article className="rounded-md border border-border bg-background p-4" key={column.title}>
+          <article
+            className="rounded-md border border-border/70 bg-background/95 p-4"
+            key={column.title}
+          >
             <h3 className="font-semibold">{column.title}</h3>
             {column.description ? (
               <p className="mt-1 text-muted-foreground text-sm leading-6">{column.description}</p>
@@ -33,7 +35,7 @@ export function ComparisonSection({ props }: BaseComponentProps<ComparisonSectio
           </article>
         ))}
       </div>
-      <AppActionList actions={props.actions} />
-    </section>
+      <AppActionList actions={props.actions} className="mt-0" />
+    </SectionShell>
   );
 }

@@ -1,7 +1,6 @@
 import type { BaseComponentProps } from '@json-render/react';
 import type { z } from 'zod';
 import type { componentPropsSchemas } from '../../services/catalog.service';
-import { visualIntentClassName } from '../../services/visual-intent.service';
 import {
   AppActionControl,
   AppActionList,
@@ -9,6 +8,7 @@ import {
   findActionForLabel,
   type RenderableAppActionProps,
 } from '../AppActionControl';
+import { SectionShell } from './SectionShell';
 
 type CarouselSectionProps = z.infer<(typeof componentPropsSchemas)['CarouselSection']> &
   RenderableAppActionProps;
@@ -20,32 +20,24 @@ export function CarouselSection({ props }: BaseComponentProps<CarouselSectionPro
   const extraActions = excludeRenderedActions(props.actions, itemActions);
 
   return (
-    <section
-      className={visualIntentClassName(
-        props.visualIntent,
-        'overflow-hidden rounded-lg border p-[var(--ui-card-padding)]'
-      )}
+    <SectionShell
+      bodyClassName="space-y-[var(--ui-section-gap)]"
+      description={props.description}
+      title={props.title}
+      visualIntent={props.visualIntent}
     >
-      <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-semibold">{props.title}</h2>
-          {props.description ? (
-            <p className="mt-1 text-muted-foreground text-sm leading-6">{props.description}</p>
-          ) : null}
-        </div>
-      </div>
       <div className="-mx-2 flex snap-x gap-4 overflow-x-auto px-2 pb-3">
         {props.items.map((item, index) => {
           const action = itemActions[index];
           return (
             <article
-              className="min-w-[15rem] max-w-[17rem] snap-start overflow-hidden rounded-md border border-border bg-background"
+              className="min-w-[15rem] max-w-[17rem] snap-start overflow-hidden rounded-md border border-border/70 bg-background/95"
               key={`${item.title}-${item.href ?? ''}`}
             >
               {item.image ? (
                 <img
                   alt={item.image.alt}
-                  className="h-36 w-full object-cover"
+                  className="aspect-[16/9] w-full object-cover"
                   decoding="async"
                   loading="lazy"
                   referrerPolicy="no-referrer"
@@ -75,7 +67,7 @@ export function CarouselSection({ props }: BaseComponentProps<CarouselSectionPro
           );
         })}
       </div>
-      <AppActionList actions={extraActions} />
-    </section>
+      <AppActionList actions={extraActions} className="mt-0" />
+    </SectionShell>
   );
 }

@@ -22,6 +22,7 @@ import {
   screenResponseSchema,
 } from '../../../shared/schemas/screen-history.schema';
 import { createOpenApiRouter } from '../../lib/openapi';
+import { time } from '../../lib/timing';
 import type { AppEnv } from '../../lib/types';
 import { authMiddleware } from '../../middleware/auth';
 import { screenHistoryService } from './screen-history.service';
@@ -397,7 +398,12 @@ export const screenHistoryRouter = protectedScreensRouter
     c.json(await screenHistoryService.list(userId(c), c.req.valid('query')), 200)
   )
   .openapi(generateRoute, async (c) =>
-    c.json(await screenHistoryService.generate(userId(c), c.req.valid('json')), 200)
+    c.json(
+      await time(c, 'generate', () =>
+        screenHistoryService.generate(userId(c), c.req.valid('json'))
+      ),
+      200
+    )
   )
   .openapi(childrenRoute, async (c) =>
     c.json(await screenHistoryService.children(userId(c), c.req.valid('param').screenId), 200)
@@ -405,21 +411,20 @@ export const screenHistoryRouter = protectedScreensRouter
   .openapi(actionGenerateRoute, async (c) => {
     const { actionId, screenId } = c.req.valid('param');
     return c.json(
-      await screenHistoryService.generateFromAction(
-        userId(c),
-        screenId,
-        actionId,
-        c.req.valid('json')
+      await time(c, 'generate-from-action', () =>
+        screenHistoryService.generateFromAction(userId(c), screenId, actionId, c.req.valid('json'))
       ),
       200
     );
   })
   .openapi(regenerateRoute, async (c) =>
     c.json(
-      await screenHistoryService.regenerate(
-        userId(c),
-        c.req.valid('param').screenId,
-        c.req.valid('json')
+      await time(c, 'regenerate', () =>
+        screenHistoryService.regenerate(
+          userId(c),
+          c.req.valid('param').screenId,
+          c.req.valid('json')
+        )
       ),
       200
     )
@@ -450,10 +455,8 @@ export const screenSessionRouter = protectedSessionsRouter
   )
   .openapi(editRoute, async (c) =>
     c.json(
-      await screenHistoryService.edit(
-        userId(c),
-        c.req.valid('param').sessionId,
-        c.req.valid('json')
+      await time(c, 'edit', () =>
+        screenHistoryService.edit(userId(c), c.req.valid('param').sessionId, c.req.valid('json'))
       ),
       200
     )

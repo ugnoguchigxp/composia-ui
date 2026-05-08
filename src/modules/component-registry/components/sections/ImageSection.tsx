@@ -2,8 +2,8 @@ import type { BaseComponentProps } from '@json-render/react';
 import type { CSSProperties } from 'react';
 import type { z } from 'zod';
 import type { componentPropsSchemas } from '../../services/catalog.service';
-import { visualIntentClassName } from '../../services/visual-intent.service';
 import { AppActionList } from '../AppActionControl';
+import { SectionShell } from './SectionShell';
 
 type ImageSectionProps = z.infer<(typeof componentPropsSchemas)['ImageSection']>;
 
@@ -17,23 +17,15 @@ export function ImageSection({ props }: BaseComponentProps<ImageSectionProps>) {
   const aspectRatio = props.aspectRatio ?? 'wide';
 
   return (
-    <section
-      className={visualIntentClassName(
-        props.visualIntent,
-        'overflow-hidden rounded-lg border p-[var(--ui-card-padding)]'
-      )}
+    <SectionShell
+      bodyClassName="space-y-[var(--ui-section-gap)]"
+      description={props.description}
+      title={props.title}
+      visualIntent={props.visualIntent}
     >
-      {props.title || props.description ? (
-        <div className="mb-4">
-          {props.title ? <h2 className="text-lg font-semibold">{props.title}</h2> : null}
-          {props.description ? (
-            <p className="mt-1 text-sm leading-6 text-muted-foreground">{props.description}</p>
-          ) : null}
-        </div>
-      ) : null}
       <figure>
         <div
-          className="overflow-hidden rounded-md border border-border bg-muted"
+          className="overflow-hidden rounded-md border border-border/70 bg-muted/40"
           style={aspectRatioStyle[aspectRatio]}
         >
           <img
@@ -53,7 +45,7 @@ export function ImageSection({ props }: BaseComponentProps<ImageSectionProps>) {
           </figcaption>
         ) : null}
       </figure>
-      <AppActionList actions={props.actions} />
-    </section>
+      <AppActionList actions={props.actions} className="mt-0" />
+    </SectionShell>
   );
 }

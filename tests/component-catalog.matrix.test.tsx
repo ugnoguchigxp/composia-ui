@@ -72,7 +72,7 @@ describe('component catalog matrix', () => {
       html.indexOf('Deals')
     );
     expect(html).toContain('border-b-2');
-    expect(html).toContain('rounded-lg');
+    expect(html).toContain('rounded-md');
     expect(html).toContain('border-border');
     expect(html).not.toContain('border-y');
   });

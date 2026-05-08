@@ -6,25 +6,34 @@ import { PageShell } from './pages/PageShell';
 import { SidebarPage } from './pages/SidebarPage';
 import { EmptyState } from './primitives/EmptyState';
 import { ErrorState } from './primitives/ErrorState';
+import { AccordionSection } from './sections/AccordionSection';
+import { ActivityFeedSection } from './sections/ActivityFeedSection';
 import { CalendarSection } from './sections/CalendarSection';
 import { CardGridSection } from './sections/CardGridSection';
 import { CarouselSection } from './sections/CarouselSection';
+import { ChartInsightSection } from './sections/ChartInsightSection';
 import { ChartSection } from './sections/ChartSection';
 import { ChatPanelSection } from './sections/ChatPanelSection';
+import { CheckoutSummarySection } from './sections/CheckoutSummarySection';
 import { ComparisonSection } from './sections/ComparisonSection';
+import { ControlPanelSection } from './sections/ControlPanelSection';
 import { DataTableSection } from './sections/DataTableSection';
 import { EditorPreviewSection } from './sections/EditorPreviewSection';
 import { FormSection } from './sections/FormSection';
+import { HoldingsListSection } from './sections/HoldingsListSection';
 import { ImageSection } from './sections/ImageSection';
 import { InsightPanel } from './sections/InsightPanel';
 import { KanbanSection } from './sections/KanbanSection';
 import { KpiSummarySection } from './sections/KpiSummarySection';
 import { MainSearchNavigationSection } from './sections/MainSearchNavigationSection';
-import { MasterDetailSection } from './sections/MasterDetailSection';
 import { NavigationPanel } from './sections/NavigationPanel';
-import { ProcessStepperSection } from './sections/ProcessStepperSection';
+import { NotificationCenterSection } from './sections/NotificationCenterSection';
 import { ProgressListSection } from './sections/ProgressListSection';
+import { QuickActionsSection } from './sections/QuickActionsSection';
+import { ScheduleSection } from './sections/ScheduleSection';
 import { SplitHeroSection } from './sections/SplitHeroSection';
+import { StatsTrendCardsSection } from './sections/StatsTrendCardsSection';
+import { StepperSection } from './sections/StepperSection';
 import { TimelineSection } from './sections/TimelineSection';
 
 export const appJsonRenderComponentMap = {
@@ -36,24 +45,33 @@ export const appJsonRenderComponentMap = {
   SidebarPage,
   KpiSummarySection,
   ChartSection,
+  ChartInsightSection,
+  StatsTrendCardsSection,
   ProgressListSection,
   TimelineSection,
+  ActivityFeedSection,
+  NotificationCenterSection,
   InsightPanel,
   ImageSection,
   SplitHeroSection,
   CarouselSection,
-  ProcessStepperSection,
+  StepperSection,
   CardGridSection,
   FormSection,
-  MasterDetailSection,
   KanbanSection,
   CalendarSection,
+  ScheduleSection,
+  HoldingsListSection,
+  ControlPanelSection,
+  QuickActionsSection,
+  CheckoutSummarySection,
   ChatPanelSection,
   EditorPreviewSection,
   ComparisonSection,
   DataTableSection,
   NavigationPanel,
   MainSearchNavigationSection,
+  AccordionSection,
   EmptyState,
   ErrorState,
   // biome-ignore lint/suspicious/noExplicitAny: json-render registry components each own distinct prop schemas.

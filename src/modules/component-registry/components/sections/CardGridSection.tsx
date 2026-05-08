@@ -3,7 +3,6 @@ import type { KeyboardEvent, ReactNode } from 'react';
 import type { z } from 'zod';
 import { cn } from '../../../../lib/utils';
 import type { componentPropsSchemas } from '../../services/catalog.service';
-import { visualIntentClassName } from '../../services/visual-intent.service';
 import {
   AppActionList,
   excludeRenderedActions,
@@ -12,6 +11,7 @@ import {
   useAppActionRenderContext,
 } from '../AppActionControl';
 import { formatDisplayMetadata } from './display-metadata';
+import { SectionShell } from './SectionShell';
 
 type CardGridSectionProps = z.infer<(typeof componentPropsSchemas)['CardGridSection']> &
   RenderableAppActionProps;
@@ -32,14 +32,13 @@ export function CardGridSection({ props }: BaseComponentProps<CardGridSectionPro
   };
 
   return (
-    <section className={visualIntentClassName(props.visualIntent, 'rounded-lg border p-5')}>
-      <div className="mb-5">
-        <h2 className="text-lg font-semibold">{props.title}</h2>
-        {props.description ? (
-          <p className="mt-1 text-muted-foreground text-sm leading-6">{props.description}</p>
-        ) : null}
-      </div>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <SectionShell
+      title={props.title}
+      description={props.description}
+      visualIntent={props.visualIntent}
+      bodyClassName="space-y-[var(--ui-section-gap)]"
+    >
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {props.items.map((item, index) => {
           const action = itemActions[index];
           const meta = formatDisplayMetadata(item.meta);
@@ -48,7 +47,7 @@ export function CardGridSection({ props }: BaseComponentProps<CardGridSectionPro
           const href = action?.kind !== 'submit' ? (action?.target ?? item.href) : item.href;
           const isActionCard = Boolean(action && onAction);
           const cardClassName = cn(
-            'group block h-full w-full overflow-hidden rounded-md border border-border bg-background text-left transition hover:border-primary/50 hover:shadow-sm',
+            'group block h-full w-full overflow-hidden rounded-md border border-border/70 bg-background/95 text-left transition hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md',
             (isActionCard || href) && 'cursor-pointer',
             isSelected && 'border-primary ring-2 ring-primary/40 ring-offset-1',
             isPending && 'pointer-events-none opacity-60'
@@ -100,8 +99,8 @@ export function CardGridSection({ props }: BaseComponentProps<CardGridSectionPro
           );
         })}
       </div>
-      <AppActionList actions={extraActions} />
-    </section>
+      <AppActionList actions={extraActions} className="mt-0" />
+    </SectionShell>
   );
 }
 
@@ -135,7 +134,7 @@ function CardGridItemContent({
       {image ? (
         <img
           alt={image.alt}
-          className="h-36 w-full object-cover"
+          className="aspect-[16/9] w-full object-cover"
           decoding="async"
           loading="lazy"
           referrerPolicy="no-referrer"
@@ -144,7 +143,9 @@ function CardGridItemContent({
       ) : null}
       <BodyElement className="block p-4">
         <HeaderElement className="flex items-start justify-between gap-3">
-          <TitleElement className="block font-medium text-foreground">{title}</TitleElement>
+          <TitleElement className="block line-clamp-2 font-semibold text-foreground leading-5">
+            {title}
+          </TitleElement>
           {badge ? (
             <span className="rounded-sm bg-secondary px-2 py-1 text-secondary-foreground text-xs">
               {badge}
@@ -152,15 +153,15 @@ function CardGridItemContent({
           ) : null}
         </HeaderElement>
         {meta ? (
-          <MetaElement className="mt-1 block text-muted-foreground text-xs">{meta}</MetaElement>
+          <MetaElement className="mt-1 block text-muted-foreground/90 text-xs">{meta}</MetaElement>
         ) : null}
         {description ? (
-          <DescriptionElement className="mt-2 block line-clamp-3 text-muted-foreground text-sm leading-6">
+          <DescriptionElement className="mt-2 block line-clamp-2 text-muted-foreground text-sm leading-6">
             {description}
           </DescriptionElement>
         ) : null}
         {linkLabel ? (
-          <span className="mt-4 inline-flex text-primary text-sm font-medium underline-offset-4 group-hover:underline">
+          <span className="mt-4 inline-flex items-center rounded-md border border-border/70 bg-muted/30 px-2.5 py-1.5 text-primary text-xs font-medium underline-offset-4 group-hover:bg-muted/50">
             {linkLabel}
           </span>
         ) : null}

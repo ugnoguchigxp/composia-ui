@@ -1,23 +1,24 @@
 import type { BaseComponentProps } from '@json-render/react';
 import type { z } from 'zod';
 import type { componentPropsSchemas } from '../../services/catalog.service';
-import { visualIntentClassName } from '../../services/visual-intent.service';
 import { AppActionList } from '../AppActionControl';
+import { SectionShell } from './SectionShell';
 
 type KpiSummaryProps = z.infer<(typeof componentPropsSchemas)['KpiSummarySection']>;
 
 export function KpiSummarySection({ props }: BaseComponentProps<KpiSummaryProps>) {
   return (
-    <section
-      className={visualIntentClassName(
-        props.visualIntent,
-        'rounded-lg border p-[var(--ui-card-padding)]'
-      )}
+    <SectionShell
+      bodyClassName="space-y-[var(--ui-section-gap)]"
+      title={props.title}
+      visualIntent={props.visualIntent}
     >
-      {props.title ? <h2 className="mb-4 text-lg font-semibold">{props.title}</h2> : null}
       <div className="grid gap-3 md:grid-cols-3">
         {props.items.map((item) => (
-          <article className="rounded-md border border-border bg-background p-4" key={item.label}>
+          <article
+            className="rounded-md border border-border/70 bg-background/95 p-4"
+            key={item.label}
+          >
             <div className="text-sm text-muted-foreground">{item.label}</div>
             <div className="mt-2 text-2xl font-semibold text-foreground">{item.value}</div>
             {item.description ? (
@@ -26,7 +27,7 @@ export function KpiSummarySection({ props }: BaseComponentProps<KpiSummaryProps>
           </article>
         ))}
       </div>
-      <AppActionList actions={props.actions} />
-    </section>
+      <AppActionList actions={props.actions} className="mt-0" />
+    </SectionShell>
   );
 }

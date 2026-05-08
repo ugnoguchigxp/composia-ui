@@ -23,8 +23,8 @@ import {
 } from 'recharts';
 import type { z } from 'zod';
 import type { componentPropsSchemas } from '../../services/catalog.service';
-import { visualIntentClassName } from '../../services/visual-intent.service';
 import { AppActionList } from '../AppActionControl';
+import { SectionShell } from './SectionShell';
 
 type ChartSectionProps = z.infer<(typeof componentPropsSchemas)['ChartSection']>;
 
@@ -180,20 +180,16 @@ function renderChart(props: ChartSectionProps) {
 
 export function ChartSection({ props }: BaseComponentProps<ChartSectionProps>) {
   return (
-    <section
-      className={visualIntentClassName(
-        props.visualIntent,
-        'rounded-lg border p-[var(--ui-card-padding)]'
-      )}
+    <SectionShell
+      bodyClassName="space-y-[var(--ui-section-gap)]"
+      description={props.description}
+      title={props.title}
+      visualIntent={props.visualIntent}
     >
-      <div className="mb-4">
-        <h2 className="text-lg font-semibold">{props.title}</h2>
-        {props.description ? (
-          <p className="mt-1 text-sm leading-6 text-muted-foreground">{props.description}</p>
-        ) : null}
+      <div className="rounded-md border border-border/70 bg-background/95 p-3">
+        {renderChart(props)}
       </div>
-      <div className="rounded-md border border-border bg-background p-3">{renderChart(props)}</div>
-      <AppActionList actions={props.actions} />
-    </section>
+      <AppActionList actions={props.actions} className="mt-0" />
+    </SectionShell>
   );
 }

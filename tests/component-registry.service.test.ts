@@ -12,7 +12,7 @@ describe('component registry service', () => {
     expect(isAppComponentName('ChartSection')).toBe(true);
     expect(isAppComponentName('ProgressListSection')).toBe(true);
     expect(isAppComponentName('CarouselSection')).toBe(true);
-    expect(isAppComponentName('MasterDetailSection')).toBe(true);
+    expect(isAppComponentName('StepperSection')).toBe(true);
     expect(isAppComponentName('EditorPreviewSection')).toBe(true);
     expect(isAppComponentName('Button')).toBe(false);
   });

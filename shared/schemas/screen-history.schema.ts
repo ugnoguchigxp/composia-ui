@@ -14,7 +14,7 @@ export const canonicalPromptPathSchema = appRelativePathSchema.nullable().defaul
 
 export const screenProviderMetaSchema = z
   .object({
-    provider: z.enum(['openai', 'azure-openai', 'mock']).default('mock'),
+    provider: z.enum(['openai', 'azure-openai', 'anthropic', 'google-ai', 'mock']).default('mock'),
     model: z.string().min(1).optional(),
     componentRegistryVersion: z.string().min(1),
   })

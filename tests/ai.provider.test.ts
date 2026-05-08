@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import {
-  aiJsonMaxOutputTokens,
-  appUiSchemaJsonSchema,
-  layoutSystemContext,
-  parseJsonText,
-} from '../api/modules/ai/ai.provider';
+import { appUiSchemaJsonSchema, layoutSystemContext } from '../api/modules/ai/ai.provider';
+import { aiJsonMaxOutputTokens, parseJsonText } from '../api/modules/ai/ai.provider-base';
 import { componentDefinitions } from '../shared/schemas/app-catalog.schema';
 
 describe('ai provider system context', () => {
@@ -37,7 +33,7 @@ describe('ai provider system context', () => {
     expect(layoutSystemContext).toContain('ニュースレター registration');
     expect(layoutSystemContext).toContain('main-search navigation');
     expect(layoutSystemContext).toContain('hero/carousel/card-grid');
-    expect(layoutSystemContext).toContain('master-detail/inbox');
+    expect(layoutSystemContext).toContain('Use stepper, kanban, calendar, chat');
     expect(layoutSystemContext).toContain('options must always be objects');
     expect(layoutSystemContext).toContain('never return string arrays');
     expect(layoutSystemContext).toContain('DataTableSection rows');

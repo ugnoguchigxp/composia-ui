@@ -22,6 +22,7 @@ import {
 import type { SourceDefinition } from '../../../shared/schemas/sources.schema';
 import { type AppUiSchema, appUiSchemaSchema } from '../../../shared/schemas/ui-schema.schema';
 import { AppError, ValidationError } from '../../lib/errors';
+import { logger } from '../../lib/logger';
 import { cacheService } from '../cache/cache.service';
 import { entitiesRepository } from '../entities/entities.repository';
 import { entityMetadataList } from '../entities/entity-metadata';
@@ -98,22 +99,26 @@ function mapEntity(entity: NormalizedEntityRecord) {
 export function createDefaultAiLayoutContextReader(): AiContextReader {
   return {
     getLayoutContext: async () => {
-      const sources = await Promise.all(
-        (await sourcesRepository.listSources()).slice(0, 8).map(async (source) => ({
-          source: mapSource(source),
-          items: (await sourcesRepository.listItems(source.id)).slice(0, 8).map(mapEntity),
-        }))
-      );
-      const entities = await Promise.all(
-        entityMetadataList.slice(0, 8).map(async (metadata) => ({
-          metadata,
-          rows: (
-            await entitiesRepository.list(
-              metadata.name as Parameters<typeof entitiesRepository.list>[0]
-            )
-          ).slice(0, 8),
-        }))
-      );
+      const [sources, entities] = await Promise.all([
+        sourcesRepository.listSources().then((rows) =>
+          Promise.all(
+            rows.slice(0, 8).map(async (source) => ({
+              source: mapSource(source),
+              items: (await sourcesRepository.listItems(source.id)).slice(0, 8).map(mapEntity),
+            }))
+          )
+        ),
+        Promise.all(
+          entityMetadataList.slice(0, 8).map(async (metadata) => ({
+            metadata,
+            rows: (
+              await entitiesRepository.list(
+                metadata.name as Parameters<typeof entitiesRepository.list>[0]
+              )
+            ).slice(0, 8),
+          }))
+        ),
+      ]);
       return { entities, sources };
     },
   };
@@ -229,9 +234,10 @@ function normalizeTableRows(rows: unknown) {
 }
 
 function normalizeProviderSchema(schema: AppUiSchema): AppUiSchema {
+  const dedupedSections = dedupeGeneratedSections(schema.sections);
   return {
     ...schema,
-    sections: schema.sections.map((section) => {
+    sections: dedupedSections.map((section) => {
       if (section.component === 'FormSection') {
         const fields = Array.isArray(section.props.fields)
           ? section.props.fields.map((field) => {
@@ -268,6 +274,57 @@ function normalizeProviderSchema(schema: AppUiSchema): AppUiSchema {
       return section;
     }),
   };
+}
+
+function dedupeGeneratedSections(sections: AppUiSchema['sections']): AppUiSchema['sections'] {
+  const hasMainSearch = sections.some(
+    (section) => section.component === 'MainSearchNavigationSection'
+  );
+  const result: AppUiSchema['sections'] = [];
+
+  for (const section of sections) {
+    if (hasMainSearch && section.component === 'NavigationPanel') {
+      continue;
+    }
+
+    const duplicate = result.some((existing) => isSemanticallyDuplicateSection(existing, section));
+    if (duplicate) continue;
+    result.push(section);
+  }
+
+  return result;
+}
+
+function normalizedText(value: string | undefined) {
+  return (value ?? '').trim().toLowerCase();
+}
+
+function readPropString(section: AppUiSchema['sections'][number], key: string): string | undefined {
+  const raw = (section.props as Record<string, unknown> | undefined)?.[key];
+  return typeof raw === 'string' ? raw : undefined;
+}
+
+function isSemanticallyDuplicateSection(
+  a: AppUiSchema['sections'][number],
+  b: AppUiSchema['sections'][number]
+) {
+  if (a.component !== b.component) return false;
+  if (a.component === 'MainSearchNavigationSection') return true;
+  if (a.component === 'NavigationPanel') return true;
+
+  if (a.component === 'FormSection' && b.component === 'FormSection') {
+    const aTitle = normalizedText(readPropString(a, 'title'));
+    const bTitle = normalizedText(readPropString(b, 'title'));
+    if (aTitle && bTitle && aTitle === bTitle) return true;
+  }
+
+  if (a.component === 'CardGridSection' && b.component === 'CardGridSection') {
+    const aTitle = normalizedText(readPropString(a, 'title'));
+    const bTitle = normalizedText(readPropString(b, 'title'));
+    if (aTitle && bTitle && aTitle === bTitle) return true;
+  }
+
+  return false;
 }
 
 export function createAiService(
@@ -310,6 +367,7 @@ export function createAiService(
             const cachedSchema = normalizeAppUiSchemaCatalog(
               normalizeProviderSchema(parsedCached.data)
             );
+            logger.info({ cacheKey, prompt: prompt.slice(0, 100) }, 'AI layout cache hit');
             return {
               schema: cachedSchema,
               activities: [
@@ -334,13 +392,19 @@ export function createAiService(
             };
           } catch {
             // Invalid stale cache entry; regenerate below.
+            logger.warn({ cacheKey }, 'AI layout cache entry invalid, regenerating');
           }
         }
       }
 
+      logger.info({ prompt: prompt.slice(0, 100) }, 'AI layout cache miss, generating...');
       const startedAt = Date.now();
       const generated = await provider.generateLayout(promptWithContext(prompt, context));
       const providerElapsedMs = Date.now() - startedAt;
+      logger.info(
+        { providerElapsedMs, prompt: prompt.slice(0, 100) },
+        'AI provider layout generated'
+      );
       const parsed = safeParseProviderSchema(generated);
       if (!parsed.success) {
         throw new ValidationError('AI returned an invalid UI schema', {

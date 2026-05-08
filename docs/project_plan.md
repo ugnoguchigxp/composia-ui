@@ -224,6 +224,13 @@ shared/schemas/*.schema.ts
   → common type inference
 ```
 
+## Section Catalog Operational Rules (2026-05-08)
+
+- root app catalog の Section 選定優先度は `目的適合 > 重複なし > データソース適合 > 視覚バランス`。
+- `MainSearchNavigationSection` を採用する場合、同用途の `NavigationPanel` や検索目的 `FormSection` を重複配置しない。
+- 生成後は catalog 正規化で重複 Section を除去し、schema default を使って不足 props を補完する。
+- Section 実装は `SectionShell` を基準にして、見出し・余白・操作部の一貫性を維持する。
+
 守ること:
 
 - route から repository を直接呼ばない
@@ -417,11 +424,10 @@ InsightPanel
 ImageSection
 SplitHeroSection
 CarouselSection
-ProcessStepperSection
+StepperSection
 CardGridSection
 MainSearchNavigationSection
 FormSection
-MasterDetailSection
 KanbanSection
 CalendarSection
 ChatPanelSection
@@ -435,7 +441,7 @@ ErrorState
 
 AI に `Button`、`Card`、`Input`、`Grid` のような低レベル部品を主な語彙として渡さない。低レベル UI は registry component の内部実装に閉じる。`@json-render/shadcn` は試作の参照候補に留め、初期実装では `@json-render/core` と `@json-render/react` を使い、app-local registry component で品質を制御する。
 
-レイアウトの単調化を避けるため、AI layout planner は分析系 prompt 以外で KPI / table へ寄せすぎない。新規生成では汎用サイドメニューを既定パターンにせず、`layout: "sidebar"` と top-level `navigation.items` は legacy renderer 互換用に留める。タブ的な局所ナビゲーションが明示的に必要な場合のみ `NavigationPanel` を使い、階層メニュー、記事アーカイブ、関連ポスト一覧のような用途は専用 content section として扱う。EC / product / venue / portfolio には `SplitHeroSection`、商品・記事・ギャラリー・推薦には `CarouselSection`、マーケットプレイスの主検索とタブ導線には `MainSearchNavigationSection`、オンボーディング・注文・障害対応・サポートには `ProcessStepperSection` を優先候補にする。さらに、カード一覧には `CardGridSection`、作成・編集・設定には `FormSection`、チケット・メール・CRM には `MasterDetailSection`、タスク・案件管理には `KanbanSection`、予定・予約には `CalendarSection`、会話 UI には `ChatPanelSection`、エディタ系には `EditorPreviewSection`、比較・差分には `ComparisonSection` を使う。
+レイアウトの単調化を避けるため、AI layout planner は分析系 prompt 以外で KPI / table へ寄せすぎない。新規生成では汎用サイドメニューを既定パターンにせず、`layout: "sidebar"` と top-level `navigation.items` は legacy renderer 互換用に留める。タブ的な局所ナビゲーションが明示的に必要な場合のみ `NavigationPanel` を使い、階層メニュー、記事アーカイブ、関連ポスト一覧のような用途は専用 content section として扱う。EC / product / venue / portfolio には `SplitHeroSection`、商品・記事・ギャラリー・推薦には `CarouselSection`、マーケットプレイスの主検索とタブ導線には `MainSearchNavigationSection`、オンボーディング・注文・障害対応・サポートには `StepperSection` を優先候補にする。さらに、カード一覧には `CardGridSection`、作成・編集・設定には `FormSection`、タスク・案件管理には `KanbanSection`、予定・予約には `CalendarSection`、会話 UI には `ChatPanelSection`、エディタ系には `EditorPreviewSection`、比較・差分には `ComparisonSection` を使う。
 
 ### 6.3 Normalized Entity
 
@@ -901,7 +907,7 @@ userIntent
 | --- | --- | --- |
 | Phase 0: Architecture Baseline | Done | BBS sample は削除済み。`designSystem/` workspace / Pencil は今後の基盤から外し、root app 側に名称・設定・依存を寄せた。Storybook は root app catalog の確認用に限定する。 |
 | Phase 1: Shared Schema Foundation | Done for MVP | `ui-schema`、`component-registry`、`entities`、`sources`、`cache`、`visual-intent`、`ai` schema を追加済み。Sources / Entities / Cache の backend/frontend contract で利用中。 |
-| Phase 2: json-render Catalog + Renderer | Done | `@json-render/core` / `@json-render/react`、catalog / registry、App UI Schema 変換、root token/theme 移管、`SidebarPage` / `SplitHeroSection` / `CarouselSection` / `ProcessStepperSection` / `ProgressListSection` / `CardGridSection` / `MainSearchNavigationSection` / `ChartSection` / `FormSection` / `MasterDetailSection` / `KanbanSection` / `CalendarSection` / `ChatPanelSection` / `EditorPreviewSection` / `ComparisonSection` / `ImageSection` を実装済み。fixed showcase route は削除済み。 |
+| Phase 2: json-render Catalog + Renderer | Done | `@json-render/core` / `@json-render/react`、catalog / registry、App UI Schema 変換、root token/theme 移管、`SidebarPage` / `SplitHeroSection` / `CarouselSection` / `StepperSection` / `ProgressListSection` / `CardGridSection` / `MainSearchNavigationSection` / `ChartSection` / `FormSection` / `KanbanSection` / `CalendarSection` / `ChatPanelSection` / `EditorPreviewSection` / `ComparisonSection` / `ImageSection` を実装済み。fixed showcase route は削除済み。 |
 | Phase 3: Sources Domain | Done for MVP | RSS / API / Markdown / PostgreSQL adapters、source 登録、refresh、NormalizedEntity upsert、source item preview、service / route tests を実装済み。 |
 | Phase 4: Entity Metadata + Internal Data Surface | Done for MVP | EntityMetadata、readonly enforcement、generic list/detail/form surface、metadata refresh API、service / route tests を実装済み。ユーザー向け admin route は削除対象。 |
 | Phase 5: Cache Domain | Done for MVP | `cache_entries` table、`api/modules/cache`、`src/modules/cache`、status/invalidate/rebuild/get/set/delete、AI layout cache、route tests を実装済み。cache UI は Prompt/History から必要な範囲だけ見せる。 |

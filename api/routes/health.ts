@@ -1,12 +1,14 @@
 import { createRoute, z } from '@hono/zod-openapi';
 import { sql } from 'drizzle-orm';
 import type { Context } from 'hono';
+import { config } from '../config';
 import { db } from '../db/client';
 import { createOpenApiRouter } from '../lib/openapi';
 
 const readinessSchema = z.object({
   status: z.string().openapi({ example: 'healthy' }),
   database: z.string().openapi({ example: 'connected' }),
+  aiProvider: z.string().openapi({ example: 'configured' }),
   timestamp: z.string().openapi({ example: '2026-04-02T11:47:06.000Z' }),
   version: z.string().openapi({ example: '1.0.0' }),
 });
@@ -86,9 +88,15 @@ const buildReadinessPayload = async () => {
     dbStatus = 'disconnected';
   }
 
+  const aiProviderStatus =
+    (config.AZURE_OPENAI_API_KEY && config.AZURE_OPENAI_ENDPOINT) || config.OPENAI_API_KEY
+      ? 'configured'
+      : 'missing';
+
   return {
-    status: dbStatus === 'connected' ? 'healthy' : 'degraded',
+    status: dbStatus === 'connected' && aiProviderStatus === 'configured' ? 'healthy' : 'degraded',
     database: dbStatus,
+    aiProvider: aiProviderStatus,
     timestamp: new Date().toISOString(),
     version: '1.0.0',
   };

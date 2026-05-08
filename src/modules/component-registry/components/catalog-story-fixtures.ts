@@ -56,6 +56,24 @@ export const sectionComponentFixtures = {
       ],
     },
   },
+  ChartInsightSection: {
+    expectedText: 'Revenue performance',
+    source: 'summary',
+    props: {
+      title: 'Revenue performance',
+      chartType: 'bar',
+      data: [
+        { label: 'Q1', value: 450000 },
+        { label: 'Q2', value: 520000 },
+        { label: 'Q3', value: 480000 },
+        { label: 'Q4', value: 610000 },
+      ],
+      insights: [
+        { title: 'Strong Q4', body: 'Year-over-year increase of 12% in the final quarter.' },
+        { title: 'Target met', body: 'Exceeded annual revenue goal by 5%.' },
+      ],
+    },
+  },
   ProgressListSection: {
     expectedText: 'Operational readiness',
     source: 'summary',
@@ -136,16 +154,19 @@ export const sectionComponentFixtures = {
       ],
     },
   },
-  ProcessStepperSection: {
+  StepperSection: {
     expectedText: 'Order process',
     source: 'summary',
     props: {
       title: 'Order process',
       steps: [
-        { title: 'Received', status: 'completed' },
-        { title: 'Review', status: 'current' },
-        { title: 'Ship', status: 'upcoming' },
+        { id: 'received', title: 'Received', status: 'completed' },
+        { id: 'review', title: 'Review', status: 'current' },
+        { id: 'ship', title: 'Ship', status: 'upcoming' },
       ],
+      orientation: 'horizontal',
+      variant: 'split',
+      activeStepId: 'review',
     },
   },
   CardGridSection: {
@@ -198,24 +219,6 @@ export const sectionComponentFixtures = {
       submitLabel: 'Save incident',
     },
   },
-  MasterDetailSection: {
-    expectedText: 'Ticket queue',
-    source: 'app',
-    props: {
-      title: 'Ticket queue',
-      items: [
-        { id: 'ticket-1', title: 'Checkout issue', status: 'Open' },
-        { id: 'ticket-2', title: 'Delivery delay', status: 'Pending' },
-      ],
-      detail: {
-        title: 'Checkout issue',
-        fields: [
-          { label: 'Owner', value: 'Support' },
-          { label: 'Priority', value: 'High' },
-        ],
-      },
-    },
-  },
   KanbanSection: {
     expectedText: 'Workflow board',
     source: 'app',
@@ -238,6 +241,93 @@ export const sectionComponentFixtures = {
       events: [
         { title: 'Release review', date: '2026-05-07', time: '10:00' },
         { title: 'Customer rollout', date: '2026-05-08', time: '14:00' },
+      ],
+    },
+  },
+  ScheduleSection: {
+    expectedText: 'Upcoming schedule',
+    source: 'app',
+    props: {
+      title: 'Upcoming schedule',
+      description: 'Select a date to view scheduled items.',
+      monthLabel: 'May 2026',
+      selectedDay: 8,
+      entries: [
+        { date: '2026-05-08', title: 'Vendor transfer', amount: '$4,200.00', status: 'scheduled' },
+        { date: '2026-05-15', title: 'Payroll', amount: '$28,000.00', status: 'processing' },
+      ],
+    },
+  },
+  HoldingsListSection: {
+    expectedText: 'Vanguard S&amp;P 500 ETF',
+    source: 'app',
+    props: {
+      searchPlaceholder: 'Search holdings or tickers...',
+      tabs: ['Stocks', 'ETFs', 'REITs'],
+      activeTab: 'ETFs',
+      holdings: [
+        {
+          ticker: 'VOO',
+          name: 'Vanguard S&P 500 ETF',
+          quantityLabel: '112 SHARES',
+          acquiredLabel: 'JAN 2021',
+          category: 'ETF',
+          value: '$48,230.40',
+        },
+        {
+          ticker: 'AAPL',
+          name: 'Apple Inc.',
+          quantityLabel: '85 SHARES',
+          acquiredLabel: 'NOV 2020',
+          category: 'Stock',
+          value: '$18,488.90',
+        },
+      ],
+    },
+  },
+  AccordionSection: {
+    expectedText: 'Common questions',
+    source: 'markdown',
+    props: {
+      title: 'Common questions',
+      description: 'Expandable answers for frequently asked questions.',
+      type: 'single',
+      defaultExpandedIds: ['shipping'],
+      items: [
+        {
+          id: 'shipping',
+          title: 'How long does shipping take?',
+          content: 'Standard delivery takes 2 to 4 business days.',
+          meta: 'Shipping',
+        },
+        {
+          id: 'returns',
+          title: 'Can I return an opened item?',
+          content: 'Opened items can be returned within 14 days with a receipt.',
+          meta: 'Returns',
+        },
+      ],
+    },
+  },
+  ControlPanelSection: {
+    expectedText: 'Kitchen Island',
+    source: 'app',
+    props: {
+      title: 'Kitchen Island',
+      description: 'Hue Color Ambient',
+      enabled: true,
+      modes: [
+        { id: 'cooking', label: 'Cooking' },
+        { id: 'dining', label: 'Dining' },
+        { id: 'night', label: 'Nightlight' },
+        { id: 'focus', label: 'Focus' },
+      ],
+      activeModeId: 'cooking',
+      controls: [
+        { id: 'brightness', label: 'Brightness', icon: 'sun', value: 84 },
+        { id: 'temp', label: 'Color Temp', icon: 'thermometer', value: 68 },
+        { id: 'volume', label: 'Volume', icon: 'volume', value: 34 },
+        { id: 'fade', label: 'Fade', icon: 'timer', value: 12 },
       ],
     },
   },
@@ -314,6 +404,62 @@ export const sectionComponentFixtures = {
         { label: 'Deals', href: '/deals' },
         { label: 'Ranking', href: '/ranking' },
         { label: 'Cart', href: '/cart' },
+      ],
+    },
+  },
+  StatsTrendCardsSection: {
+    expectedText: 'Performance metrics',
+    source: 'summary',
+    props: {
+      title: 'Performance metrics',
+      cards: [
+        { label: 'Revenue', value: '$12,400', delta: '+8.2%', deltaTone: 'success' },
+        { label: 'Active Users', value: '1,240', delta: '+12%', deltaTone: 'success' },
+      ],
+    },
+  },
+  ActivityFeedSection: {
+    expectedText: 'Recent activity',
+    source: 'summary',
+    props: {
+      title: 'Recent activity',
+      items: [
+        { actor: 'System', action: 'Deployed', target: 'v1.4.2', timestamp: '2 mins ago' },
+        { actor: 'Alice', action: 'Approved', target: 'PR #124', timestamp: '1 hour ago' },
+      ],
+    },
+  },
+  NotificationCenterSection: {
+    expectedText: 'System alerts',
+    source: 'app',
+    props: {
+      title: 'System alerts',
+      items: [
+        { id: '1', title: 'Critical update available', level: 'warning' },
+        { id: '2', title: 'Backup completed successfully', level: 'success' },
+      ],
+    },
+  },
+  QuickActionsSection: {
+    expectedText: 'Common tasks',
+    source: 'app',
+    props: {
+      title: 'Common tasks',
+      items: [
+        { id: 'deploy', label: 'Deploy now', icon: 'play' },
+        { id: 'refresh', label: 'Refresh data', icon: 'refresh-cw' },
+      ],
+    },
+  },
+  CheckoutSummarySection: {
+    expectedText: 'Order summary',
+    source: 'app',
+    props: {
+      title: 'Order summary',
+      lines: [
+        { label: 'Subtotal', value: '$120.00' },
+        { label: 'Tax', value: '$12.00' },
+        { label: 'Total', value: '$132.00', emphasize: true },
       ],
     },
   },

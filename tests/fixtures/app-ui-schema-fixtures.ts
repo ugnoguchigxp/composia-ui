@@ -1,9 +1,9 @@
 export {
   createSchemaForPageShell,
   createSchemaForSection,
-  pageShellLayoutByComponent,
-  sectionComponentFixtures,
   type PageShellComponentName,
+  pageShellLayoutByComponent,
   type SectionComponentName,
   type SectionFixture,
+  sectionComponentFixtures,
 } from '../../src/modules/component-registry/components/catalog-story-fixtures';

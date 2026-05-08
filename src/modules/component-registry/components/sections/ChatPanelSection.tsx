@@ -13,16 +13,16 @@ export function ChatPanelSection({ props }: BaseComponentProps<ChatPanelSectionP
     <section
       className={visualIntentClassName(
         props.visualIntent,
-        'overflow-hidden rounded-lg border bg-card'
+        'overflow-hidden rounded-section border border-border/70 bg-gradient-to-b from-card to-card/85 shadow-sm ring-1 ring-border/30'
       )}
     >
-      <div className="border-border border-b p-5">
+      <div className="border-border/70 border-b bg-muted/20 p-section">
         <h2 className="text-lg font-semibold">{props.title}</h2>
         {props.description ? (
           <p className="mt-1 text-muted-foreground text-sm leading-6">{props.description}</p>
         ) : null}
       </div>
-      <div className="grid max-h-[28rem] gap-4 overflow-y-auto p-5">
+      <div className="grid max-h-[28rem] gap-4 overflow-y-auto p-section">
         {props.messages.map((message, index) => {
           const isUser = message.role === 'user';
           return (
@@ -56,7 +56,7 @@ export function ChatPanelSection({ props }: BaseComponentProps<ChatPanelSectionP
           );
         })}
       </div>
-      <div className="flex items-center gap-2 border-border border-t p-4">
+      <div className="flex items-center gap-2 border-border/70 border-t bg-muted/20 p-section">
         <input
           aria-label="Message composer"
           className="h-ui min-w-0 flex-1 rounded-md border border-input bg-background px-3 text-sm outline-none"
@@ -71,7 +71,10 @@ export function ChatPanelSection({ props }: BaseComponentProps<ChatPanelSectionP
           <Send className="h-4 w-4" />
         </button>
       </div>
-      <AppActionList actions={props.actions} className="mx-5 mb-5" />
+      <AppActionList
+        actions={props.actions}
+        className="mx-[var(--ui-section-padding-x)] mb-[var(--ui-section-padding-y)]"
+      />
     </section>
   );
 }

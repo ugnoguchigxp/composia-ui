@@ -30,6 +30,24 @@ describe('Component Catalog Parity', () => {
     expect(docs).not.toContain('Action' + 'FooterSection');
   });
 
+  it('lists every section component as an individual Storybook story', () => {
+    const storySource = readFileSync(
+      new URL(
+        '../src/modules/component-registry/components/component-catalog.stories.tsx',
+        import.meta.url
+      ),
+      'utf8'
+    );
+
+    for (const definition of componentDefinitions.filter(
+      (definition) => definition.placement === 'section'
+    )) {
+      expect(storySource).toContain(
+        `export const ${definition.name} = sectionStory('${definition.name}')`
+      );
+    }
+  });
+
   it('every component should have a valid promptProps definition', () => {
     for (const definition of componentDefinitions) {
       expect(
@@ -123,15 +141,32 @@ describe('Component Catalog Parity', () => {
       sections: [
         { component: 'KpiSummarySection', source: 'summary', props: {} },
         { component: 'ChartSection', source: 'summary', props: { title: 'Chart' } },
+        {
+          component: 'ChartInsightSection',
+          source: 'summary',
+          props: { title: 'Chart + Insight' },
+        },
+        { component: 'StatsTrendCardsSection', source: 'summary', props: { title: 'Stats' } },
         { component: 'ProgressListSection', source: 'summary', props: { title: 'Progress' } },
         { component: 'TimelineSection', source: 'api', props: { title: 'Timeline' } },
+        { component: 'ActivityFeedSection', source: 'api', props: { title: 'Activity' } },
+        {
+          component: 'NotificationCenterSection',
+          source: 'app',
+          props: { title: 'Notifications' },
+        },
         { component: 'CarouselSection', source: 'app', props: { title: 'Carousel' } },
-        { component: 'ProcessStepperSection', source: 'api', props: { title: 'Steps' } },
+        { component: 'StepperSection', source: 'api', props: { title: 'Steps' } },
         { component: 'CardGridSection', source: 'app', props: { title: 'Cards' } },
         { component: 'FormSection', source: 'app', props: { title: 'Form' } },
-        { component: 'MasterDetailSection', source: 'app', props: { title: 'Master detail' } },
         { component: 'KanbanSection', source: 'app', props: { title: 'Board' } },
         { component: 'CalendarSection', source: 'app', props: { title: 'Calendar' } },
+        { component: 'ScheduleSection', source: 'app', props: {} },
+        { component: 'HoldingsListSection', source: 'app', props: {} },
+        { component: 'AccordionSection', source: 'markdown', props: { title: 'FAQ' } },
+        { component: 'ControlPanelSection', source: 'app', props: { title: 'Controls' } },
+        { component: 'QuickActionsSection', source: 'app', props: { title: 'Quick actions' } },
+        { component: 'CheckoutSummarySection', source: 'app', props: {} },
         { component: 'ChatPanelSection', source: 'app', props: { title: 'Chat' } },
         { component: 'ComparisonSection', source: 'app', props: { title: 'Compare' } },
         { component: 'DataTableSection', source: 'api', props: { title: 'Table' } },
@@ -143,18 +178,24 @@ describe('Component Catalog Parity', () => {
 
     expect(propsFor('KpiSummarySection')).toMatchObject({ items: [] });
     expect(propsFor('ChartSection')).toMatchObject({ data: [] });
+    expect(propsFor('ChartInsightSection')).toMatchObject({ data: [], insights: [] });
+    expect(propsFor('StatsTrendCardsSection')).toMatchObject({ cards: [] });
     expect(propsFor('ProgressListSection')).toMatchObject({ items: [] });
     expect(propsFor('TimelineSection')).toMatchObject({ items: [] });
+    expect(propsFor('ActivityFeedSection')).toMatchObject({ items: [] });
+    expect(propsFor('NotificationCenterSection')).toMatchObject({ items: [] });
     expect(propsFor('CarouselSection')).toMatchObject({ items: [] });
-    expect(propsFor('ProcessStepperSection')).toMatchObject({ steps: [] });
+    expect(propsFor('StepperSection')).toMatchObject({ steps: [] });
     expect(propsFor('CardGridSection')).toMatchObject({ items: [] });
     expect(propsFor('FormSection')).toMatchObject({ fields: [] });
-    expect(propsFor('MasterDetailSection')).toMatchObject({
-      detail: { title: '詳細', fields: [] },
-      items: [],
-    });
     expect(propsFor('KanbanSection')).toMatchObject({ columns: [] });
     expect(propsFor('CalendarSection')).toMatchObject({ events: [] });
+    expect(propsFor('ScheduleSection')).toMatchObject({ entries: [] });
+    expect(propsFor('HoldingsListSection')).toMatchObject({ holdings: [] });
+    expect(propsFor('AccordionSection')).toMatchObject({ items: [] });
+    expect(propsFor('ControlPanelSection')).toMatchObject({ controls: [], modes: [] });
+    expect(propsFor('QuickActionsSection')).toMatchObject({ items: [] });
+    expect(propsFor('CheckoutSummarySection')).toMatchObject({ lines: [] });
     expect(propsFor('ChatPanelSection')).toMatchObject({ messages: [] });
     expect(propsFor('ComparisonSection')).toMatchObject({ columns: [] });
     expect(propsFor('DataTableSection')).toMatchObject({ columns: [], rows: [] });

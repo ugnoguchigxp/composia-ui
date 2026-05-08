@@ -1,10 +1,9 @@
-import { jsonrepair } from 'jsonrepair';
 import { componentDefinitions } from '../../../shared/schemas/app-catalog.schema';
 import { config } from '../../config';
 import { AppError } from '../../lib/errors';
-import { logger } from '../../lib/logger';
+import { aiJsonMaxOutputTokens, createJsonProvider } from './ai.provider-base';
 
-export const aiJsonMaxOutputTokens = 8000;
+export { aiJsonMaxOutputTokens };
 
 const excludedLayoutProviderSectionComponents = new Set(['InsightPanel']);
 const sectionComponentDefinitions = componentDefinitions.filter(
@@ -210,18 +209,20 @@ Keep page titles compact and workmanlike. Do not use oversized landing-page H1 o
 The page and intent fields are internal metadata. Do not turn the user's prompt or inferred intent into visible title, description, intro, summary, or sidebar copy.
 Do not create sections that merely restate the request, such as "ホーム" plus a sentence describing the requested EC site. Put only real product content, navigation, search, listings, forms, or workflow UI in sections.
 Do not create generic overview, summary, introduction, current state, or insight panels. Start with the actual primary content or control surface the user asked for.
-InsightPanel is not available for new generated screens. Use concrete components such as MainSearchNavigationSection, CardGridSection, DataTableSection, MasterDetailSection, ChatPanelSection, FormSection, KanbanSection, CalendarSection, or SplitHeroSection.
+InsightPanel is not available for new generated screens. Use concrete components such as MainSearchNavigationSection, CardGridSection, DataTableSection, StepperSection, ChatPanelSection, FormSection, KanbanSection, CalendarSection, or SplitHeroSection.
 Use KpiSummarySection only when the prompt clearly needs concrete metrics with meaningful labels and values; never use it as an overview substitute.
 Use ChartSection only for numeric trends, comparisons, shares, or radar scores. Do not add charts as decorative filler.
 Use ProgressListSection for completion, quota, score, setup, or health progress lists. Do not use it for plain navigation.
 Do not create page-level side menus, persistent sidebar navigation, or standalone menu sections made of button lists, such as "ショップメニュー" or "Shop menu".
 Do not use layout:"sidebar" or top-level navigation.items for new generated screens. SidebarPage is a legacy renderer compatibility path, not a default generation pattern.
 Use MainSearchNavigationSection for Amazon-style marketplace pages that need a prominent main search bar with category tabs directly underneath.
+When MainSearchNavigationSection is present, do not add NavigationPanel or an additional search/filter form section that duplicates the same purpose.
 Use NavigationPanel only as compact local tab navigation when the user explicitly asks for tabs or local category switching without a main search bar.
+Section selection priority must follow: request-fit first, then no-duplication, then source compatibility, then visual balance.
 If a prompt needs a hierarchy, tree, archive, or related-post list, render it as real content inside an appropriate section instead of adding a generic side menu.
 Do not add newsletter, email signup, メルマガ, or ニュースレター registration as a default landing-page filler pattern.
 Choose varied layouts. Use dashboards only for analytics-heavy prompts.
-Use screen for ordinary generated pages. Use main-search navigation, hero/carousel/card-grid for product or browsing flows. Use master-detail/inbox, kanban, calendar, chat, editor-preview, comparison, form, stepper, or article-feed when they fit the user request.
+Use screen for ordinary generated pages. Use main-search navigation, hero/carousel/card-grid for product or browsing flows. Use stepper, kanban, calendar, chat, editor-preview, comparison, form, or article-feed when they fit the user request.
 `.trim();
 
 const layoutInstructions = `
@@ -286,6 +287,20 @@ const classificationInstructions =
 const navigationInstructions =
   'Generate concise app navigation links for the provided request and context. Return strict JSON text only, without Markdown fences. Every href must be an app-relative path beginning with a single slash.';
 
+const instructions = {
+  classification: classificationInstructions,
+  layout: layoutInstructions,
+  navigation: navigationInstructions,
+  summary: summaryInstructions,
+};
+
+const schemas = {
+  classification: classificationJsonSchema,
+  layout: appUiSchemaJsonSchema,
+  navigation: navigationJsonSchema,
+  summary: summaryJsonSchema,
+};
+
 export type AiLayoutProvider = {
   classify?: (input: { labels?: string[]; prompt?: string; text: string }) => Promise<unknown>;
   generateLayout: (prompt: string) => Promise<unknown>;
@@ -295,38 +310,6 @@ export type AiLayoutProvider = {
 
 function providerError(message: string, details?: Record<string, unknown>) {
   return new AppError(502, 'AI_PROVIDER_ERROR', message, details);
-}
-
-export function parseJsonText(text: string): unknown {
-  const trimmed = text.trim();
-  if (!trimmed) {
-    throw providerError('AI provider returned empty text output');
-  }
-
-  try {
-    return JSON.parse(trimmed);
-  } catch (error) {
-    try {
-      const repaired = jsonrepair(trimmed);
-      const parsed = JSON.parse(repaired);
-      logger.warn(
-        {
-          reason: error instanceof Error ? error.message : 'Unknown JSON parse error',
-          outputPreview: trimmed.slice(0, 240),
-        },
-        'AI provider returned repairable JSON'
-      );
-      return parsed;
-    } catch (repairError) {
-      logger.error({ text: trimmed, error, repairError }, 'AI provider returned invalid JSON');
-      throw providerError('AI provider returned invalid JSON', {
-        reason: error instanceof Error ? error.message : 'Unknown JSON parse error',
-        repairReason:
-          repairError instanceof Error ? repairError.message : 'Unknown JSON repair error',
-        outputPreview: trimmed.slice(0, 240),
-      });
-    }
-  }
 }
 
 function extractOpenAiResponseText(payload: Record<string, unknown>) {
@@ -372,15 +355,171 @@ function extractAzureMessageText(payload: Record<string, unknown>) {
   });
 }
 
-async function parseProviderResponse(response: Response) {
-  const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
-  if (!response.ok) {
-    throw providerError('AI provider request failed', {
-      status: response.status,
-      providerError: payload.error,
-    });
+function extractAnthropicMessageText(payload: Record<string, unknown>) {
+  const content = Array.isArray(payload.content) ? payload.content : [];
+  const firstContent = content[0];
+  if (
+    typeof firstContent === 'object' &&
+    firstContent !== null &&
+    typeof (firstContent as { text?: unknown }).text === 'string'
+  ) {
+    return (firstContent as { text: string }).text;
   }
-  return payload;
+  throw providerError('Anthropic response did not include text content');
+}
+
+function extractGoogleAiMessageText(payload: Record<string, unknown>) {
+  const candidates = Array.isArray(payload.candidates) ? payload.candidates : [];
+  const firstCandidate = candidates[0] as Record<string, any> | undefined;
+  if (!firstCandidate || typeof firstCandidate !== 'object') {
+    throw providerError('Google AI response did not include candidates');
+  }
+
+  const parts = Array.isArray(firstCandidate.content?.parts)
+    ? (firstCandidate.content.parts as Array<{ text?: string }>)
+    : [];
+  const firstPart = parts[0];
+  if (firstPart && typeof firstPart.text === 'string') {
+    return firstPart.text;
+  }
+
+  throw providerError('Google AI response did not include text content');
+}
+
+function createOpenAiResponsesLayoutProvider(): AiLayoutProvider {
+  return createJsonProvider(
+    {
+      name: 'OpenAI',
+      buildRequest: ({ input, instructions, name, schema }) => ({
+        url: 'https://api.openai.com/v1/responses',
+        init: {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${config.OPENAI_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: config.OPENAI_MODEL,
+            instructions,
+            input,
+            max_output_tokens: aiJsonMaxOutputTokens,
+            text: {
+              format: {
+                type: 'json_schema',
+                name,
+                strict: false,
+                schema,
+              },
+            },
+          }),
+        },
+      }),
+      extractText: extractOpenAiResponseText,
+    },
+    instructions,
+    schemas
+  );
+}
+
+function createAzureOpenAiLayoutProvider(): AiLayoutProvider {
+  return createJsonProvider(
+    {
+      name: 'Azure OpenAI',
+      buildRequest: ({ input, instructions, name, schema }) => {
+        const rawEndpoint = config.AZURE_OPENAI_ENDPOINT;
+        const endpoint = rawEndpoint?.endsWith('/') ? rawEndpoint.slice(0, -1) : rawEndpoint;
+        const deployment = encodeURIComponent(config.AZURE_OPENAI_DEPLOYMENT_NAME ?? '');
+        const url = `${endpoint}/openai/deployments/${deployment}/chat/completions?api-version=${encodeURIComponent(
+          config.AZURE_OPENAI_API_VERSION
+        )}`;
+
+        return {
+          url,
+          init: {
+            method: 'POST',
+            headers: {
+              'api-key': config.AZURE_OPENAI_API_KEY ?? '',
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              messages: [
+                { role: 'system', content: instructions },
+                { role: 'user', content: input },
+              ],
+              max_completion_tokens: aiJsonMaxOutputTokens,
+              response_format: {
+                type: 'json_schema',
+                json_schema: {
+                  name,
+                  strict: false,
+                  schema,
+                },
+              },
+            }),
+          },
+        };
+      },
+      extractText: extractAzureMessageText,
+    },
+    instructions,
+    schemas
+  );
+}
+
+function createAnthropicLayoutProvider(): AiLayoutProvider {
+  return createJsonProvider(
+    {
+      name: 'Anthropic',
+      buildRequest: ({ input, instructions }) => ({
+        url: 'https://api.anthropic.com/v1/messages',
+        init: {
+          method: 'POST',
+          headers: {
+            'x-api-key': config.ANTHROPIC_API_KEY ?? '',
+            'anthropic-version': '2023-06-01',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: config.ANTHROPIC_MODEL,
+            max_tokens: aiJsonMaxOutputTokens,
+            system: instructions,
+            messages: [{ role: 'user', content: input }],
+          }),
+        },
+      }),
+      extractText: extractAnthropicMessageText,
+    },
+    instructions,
+    schemas
+  );
+}
+
+function createGoogleAiLayoutProvider(): AiLayoutProvider {
+  return createJsonProvider(
+    {
+      name: 'Google AI',
+      buildRequest: ({ input, instructions, schema }) => ({
+        url: `https://generativelanguage.googleapis.com/v1beta/models/${config.GOOGLE_AI_MODEL}:generateContent?key=${config.GOOGLE_AI_API_KEY}`,
+        init: {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: input }] }],
+            systemInstruction: { parts: [{ text: instructions }] },
+            generationConfig: {
+              responseMimeType: 'application/json',
+              responseSchema: schema,
+            },
+          }),
+        },
+      }),
+      extractText: extractGoogleAiMessageText,
+    },
+    instructions,
+    schemas
+  );
 }
 
 export function createDefaultAiLayoutProvider(): AiLayoutProvider {
@@ -396,181 +535,17 @@ export function createDefaultAiLayoutProvider(): AiLayoutProvider {
     return createOpenAiResponsesLayoutProvider();
   }
 
+  if (config.ANTHROPIC_API_KEY) {
+    return createAnthropicLayoutProvider();
+  }
+
+  if (config.GOOGLE_AI_API_KEY) {
+    return createGoogleAiLayoutProvider();
+  }
+
   return {
     generateLayout: async () => {
       throw new AppError(503, 'AI_PROVIDER_NOT_CONFIGURED', 'OpenAI API is not configured');
     },
-  };
-}
-
-function createOpenAiResponsesLayoutProvider(): AiLayoutProvider {
-  const generateJson = async ({
-    input,
-    instructions,
-    name,
-    schema,
-  }: {
-    input: string;
-    instructions: string;
-    name: string;
-    schema: object;
-  }) => {
-    const response = await fetch('https://api.openai.com/v1/responses', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${config.OPENAI_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: config.OPENAI_MODEL,
-        instructions,
-        input,
-        max_output_tokens: aiJsonMaxOutputTokens,
-        text: {
-          format: {
-            type: 'json_schema',
-            name,
-            strict: false,
-            schema,
-          },
-        },
-      }),
-    });
-
-    logger.info(
-      {
-        name,
-        model: config.OPENAI_MODEL,
-        inputLength: input.length,
-        instructionsLength: instructions.length,
-        maxOutputTokens: aiJsonMaxOutputTokens,
-      },
-      'OpenAI request sent'
-    );
-
-    const payload = await parseProviderResponse(response);
-    logger.info({ name, payload }, 'OpenAI response received');
-    return parseJsonText(extractOpenAiResponseText(payload));
-  };
-
-  return {
-    classify: async (input) =>
-      generateJson({
-        instructions: classificationInstructions,
-        input: JSON.stringify(input),
-        name: 'ai_classification',
-        schema: classificationJsonSchema,
-      }),
-    generateLayout: async (prompt) =>
-      generateJson({
-        instructions: layoutInstructions,
-        input: prompt,
-        name: 'app_ui_schema',
-        schema: appUiSchemaJsonSchema,
-      }),
-    generateNavigation: async (input) =>
-      generateJson({
-        instructions: navigationInstructions,
-        input,
-        name: 'ai_navigation',
-        schema: navigationJsonSchema,
-      }),
-    summarize: async (input) =>
-      generateJson({
-        instructions: summaryInstructions,
-        input: JSON.stringify(input),
-        name: 'ai_summary',
-        schema: summaryJsonSchema,
-      }),
-  };
-}
-
-function createAzureOpenAiLayoutProvider(): AiLayoutProvider {
-  const generateJson = async ({
-    input,
-    instructions,
-    name,
-    schema,
-  }: {
-    input: string;
-    instructions: string;
-    name: string;
-    schema: object;
-  }) => {
-    const rawEndpoint = config.AZURE_OPENAI_ENDPOINT;
-    const endpoint = rawEndpoint?.endsWith('/') ? rawEndpoint.slice(0, -1) : rawEndpoint;
-    const deployment = encodeURIComponent(config.AZURE_OPENAI_DEPLOYMENT_NAME ?? '');
-    const url = `${endpoint}/openai/deployments/${deployment}/chat/completions?api-version=${encodeURIComponent(
-      config.AZURE_OPENAI_API_VERSION
-    )}`;
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'api-key': config.AZURE_OPENAI_API_KEY ?? '',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        messages: [
-          { role: 'system', content: instructions },
-          { role: 'user', content: input },
-        ],
-        max_completion_tokens: aiJsonMaxOutputTokens,
-        response_format: {
-          type: 'json_schema',
-          json_schema: {
-            name,
-            strict: false,
-            schema,
-          },
-        },
-      }),
-    });
-
-    logger.info(
-      {
-        name,
-        url,
-        inputLength: input.length,
-        instructionsLength: instructions.length,
-        maxCompletionTokens: aiJsonMaxOutputTokens,
-      },
-      'Azure OpenAI request sent'
-    );
-
-    const payload = await parseProviderResponse(response);
-    logger.info({ name, payload }, 'Azure OpenAI response received');
-    return parseJsonText(extractAzureMessageText(payload));
-  };
-
-  return {
-    classify: async (input) =>
-      generateJson({
-        instructions: classificationInstructions,
-        input: JSON.stringify(input),
-        name: 'ai_classification',
-        schema: classificationJsonSchema,
-      }),
-    generateLayout: async (prompt) =>
-      generateJson({
-        instructions: layoutInstructions,
-        input: prompt,
-        name: 'app_ui_schema',
-        schema: appUiSchemaJsonSchema,
-      }),
-    generateNavigation: async (input) =>
-      generateJson({
-        instructions: navigationInstructions,
-        input,
-        name: 'ai_navigation',
-        schema: navigationJsonSchema,
-      }),
-    summarize: async (input) =>
-      generateJson({
-        instructions: summaryInstructions,
-        input: JSON.stringify(input),
-        name: 'ai_summary',
-        schema: summaryJsonSchema,
-      }),
   };
 }

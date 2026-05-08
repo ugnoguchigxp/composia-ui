@@ -67,6 +67,12 @@
   --spacing-ui-button-y: var(--ui-button-padding-y);
   --spacing-ui-cell: var(--ui-table-cell-padding);
   --spacing-ui-gap: var(--ui-gap-base);
+  --spacing-section-x: var(--ui-section-padding-x);
+  --spacing-section-y: var(--ui-section-padding-y);
+  --spacing-section-header-x: var(--ui-section-header-padding-x);
+  --spacing-section-header-y: var(--ui-section-header-padding-y);
+  --spacing-section-gap: var(--ui-section-gap);
+  --spacing-section-control: var(--ui-section-control-height);
 }
 
 @layer base {
@@ -122,8 +128,44 @@ textarea {
     height: var(--ui-component-height);
   }
 
+  .h-section-control {
+    height: var(--ui-section-control-height);
+  }
+
   .w-ui {
     width: var(--ui-component-height);
+  }
+
+  .rounded-section {
+    border-radius: var(--ui-section-radius);
+  }
+
+  .p-section {
+    padding: var(--ui-section-padding-y) var(--ui-section-padding-x);
+  }
+
+  .px-section {
+    padding-left: var(--ui-section-padding-x);
+    padding-right: var(--ui-section-padding-x);
+  }
+
+  .py-section {
+    padding-top: var(--ui-section-padding-y);
+    padding-bottom: var(--ui-section-padding-y);
+  }
+
+  .px-section-header {
+    padding-left: var(--ui-section-header-padding-x);
+    padding-right: var(--ui-section-header-padding-x);
+  }
+
+  .py-section-header {
+    padding-top: var(--ui-section-header-padding-y);
+    padding-bottom: var(--ui-section-header-padding-y);
+  }
+
+  .gap-section {
+    gap: var(--ui-section-gap);
   }
 
   /* Border radius overrides using CSS variables */

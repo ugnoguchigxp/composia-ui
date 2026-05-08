@@ -12,10 +12,10 @@ type NavigationPanelProps = z.infer<(typeof componentPropsSchemas)['NavigationPa
 
 export function NavigationPanel({ props }: BaseComponentProps<NavigationPanelProps>) {
   const tabClassName =
-    'inline-flex h-ui shrink-0 items-center border-transparent border-b-2 px-3 text-muted-foreground text-sm font-medium transition-colors hover:border-border hover:text-foreground';
+    'inline-flex h-ui shrink-0 items-center rounded-md border-transparent border-b-2 px-3 text-muted-foreground text-sm font-medium transition-colors hover:border-border hover:bg-background hover:text-foreground data-[selected=true]:border-primary data-[selected=true]:text-foreground';
 
   return (
-    <nav aria-label={props.title} className="border-border border-b pb-1">
+    <nav aria-label={props.title} className="rounded-md border border-border/70 bg-muted/40 p-1">
       <h2 className="sr-only">{props.title}</h2>
       <div className="flex flex-wrap gap-x-1 gap-y-2">
         {props.links.map((link) => {

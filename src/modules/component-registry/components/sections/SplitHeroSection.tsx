@@ -30,7 +30,7 @@ export function SplitHeroSection({ props }: BaseComponentProps<SplitHeroSectionP
     <section
       className={visualIntentClassName(
         props.visualIntent,
-        'grid overflow-hidden rounded-lg border bg-card md:grid-cols-[minmax(0,1fr)_minmax(18rem,0.85fr)]'
+        'grid overflow-hidden rounded-section border border-border/70 bg-gradient-to-b from-card to-card/85 shadow-sm ring-1 ring-border/30 md:grid-cols-[minmax(0,1fr)_minmax(18rem,0.85fr)]'
       )}
     >
       <div className="flex min-h-[22rem] flex-col justify-center p-6 md:p-8">
@@ -62,7 +62,7 @@ export function SplitHeroSection({ props }: BaseComponentProps<SplitHeroSectionP
         <AppActionList actions={extraActions} />
       </div>
       {props.image ? (
-        <figure className="min-h-[20rem] border-border border-t bg-muted md:border-t-0 md:border-l">
+        <figure className="min-h-[20rem] border-border/70 border-t bg-muted/35 md:border-t-0 md:border-l">
           <img
             alt={props.image.alt}
             className="h-full w-full object-cover"

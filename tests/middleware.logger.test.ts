@@ -36,6 +36,11 @@ describe('loggerMiddleware', () => {
         method: 'GET',
         url: 'http://localhost/api/auth/oauth/google/callback?code=secret-code&state=secret-state',
         path: '/api/auth/oauth/google/callback',
+        header: vi.fn((name) => {
+          if (name === 'X-Request-Id') return undefined;
+          if (name === 'User-Agent') return 'vitest';
+          return undefined;
+        }),
       },
       res: {
         status: 200,
@@ -46,12 +51,17 @@ describe('loggerMiddleware', () => {
 
     await middleware(c as never, async () => {});
 
-    expect(loggerMocks.logger.child).toHaveBeenCalledWith({ requestId: 'request-id-1' });
+    expect(loggerMocks.logger.child).toHaveBeenCalledWith({
+      requestId: 'request-id-1',
+      method: 'GET',
+      path: '/api/auth/oauth/google/callback',
+    });
 
     const startCall = loggerMocks.childLogger.info.mock.calls[0];
     expect(startCall?.[0]).toEqual({
-      method: 'GET',
-      path: '/api/auth/oauth/google/callback',
+      type: 'request_started',
+      userAgent: 'vitest',
+      ip: undefined,
     });
     expect(JSON.stringify(startCall?.[0])).not.toContain('secret-code');
     expect(JSON.stringify(startCall?.[0])).not.toContain('secret-state');

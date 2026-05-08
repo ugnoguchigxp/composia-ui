@@ -430,7 +430,7 @@ function bindScreen(
   const sections = screen.sections.map((section): AppUiSchemaSection => {
     if (section.dataBindingId) return section;
     if (
-      ['DataTableSection', 'CardGridSection', 'MasterDetailSection', 'KanbanSection'].includes(
+      ['DataTableSection', 'CardGridSection', 'StepperSection', 'KanbanSection'].includes(
         section.component
       )
     ) {

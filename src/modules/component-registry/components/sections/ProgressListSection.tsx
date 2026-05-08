@@ -2,8 +2,8 @@ import type { BaseComponentProps } from '@json-render/react';
 import type { z } from 'zod';
 import { cn } from '../../../../lib/utils';
 import type { componentPropsSchemas } from '../../services/catalog.service';
-import { visualIntentClassName } from '../../services/visual-intent.service';
 import { AppActionList } from '../AppActionControl';
+import { SectionShell } from './SectionShell';
 
 type ProgressListSectionProps = z.infer<(typeof componentPropsSchemas)['ProgressListSection']>;
 type ProgressTone = NonNullable<ProgressListSectionProps['items'][number]['tone']>;
@@ -23,19 +23,13 @@ function percentage(value: number, max: number) {
 
 export function ProgressListSection({ props }: BaseComponentProps<ProgressListSectionProps>) {
   return (
-    <section
-      className={visualIntentClassName(
-        props.visualIntent,
-        'rounded-lg border p-[var(--ui-card-padding)]'
-      )}
+    <SectionShell
+      bodyClassName="space-y-[var(--ui-section-gap)]"
+      description={props.description}
+      title={props.title}
+      visualIntent={props.visualIntent}
     >
-      <div className="mb-4">
-        <h2 className="text-lg font-semibold">{props.title}</h2>
-        {props.description ? (
-          <p className="mt-1 text-sm leading-6 text-muted-foreground">{props.description}</p>
-        ) : null}
-      </div>
-      <div className="divide-y divide-border rounded-md border border-border bg-background">
+      <div className="divide-y divide-border/70 rounded-md border border-border/70 bg-background/95">
         {props.items.length === 0 ? (
           <div className="px-ui py-ui text-sm text-muted-foreground">No progress data</div>
         ) : (
@@ -76,7 +70,7 @@ export function ProgressListSection({ props }: BaseComponentProps<ProgressListSe
           })
         )}
       </div>
-      <AppActionList actions={props.actions} />
-    </section>
+      <AppActionList actions={props.actions} className="mt-0" />
+    </SectionShell>
   );
 }

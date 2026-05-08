@@ -2,7 +2,6 @@ import type { BaseComponentProps } from '@json-render/react';
 import { type FormEvent, useEffect, useState } from 'react';
 import type { z } from 'zod';
 import type { componentPropsSchemas } from '../../services/catalog.service';
-import { visualIntentClassName } from '../../services/visual-intent.service';
 import {
   AppActionControl,
   AppActionList,
@@ -11,6 +10,7 @@ import {
   type RenderableAppActionProps,
   useAppActionRenderContext,
 } from '../AppActionControl';
+import { SectionShell } from './SectionShell';
 
 type FormSectionProps = z.infer<(typeof componentPropsSchemas)['FormSection']> &
   RenderableAppActionProps;
@@ -47,20 +47,22 @@ export function FormSection({ props }: BaseComponentProps<FormSectionProps>) {
   };
 
   return (
-    <section className={visualIntentClassName(props.visualIntent, 'rounded-lg border p-5')}>
-      <div className="mb-5">
-        <h2 className="text-lg font-semibold">{props.title}</h2>
-        {props.description ? (
-          <p className="mt-1 text-muted-foreground text-sm leading-6">{props.description}</p>
-        ) : null}
-      </div>
-      <form className="grid gap-4 md:grid-cols-2" onSubmit={handleSubmit}>
+    <SectionShell
+      bodyClassName="space-y-[var(--ui-section-gap)]"
+      description={props.description}
+      title={props.title}
+      visualIntent={props.visualIntent}
+    >
+      <form
+        className="grid gap-4 rounded-md border border-border/70 bg-muted/15 p-4 md:grid-cols-2"
+        onSubmit={handleSubmit}
+      >
         {props.fields.map((field) => (
           <div
             className={field.type === 'textarea' ? 'grid gap-2 md:col-span-2' : 'grid gap-2'}
             key={field.name}
           >
-            <span className="font-medium text-sm">
+            <span className="font-medium text-sm text-foreground/90">
               {field.label}
               {field.required ? <span className="text-destructive"> *</span> : null}
             </span>
@@ -71,9 +73,9 @@ export function FormSection({ props }: BaseComponentProps<FormSectionProps>) {
             />
           </div>
         ))}
-        <div className="flex flex-wrap gap-3 pt-2 md:col-span-2">
+        <div className="mt-1 flex flex-wrap gap-3 border-t border-border/70 pt-3 md:col-span-2">
           <button
-            className="inline-flex h-ui items-center rounded-md bg-primary px-ui-button text-primary-foreground text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex h-ui items-center rounded-md bg-primary px-ui-button text-primary-foreground text-sm font-medium shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
             disabled={!canSubmit}
             type="submit"
           >
@@ -81,14 +83,14 @@ export function FormSection({ props }: BaseComponentProps<FormSectionProps>) {
           </button>
           <AppActionControl
             action={secondaryAction}
-            className="inline-flex h-ui items-center rounded-md border border-border bg-background px-ui-button text-sm font-medium hover:bg-accent"
+            className="inline-flex h-ui items-center rounded-md border border-border bg-background px-ui-button text-sm font-medium hover:bg-accent/70"
             fallbackHref={props.secondaryAction?.href}
             fallbackLabel={props.secondaryAction?.label}
           />
           <AppActionList actions={extraActions} className="mt-0" />
         </div>
       </form>
-    </section>
+    </SectionShell>
   );
 }
 
@@ -107,13 +109,14 @@ function FormField({
   onChange: (value: unknown) => void;
   value: unknown;
 }) {
-  const commonClass = 'h-ui rounded-md border border-input bg-background px-3 text-sm outline-none';
+  const commonClass =
+    'h-ui rounded-md border border-input/80 bg-background/95 px-ui text-sm outline-none focus:ring-2 focus:ring-ring/30';
 
   if (field.type === 'textarea') {
     return (
       <textarea
         aria-label={field.label}
-        className="min-h-28 rounded-md border border-input bg-background px-3 py-2 text-sm outline-none"
+        className="min-h-28 rounded-md border border-input/80 bg-background/95 px-ui py-ui text-sm outline-none focus:ring-2 focus:ring-ring/30"
         onChange={(event) => onChange(event.target.value)}
         placeholder={field.placeholder}
         value={String(value ?? '')}
