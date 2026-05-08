@@ -129,4 +129,43 @@ describe('sandbox query service', () => {
 
     expect(sandboxSqlMock.unsafe).toHaveBeenNthCalledWith(2, 'SELECT * FROM "products" LIMIT 25');
   });
+
+  it('uses catalog statistics instead of counting every table for sandbox state', async () => {
+    sandboxSqlMock.unsafe
+      .mockResolvedValueOnce([
+        { name: 'orders', row_count: 3 },
+        { name: 'products', row_count: 12 },
+      ])
+      .mockResolvedValueOnce([
+        {
+          default_value: null,
+          is_enum: false,
+          name: 'id',
+          nullable: false,
+          primary_key: true,
+          table_name: 'products',
+          type: 'uuid',
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          columns: ['name'],
+          name: 'products_name_idx',
+          table_name: 'products',
+          unique: false,
+        },
+      ])
+      .mockResolvedValueOnce([]);
+    const service = createSandboxQueryService(createRepository());
+
+    await expect(service.state()).resolves.toMatchObject({
+      appliedDatabaseSchemaJsonId: null,
+      tables: [
+        { managed: true, name: 'orders', rowCount: 3 },
+        { managed: true, name: 'products', rowCount: 12 },
+      ],
+    });
+    expect(sandboxSqlMock.unsafe).toHaveBeenCalledTimes(4);
+    expect(sandboxSqlMock.unsafe).not.toHaveBeenCalledWith(expect.stringContaining('count(*)'));
+  });
 });

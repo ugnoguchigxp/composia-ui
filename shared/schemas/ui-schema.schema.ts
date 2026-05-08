@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { dataBindingIdentifierSchema } from './data-binding.schema';
 import { visualIntentSchema } from './visual-intent.schema';
 
-const appRelativePathSchema = z
+export const appRelativePathSchema = z
   .string()
   .trim()
   .max(500)

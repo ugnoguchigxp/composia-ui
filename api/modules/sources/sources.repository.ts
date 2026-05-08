@@ -1,4 +1,4 @@
-import { desc, eq } from 'drizzle-orm';
+import { desc, eq, sql } from 'drizzle-orm';
 import type { SourceKind } from '../../../shared/schemas/sources.schema';
 import { db } from '../../db/client';
 import { normalizedEntities, sourceDefinitions } from '../../db/schema';
@@ -81,43 +81,42 @@ export const sourcesRepository: SourcesRepository = {
       .orderBy(desc(normalizedEntities.publishedAt), desc(normalizedEntities.createdAt)),
   listSources: async () => db.select().from(sourceDefinitions).orderBy(sourceDefinitions.label),
   upsertItems: async (source, items) => {
-    const saved: NormalizedEntityRecord[] = [];
-    for (const item of items) {
-      const [entity] = await db
-        .insert(normalizedEntities)
-        .values({
+    if (items.length === 0) return [];
+
+    return db
+      .insert(normalizedEntities)
+      .values(
+        items.map((item) => ({
           sourceDefinitionId: source.id,
           source: source.kind,
           entityType: source.entityType,
           externalId: item.externalId,
-          title: item.title,
-          body: item.body,
-          summary: item.summary,
-          url: item.url,
-          author: item.author,
-          tags: item.tags,
-          publishedAt: item.publishedAt,
-          sourceUpdatedAt: item.sourceUpdatedAt,
+          title: item.title ?? null,
+          body: item.body ?? null,
+          summary: item.summary ?? null,
+          url: item.url ?? null,
+          author: item.author ?? null,
+          tags: item.tags ?? null,
+          publishedAt: item.publishedAt ?? null,
+          sourceUpdatedAt: item.sourceUpdatedAt ?? null,
           raw: item.raw,
-        })
-        .onConflictDoUpdate({
-          target: [normalizedEntities.sourceDefinitionId, normalizedEntities.externalId],
-          set: {
-            title: item.title,
-            body: item.body,
-            summary: item.summary,
-            url: item.url,
-            author: item.author,
-            tags: item.tags,
-            publishedAt: item.publishedAt,
-            sourceUpdatedAt: item.sourceUpdatedAt,
-            raw: item.raw,
-            updatedAt: new Date(),
-          },
-        })
-        .returning();
-      if (entity) saved.push(entity);
-    }
-    return saved;
+        }))
+      )
+      .onConflictDoUpdate({
+        target: [normalizedEntities.sourceDefinitionId, normalizedEntities.externalId],
+        set: {
+          title: sql`excluded.title`,
+          body: sql`excluded.body`,
+          summary: sql`excluded.summary`,
+          url: sql`excluded.url`,
+          author: sql`excluded.author`,
+          tags: sql`excluded.tags`,
+          publishedAt: sql`excluded.published_at`,
+          sourceUpdatedAt: sql`excluded.source_updated_at`,
+          raw: sql`excluded.raw`,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
   },
 };

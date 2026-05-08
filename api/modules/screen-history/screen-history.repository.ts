@@ -1,16 +1,39 @@
-import { and, asc, desc, eq, gt, inArray } from 'drizzle-orm';
+import { and, asc, count, desc, eq, getTableColumns, gt, inArray, sql } from 'drizzle-orm';
 import { db } from '../../db/client';
 import {
   generatedScreens,
   promptSessionMessages,
   promptSessions,
+  screenActionLinks,
   screenJsons,
 } from '../../db/schema';
 
 export type PromptSessionRecord = typeof promptSessions.$inferSelect;
 export type GeneratedScreenRecord = typeof generatedScreens.$inferSelect;
 export type ScreenJsonRecord = typeof screenJsons.$inferSelect;
+export type ScreenActionLinkRecord = typeof screenActionLinks.$inferSelect;
 export type PromptSessionMessageRecord = typeof promptSessionMessages.$inferSelect;
+export type ScreenJsonCheckpointRecord = Pick<
+  ScreenJsonRecord,
+  | 'action'
+  | 'createdAt'
+  | 'dataBindings'
+  | 'databaseSchemaJsonId'
+  | 'id'
+  | 'inferredIntent'
+  | 'prompt'
+  | 'sessionId'
+  | 'trigger'
+  | 'updatedAt'
+  | 'version'
+> & {
+  page: string | null;
+};
+export type PromptSessionMessageStatsRecord = {
+  count: number;
+  searchText: string | null;
+  sessionId: string;
+};
 
 export type GeneratedScreenWithSessionRecord = {
   screen: GeneratedScreenRecord;
@@ -26,12 +49,14 @@ export type ScreenHistoryRepository = {
   createMessages: (
     input: (typeof promptSessionMessages.$inferInsert)[]
   ) => Promise<PromptSessionMessageRecord[]>;
+  deleteActionLink: (sourceSessionId: string, actionId: string) => Promise<void>;
   createScreenJson: (input: typeof screenJsons.$inferInsert) => Promise<ScreenJsonRecord>;
   createSession: (input: typeof promptSessions.$inferInsert) => Promise<PromptSessionRecord>;
   deleteLegacyScreen: (userId: string, screenId: string) => Promise<void>;
   deleteMessagesAfterVersion: (sessionId: string, version: number) => Promise<void>;
   deleteScreenJson: (userId: string, screenJsonId: string) => Promise<void>;
   deleteScreenJsonsAfterVersion: (sessionId: string, version: number) => Promise<void>;
+  deleteSession: (userId: string, sessionId: string) => Promise<void>;
   findLegacyScreenById: (
     userId: string,
     screenId: string
@@ -40,6 +65,10 @@ export type ScreenHistoryRepository = {
     userId: string,
     screenJsonId: string
   ) => Promise<ScreenJsonWithSessionRecord | null>;
+  findActiveSessionScreenJson: (
+    userId: string,
+    sessionId: string
+  ) => Promise<ScreenJsonWithSessionRecord | null>;
   findSessionById: (userId: string, sessionId: string) => Promise<PromptSessionRecord | null>;
   listLegacyChildren: (
     userId: string,
@@ -47,7 +76,19 @@ export type ScreenHistoryRepository = {
   ) => Promise<GeneratedScreenWithSessionRecord[]>;
   listLegacyScreens: (userId: string) => Promise<GeneratedScreenWithSessionRecord[]>;
   listScreenJsons: (userId: string) => Promise<ScreenJsonWithSessionRecord[]>;
+  listSessionActionLinks: (
+    userId: string,
+    sourceSessionId: string
+  ) => Promise<ScreenActionLinkRecord[]>;
+  listSessionMessageStats: (
+    userId: string,
+    sessionIds: string[]
+  ) => Promise<PromptSessionMessageStatsRecord[]>;
   listSessionMessages: (userId: string, sessionId: string) => Promise<PromptSessionMessageRecord[]>;
+  listSessionScreenJsonCheckpoints: (
+    userId: string,
+    sessionId: string
+  ) => Promise<ScreenJsonCheckpointRecord[]>;
   listSessionScreenJsons: (
     userId: string,
     sessionId: string
@@ -56,6 +97,9 @@ export type ScreenHistoryRepository = {
     sessionId: string,
     screenJsonId: string | null
   ) => Promise<PromptSessionRecord>;
+  upsertActionLink: (
+    input: typeof screenActionLinks.$inferInsert
+  ) => Promise<ScreenActionLinkRecord>;
 };
 
 async function screenJsonIdsAfterVersion(sessionId: string, version: number) {
@@ -70,6 +114,16 @@ export const screenHistoryRepository: ScreenHistoryRepository = {
   createMessages: async (input) => {
     if (input.length === 0) return [];
     return db.insert(promptSessionMessages).values(input).returning();
+  },
+  deleteActionLink: async (sourceSessionId, actionId) => {
+    await db
+      .delete(screenActionLinks)
+      .where(
+        and(
+          eq(screenActionLinks.sourceSessionId, sourceSessionId),
+          eq(screenActionLinks.actionId, actionId)
+        )
+      );
   },
   createScreenJson: async (input) => {
     const [screenJson] = await db.insert(screenJsons).values(input).returning();
@@ -101,6 +155,11 @@ export const screenHistoryRepository: ScreenHistoryRepository = {
     if (ids.length === 0) return;
     await db.delete(screenJsons).where(inArray(screenJsons.id, ids));
   },
+  deleteSession: async (userId, sessionId) => {
+    await db
+      .delete(promptSessions)
+      .where(and(eq(promptSessions.id, sessionId), eq(promptSessions.createdBy, userId)));
+  },
   findLegacyScreenById: async (userId, screenId) => {
     const [row] = await db
       .select({ screen: generatedScreens, session: promptSessions })
@@ -116,6 +175,19 @@ export const screenHistoryRepository: ScreenHistoryRepository = {
       .from(screenJsons)
       .innerJoin(promptSessions, eq(screenJsons.sessionId, promptSessions.id))
       .where(and(eq(screenJsons.id, screenJsonId), eq(promptSessions.createdBy, userId)))
+      .limit(1);
+    return row ?? null;
+  },
+  findActiveSessionScreenJson: async (userId, sessionId) => {
+    const [row] = await db
+      .select({ screenJson: screenJsons, session: promptSessions })
+      .from(screenJsons)
+      .innerJoin(promptSessions, eq(screenJsons.sessionId, promptSessions.id))
+      .where(and(eq(screenJsons.sessionId, sessionId), eq(promptSessions.createdBy, userId)))
+      .orderBy(
+        sql`case when ${screenJsons.id} = ${promptSessions.activeScreenJsonId} then 0 else 1 end`,
+        desc(screenJsons.version)
+      )
       .limit(1);
     return row ?? null;
   },
@@ -153,15 +225,68 @@ export const screenHistoryRepository: ScreenHistoryRepository = {
       .innerJoin(promptSessions, eq(screenJsons.sessionId, promptSessions.id))
       .where(eq(promptSessions.createdBy, userId))
       .orderBy(desc(screenJsons.createdAt)),
-  listSessionMessages: async (userId, sessionId) => {
-    const session = await screenHistoryRepository.findSessionById(userId, sessionId);
-    if (!session) return [];
+  listSessionActionLinks: async (userId, sourceSessionId) =>
+    db
+      .select(getTableColumns(screenActionLinks))
+      .from(screenActionLinks)
+      .innerJoin(promptSessions, eq(screenActionLinks.sourceSessionId, promptSessions.id))
+      .where(
+        and(
+          eq(screenActionLinks.sourceSessionId, sourceSessionId),
+          eq(promptSessions.createdBy, userId)
+        )
+      )
+      .orderBy(asc(screenActionLinks.createdAt)),
+  listSessionMessageStats: async (userId, sessionIds) => {
+    if (sessionIds.length === 0) return [];
     return db
-      .select()
+      .select({
+        sessionId: promptSessionMessages.sessionId,
+        count: count(promptSessionMessages.id),
+        searchText: sql<
+          string | null
+        >`string_agg(${promptSessionMessages.content}, E'\n' ORDER BY ${promptSessionMessages.createdAt})`,
+      })
       .from(promptSessionMessages)
-      .where(eq(promptSessionMessages.sessionId, sessionId))
+      .innerJoin(promptSessions, eq(promptSessionMessages.sessionId, promptSessions.id))
+      .where(
+        and(
+          eq(promptSessions.createdBy, userId),
+          inArray(promptSessionMessages.sessionId, sessionIds)
+        )
+      )
+      .groupBy(promptSessionMessages.sessionId);
+  },
+  listSessionMessages: async (userId, sessionId) => {
+    return db
+      .select(getTableColumns(promptSessionMessages))
+      .from(promptSessionMessages)
+      .innerJoin(promptSessions, eq(promptSessionMessages.sessionId, promptSessions.id))
+      .where(
+        and(eq(promptSessionMessages.sessionId, sessionId), eq(promptSessions.createdBy, userId))
+      )
       .orderBy(asc(promptSessionMessages.createdAt));
   },
+  listSessionScreenJsonCheckpoints: async (userId, sessionId) =>
+    db
+      .select({
+        id: screenJsons.id,
+        sessionId: screenJsons.sessionId,
+        version: screenJsons.version,
+        prompt: screenJsons.prompt,
+        trigger: screenJsons.trigger,
+        inferredIntent: screenJsons.inferredIntent,
+        action: screenJsons.action,
+        page: sql<string | null>`${screenJsons.schema}->>'page'`,
+        databaseSchemaJsonId: screenJsons.databaseSchemaJsonId,
+        dataBindings: screenJsons.dataBindings,
+        createdAt: screenJsons.createdAt,
+        updatedAt: screenJsons.updatedAt,
+      })
+      .from(screenJsons)
+      .innerJoin(promptSessions, eq(screenJsons.sessionId, promptSessions.id))
+      .where(and(eq(screenJsons.sessionId, sessionId), eq(promptSessions.createdBy, userId)))
+      .orderBy(asc(screenJsons.version)),
   listSessionScreenJsons: async (userId, sessionId) =>
     db
       .select({ screenJson: screenJsons, session: promptSessions })
@@ -177,5 +302,21 @@ export const screenHistoryRepository: ScreenHistoryRepository = {
       .returning();
     if (!session) throw new Error('Prompt session was not updated');
     return session;
+  },
+  upsertActionLink: async (input) => {
+    const [link] = await db
+      .insert(screenActionLinks)
+      .values(input)
+      .onConflictDoUpdate({
+        target: [screenActionLinks.sourceSessionId, screenActionLinks.actionId],
+        set: {
+          targetPath: input.targetPath ?? null,
+          targetSessionId: input.targetSessionId ?? null,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    if (!link) throw new Error('Screen action link was not persisted');
+    return link;
   },
 };

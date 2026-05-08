@@ -5,18 +5,27 @@ import {
   CheckCircle2,
   ChevronDown,
   Database,
+  ExternalLink,
+  FileJson,
+  Link2,
   Loader2,
   MessageSquare,
+  Plus,
   Send,
+  Unlink,
   User,
   WandSparkles,
   XCircle,
 } from 'lucide-react';
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AiActivity } from '../../../../shared/schemas/ai.schema';
+import type { SandboxStateResponse } from '../../../../shared/schemas/database-design.schema';
 import type {
   GeneratedScreen,
   PromptSessionMessage,
+  PromptSessionSummary,
+  ScreenActionLink,
+  ScreenCheckpoint,
   ScreenJson,
 } from '../../../../shared/schemas/screen-history.schema';
 import type { AppAction } from '../../../../shared/schemas/ui-schema.schema';
@@ -34,8 +43,11 @@ import {
   useGenerateScreen,
   useGenerateScreenFromAction,
   useGenerateScreenFromSessionAction,
+  useLinkScreenAction,
   useRestoreScreenJsonCheckpoint,
   useScreenConversation,
+  useScreenHistory,
+  useUnlinkScreenAction,
 } from '../hooks/screen-history.hooks';
 import {
   type BindingRuntimeIssue,
@@ -61,6 +73,14 @@ type DockActivity = Omit<AiActivity, 'status'> & {
 type BindingNotice = {
   message: string;
   tone: 'error' | 'success';
+};
+
+type DatabaseVersionStatus = 'ui-only' | 'checking' | 'draft' | 'live';
+type DockTab = 'chat' | 'compose';
+
+type SelectedAction = {
+  action: AppAction;
+  sourcePage: string;
 };
 
 const defaultPrompt =
@@ -137,6 +157,44 @@ function messageFromStored(message: PromptSessionMessage): ChatMessage {
   };
 }
 
+function hasDatabaseVersionSignal(
+  screen: Pick<ScreenJson, 'dataBindings' | 'databaseSchemaJsonId'>
+) {
+  return Boolean(screen.databaseSchemaJsonId || screen.dataBindings.length > 0);
+}
+
+function databaseVersionStatus(
+  screen: Pick<ScreenJson, 'dataBindings' | 'databaseSchemaJsonId'>,
+  sandboxState: SandboxStateResponse | null | undefined
+): DatabaseVersionStatus {
+  if (!hasDatabaseVersionSignal(screen)) return 'ui-only';
+  if (!sandboxState) return 'checking';
+
+  const liveTables = new Set(sandboxState.tables.map((table) => table.name));
+  const bindingTables = new Set(screen.dataBindings.map((binding) => binding.table));
+  if (bindingTables.size > 0) {
+    return Array.from(bindingTables).every((table) => liveTables.has(table)) ? 'live' : 'draft';
+  }
+
+  return screen.databaseSchemaJsonId &&
+    screen.databaseSchemaJsonId === sandboxState.appliedDatabaseSchemaJsonId
+    ? 'live'
+    : 'draft';
+}
+
+function databaseVersionStatusLabel(status: DatabaseVersionStatus) {
+  switch (status) {
+    case 'live':
+      return 'SandboxDB 実テーブルあり';
+    case 'draft':
+      return 'DB Draft のみ';
+    case 'checking':
+      return 'DB 状態を確認中';
+    case 'ui-only':
+      return 'UI のみ';
+  }
+}
+
 export function PromptWorkspace({
   screenId,
   sessionId,
@@ -146,14 +204,17 @@ export function PromptWorkspace({
 }) {
   const auth = useAuth();
   const navigate = useNavigate();
-  const [prompt, setPrompt] = useState(() => (screenId || sessionId ? '' : defaultPrompt));
   const [isDockOpen, setIsDockOpen] = useState(true);
+  const [dockTab, setDockTab] = useState<DockTab>('chat');
   const [localScreen, setLocalScreen] = useState<GeneratedScreen | null>(null);
   const [pendingActionId, setPendingActionId] = useState<string | null>(null);
   const [restoringScreenJsonId, setRestoringScreenJsonId] = useState<string | null>(null);
+  const [selectedAction, setSelectedAction] = useState<SelectedAction | null>(null);
+  const [composeNotice, setComposeNotice] = useState<BindingNotice | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([initialAssistantMessage]);
   const handledScreenRouteRef = useRef<string | null>(null);
   const [activities, setActivities] = useState<DockActivity[]>([]);
+  const [promptResetKey, setPromptResetKey] = useState(0);
   const screenQuery = useGeneratedScreen(screenId ?? null, Boolean(auth.user && screenId));
   const routeSessionId = sessionId ?? screenQuery.data?.screen.sessionId ?? null;
   const conversationQuery = useScreenConversation(
@@ -163,27 +224,53 @@ export function PromptWorkspace({
   const generateScreen = useGenerateScreen();
   const editSessionScreen = useEditSessionScreen(routeSessionId);
   const restoreCheckpoint = useRestoreScreenJsonCheckpoint(routeSessionId);
+  const insertSandboxRow = useInsertSandboxRow();
+  const linkScreenAction = useLinkScreenAction(routeSessionId);
+  const unlinkScreenAction = useUnlinkScreenAction(routeSessionId);
+  const historyQuery = useScreenHistory(
+    { limit: 100, page: 1, sortBy: 'updatedAt', sortOrder: 'desc' },
+    Boolean(auth.user && isDockOpen && dockTab === 'compose')
+  );
   const actionParentId =
     localScreen && (!screenId || localScreen.id === screenId) ? localScreen.id : (screenId ?? null);
   const generateFromAction = useGenerateScreenFromAction(actionParentId);
   const generateFromSessionAction = useGenerateScreenFromSessionAction(routeSessionId);
-  const activeConversationScreen = conversationQuery.data?.screenJsons.find(
-    (screenJson) => screenJson.id === conversationQuery.data?.activeScreenJsonId
-  );
+  const generateScreenMutate = generateScreen.mutate;
+  const editSessionScreenMutate = editSessionScreen.mutate;
+  const restoreCheckpointMutate = restoreCheckpoint.mutate;
+  const generateFromActionMutate = generateFromAction.mutate;
+  const generateFromSessionActionMutate = generateFromSessionAction.mutate;
+  const insertSandboxRowMutate = insertSandboxRow.mutate;
+  const linkScreenActionMutate = linkScreenAction.mutate;
+  const unlinkScreenActionMutate = unlinkScreenAction.mutate;
+  const activeConversationScreen = conversationQuery.data?.activeScreenJson ?? null;
   const activeScreen: WorkspaceScreen | null =
     localScreen ??
     (sessionId
       ? activeConversationScreen
       : (screenQuery.data?.screen ?? activeConversationScreen)) ??
     null;
-  const sandboxState = useSandboxState(Boolean(auth.user && activeScreen?.dataBindings.length));
-  const insertSandboxRow = useInsertSandboxRow();
+  const checkpointHasDatabaseVersion = useMemo(
+    () => Boolean(conversationQuery.data?.checkpoints.some(hasDatabaseVersionSignal)),
+    [conversationQuery.data?.checkpoints]
+  );
+  const sandboxState = useSandboxState(
+    Boolean(
+      auth.user &&
+        ((activeScreen ? hasDatabaseVersionSignal(activeScreen) : false) ||
+          checkpointHasDatabaseVersion)
+    )
+  );
+  const availableActions = useMemo(
+    () => activeScreen?.schema.sections.flatMap((section) => section.actions ?? []) ?? [],
+    [activeScreen?.schema.sections]
+  );
   const persistedMessages = useMemo(() => {
     const conversation = conversationQuery.data;
     if (!conversation) return [];
 
     const checkpointVersionById = new Map(
-      conversation.screenJsons.map((screenJson) => [screenJson.id, screenJson.version])
+      conversation.checkpoints.map((checkpoint) => [checkpoint.id, checkpoint.version])
     );
     const activeVersion = conversation.activeVersion;
 
@@ -227,14 +314,35 @@ export function PromptWorkspace({
     readyListBindings,
     Boolean(auth.user && readyListBindings.length > 0)
   );
+  const rowQueriesRef = useRef(rowQueries);
+  rowQueriesRef.current = rowQueries;
+  const rowDataVersion = rowQueries
+    .map((query) => `${query.dataUpdatedAt}:${query.data?.rows.length ?? 0}`)
+    .join('|');
+  const rowErrorVersion = rowQueries
+    .map(
+      (query) =>
+        `${query.errorUpdatedAt}:${query.error instanceof Error ? query.error.message : ''}`
+    )
+    .join('|');
   const bindingRows = useMemo(() => {
+    if (readyListBindings.length === 0 && rowDataVersion.length === 0) return {};
     const entries = readyListBindings.flatMap((binding, index) => {
-      const query = rowQueries[index];
+      const query = rowQueriesRef.current[index];
       return query?.data ? [[binding.id, query.data.rows] as const] : [];
     });
     return Object.fromEntries(entries);
-  }, [readyListBindings, rowQueries]);
+  }, [readyListBindings, rowDataVersion]);
   const bindingIssues = useMemo(() => {
+    if (
+      bindingResolution.issues.length === 0 &&
+      readyListBindings.length === 0 &&
+      runtimeBindings.length === 0 &&
+      rowErrorVersion.length === 0 &&
+      !sandboxState.data
+    ) {
+      return [];
+    }
     const issues = [
       ...bindingResolution.issues,
       ...runtimeBindings
@@ -242,19 +350,27 @@ export function PromptWorkspace({
         .filter((issue): issue is BindingRuntimeIssue => Boolean(issue)),
     ];
     for (const [index, binding] of readyListBindings.entries()) {
-      const error = rowQueries[index]?.error;
+      const error = rowQueriesRef.current[index]?.error;
       if (error instanceof Error) {
         issues.push({ bindingId: binding.id, message: error.message });
       }
     }
     return issues;
-  }, [bindingResolution.issues, readyListBindings, rowQueries, runtimeBindings, sandboxState.data]);
+  }, [
+    bindingResolution.issues,
+    readyListBindings,
+    rowErrorVersion,
+    runtimeBindings,
+    sandboxState.data,
+  ]);
   const isPending =
     generateScreen.isPending ||
     generateFromAction.isPending ||
     generateFromSessionAction.isPending ||
     editSessionScreen.isPending ||
-    restoreCheckpoint.isPending;
+    restoreCheckpoint.isPending ||
+    linkScreenAction.isPending ||
+    unlinkScreenAction.isPending;
 
   const openSession = useCallback(
     (nextSessionId: string) => {
@@ -292,29 +408,65 @@ export function PromptWorkspace({
     ]);
   }, []);
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const trimmed = prompt.trim();
-    if (!trimmed || isPending) return;
+  const handleSubmitPrompt = useCallback(
+    (trimmed: string) => {
+      if (!trimmed || isPending) return;
 
-    const shouldEdit = Boolean(routeSessionId && activeScreen);
-    const endpoint = shouldEdit
-      ? `POST /api/sessions/${routeSessionId}/edit`
-      : 'POST /api/screens/generate';
+      const shouldEdit = Boolean(routeSessionId && activeScreen);
+      const endpoint = shouldEdit
+        ? `POST /api/sessions/${routeSessionId}/edit`
+        : 'POST /api/screens/generate';
 
-    setIsDockOpen(true);
-    appendUserMessage(trimmed);
-    setActivities(pendingActivities(endpoint));
+      setIsDockOpen(true);
+      appendUserMessage(trimmed);
+      setActivities(pendingActivities(endpoint));
 
-    if (shouldEdit && routeSessionId) {
-      editSessionScreen.mutate(
+      if (shouldEdit && routeSessionId) {
+        editSessionScreenMutate(
+          { prompt: trimmed },
+          {
+            onSuccess: (data) => {
+              setLocalScreen(data.screen);
+              setPromptResetKey((current) => current + 1);
+              setActivities(completedActivities(data, endpoint));
+              appendAssistantMessage(`${data.screen.schema.page} を更新しました。`, data.screen);
+              openSession(data.screen.sessionId);
+            },
+            onError: (error) => {
+              setActivities([
+                {
+                  id: 'request',
+                  label: 'API request',
+                  status: 'failed',
+                  detail: error instanceof Error ? error.message : 'Request failed',
+                },
+              ]);
+              setMessages((current) => [
+                ...current,
+                {
+                  id: createId('assistant'),
+                  role: 'assistant',
+                  content:
+                    error instanceof Error ? error.message : 'The UI schema could not be edited.',
+                },
+              ]);
+            },
+          }
+        );
+        return;
+      }
+
+      generateScreenMutate(
         { prompt: trimmed },
         {
           onSuccess: (data) => {
             setLocalScreen(data.screen);
-            setPrompt('');
+            setPromptResetKey((current) => current + 1);
             setActivities(completedActivities(data, endpoint));
-            appendAssistantMessage(`${data.screen.schema.page} を更新しました。`, data.screen);
+            appendAssistantMessage(
+              `${data.screen.schema.page} を保存しました。${data.screen.schema.sections.length} sections`,
+              data.screen
+            );
             openSession(data.screen.sessionId);
           },
           onError: (error) => {
@@ -332,62 +484,47 @@ export function PromptWorkspace({
                 id: createId('assistant'),
                 role: 'assistant',
                 content:
-                  error instanceof Error ? error.message : 'The UI schema could not be edited.',
+                  error instanceof Error ? error.message : 'The UI schema could not be generated.',
               },
             ]);
           },
         }
       );
-      return;
-    }
-
-    generateScreen.mutate(
-      { prompt: trimmed },
-      {
-        onSuccess: (data) => {
-          setLocalScreen(data.screen);
-          setPrompt('');
-          setActivities(completedActivities(data, endpoint));
-          appendAssistantMessage(
-            `${data.screen.schema.page} を保存しました。${data.screen.schema.sections.length} sections`,
-            data.screen
-          );
-          openSession(data.screen.sessionId);
-        },
-        onError: (error) => {
-          setActivities([
-            {
-              id: 'request',
-              label: 'API request',
-              status: 'failed',
-              detail: error instanceof Error ? error.message : 'Request failed',
-            },
-          ]);
-          setMessages((current) => [
-            ...current,
-            {
-              id: createId('assistant'),
-              role: 'assistant',
-              content:
-                error instanceof Error ? error.message : 'The UI schema could not be generated.',
-            },
-          ]);
-        },
-      }
-    );
-  };
+    },
+    [
+      activeScreen,
+      appendAssistantMessage,
+      appendUserMessage,
+      editSessionScreenMutate,
+      generateScreenMutate,
+      isPending,
+      openSession,
+      routeSessionId,
+    ]
+  );
 
   const handleAction = useCallback(
+    (action: AppAction) => {
+      if (!activeScreen) return;
+      setSelectedAction({ action, sourcePage: activeScreen.schema.page });
+      setComposeNotice(null);
+      setDockTab('compose');
+      setIsDockOpen(true);
+    },
+    [activeScreen]
+  );
+
+  const handleGenerateSelectedAction = useCallback(
     (action: AppAction) => {
       if (!activeScreen || generateFromAction.isPending || generateFromSessionAction.isPending) {
         return;
       }
-
       const endpoint = routeSessionId
         ? `POST /api/sessions/${routeSessionId}/actions/${action.id}/generate`
         : `POST /api/screens/${activeScreen.id}/actions/${action.id}/generate`;
       setPendingActionId(action.id);
       setIsDockOpen(true);
+      setDockTab('chat');
       appendUserMessage(action.label);
       setActivities(pendingActivities(endpoint));
 
@@ -411,31 +548,77 @@ export function PromptWorkspace({
       };
 
       if (routeSessionId) {
-        generateFromSessionAction.mutate(
+        generateFromSessionActionMutate(
           { actionId: action.id, input: { action } },
           { onError, onSuccess }
         );
         return;
       }
 
-      generateFromAction.mutate({ actionId: action.id, input: { action } }, { onError, onSuccess });
+      generateFromActionMutate({ actionId: action.id, input: { action } }, { onError, onSuccess });
     },
     [
       activeScreen,
       appendAssistantMessage,
       appendUserMessage,
-      generateFromAction,
-      generateFromSessionAction,
+      generateFromAction.isPending,
+      generateFromActionMutate,
+      generateFromSessionAction.isPending,
+      generateFromSessionActionMutate,
       openSession,
       routeSessionId,
     ]
   );
 
+  const handleLinkSelectedAction = useCallback(
+    (input: { targetPath?: string | null; targetSessionId?: string | null }) => {
+      if (!routeSessionId || !selectedAction || linkScreenAction.isPending) return;
+      setComposeNotice(null);
+      linkScreenActionMutate(
+        { actionId: selectedAction.action.id, input },
+        {
+          onError: (error) => {
+            setComposeNotice({
+              tone: 'error',
+              message: error instanceof Error ? error.message : 'Link could not be saved.',
+            });
+          },
+          onSuccess: () => {
+            setComposeNotice({
+              tone: 'success',
+              message: `${selectedAction.action.label} の遷移先を保存しました。`,
+            });
+          },
+        }
+      );
+    },
+    [linkScreenAction.isPending, linkScreenActionMutate, routeSessionId, selectedAction]
+  );
+
+  const handleUnlinkSelectedAction = useCallback(() => {
+    if (!routeSessionId || !selectedAction || unlinkScreenAction.isPending) return;
+    setComposeNotice(null);
+    unlinkScreenActionMutate(selectedAction.action.id, {
+      onError: (error) => {
+        setComposeNotice({
+          tone: 'error',
+          message: error instanceof Error ? error.message : 'Link could not be removed.',
+        });
+      },
+      onSuccess: () => {
+        setComposeNotice({
+          tone: 'success',
+          message: `${selectedAction.action.label} の遷移先を解除しました。`,
+        });
+      },
+    });
+  }, [routeSessionId, selectedAction, unlinkScreenAction.isPending, unlinkScreenActionMutate]);
+
   const handleRestoreCheckpoint = useCallback(
     (screenJsonId: string) => {
       if (!routeSessionId || restoreCheckpoint.isPending) return;
       setRestoringScreenJsonId(screenJsonId);
-      restoreCheckpoint.mutate(screenJsonId, {
+      restoreCheckpointMutate(screenJsonId, {
         onSuccess: (data) => {
           setLocalScreen(data.screen);
           setRestoringScreenJsonId(null);
@@ -462,7 +645,7 @@ export function PromptWorkspace({
         },
       });
     },
-    [openSession, restoreCheckpoint, routeSessionId]
+    [openSession, restoreCheckpoint.isPending, restoreCheckpointMutate, routeSessionId]
   );
 
   const handleSubmitBinding = useCallback(
@@ -489,7 +672,7 @@ export function PromptWorkspace({
       }
       setPendingBindingId(dataBindingId);
       setBindingNotice(null);
-      insertSandboxRow.mutate(
+      insertSandboxRowMutate(
         { bindingId: dataBindingId, table: binding.table, value },
         {
           onError: (error) => {
@@ -508,7 +691,7 @@ export function PromptWorkspace({
         }
       );
     },
-    [activeScreen?.dataBindings, insertSandboxRow, sandboxState.data]
+    [activeScreen?.dataBindings, insertSandboxRowMutate, sandboxState.data]
   );
 
   useEffect(() => {
@@ -516,6 +699,16 @@ export function PromptWorkspace({
       setMessages([initialAssistantMessage]);
     }
   }, [persistedMessageKey]);
+
+  useEffect(() => {
+    if (
+      selectedAction &&
+      availableActions.length > 0 &&
+      !availableActions.some((action) => action.id === selectedAction.action.id)
+    ) {
+      setSelectedAction(null);
+    }
+  }, [availableActions, selectedAction]);
 
   useEffect(() => {
     if (
@@ -654,21 +847,37 @@ export function PromptWorkspace({
       </div>
 
       <ChatDock
+        actionLinks={conversationQuery.data?.actionLinks ?? []}
         activeScreenJsonId={activeScreenJsonId}
+        activeTab={dockTab}
         activeVersion={conversationQuery.data?.activeVersion ?? null}
         activities={activities}
-        checkpoints={conversationQuery.data?.screenJsons ?? []}
+        availableActions={availableActions}
+        composeNotice={composeNotice}
+        checkpoints={conversationQuery.data?.checkpoints ?? []}
+        currentSessionId={routeSessionId}
         hasActiveScreen={Boolean(activeScreen)}
+        initialPrompt={screenId || sessionId ? '' : defaultPrompt}
         isOpen={isDockOpen}
         isPending={isPending}
         messages={displayMessages}
+        onGenerateAction={handleGenerateSelectedAction}
+        onLinkAction={handleLinkSelectedAction}
         onOpenChange={setIsDockOpen}
-        onPromptChange={setPrompt}
         onRestoreCheckpoint={handleRestoreCheckpoint}
-        onSubmit={handleSubmit}
-        prompt={prompt}
+        onSelectAction={(action) => {
+          setSelectedAction({ action, sourcePage: activeScreen?.schema.page ?? 'Current page' });
+          setComposeNotice(null);
+        }}
+        onSubmitPrompt={handleSubmitPrompt}
+        onTabChange={setDockTab}
+        onUnlinkAction={handleUnlinkSelectedAction}
+        promptResetKey={promptResetKey}
         restoringScreenJsonId={restoringScreenJsonId}
+        sandboxState={sandboxState.data}
+        selectedAction={selectedAction}
         sessionTitle={conversationQuery.data?.session.title}
+        sessions={historyQuery.data?.sessions ?? []}
       />
     </div>
   );
@@ -732,38 +941,77 @@ function BindingRuntimeBanner({
 }
 
 function ChatDock({
+  actionLinks,
   activeScreenJsonId,
+  activeTab,
   activeVersion,
   activities,
+  availableActions,
+  composeNotice,
   checkpoints,
+  currentSessionId,
   hasActiveScreen,
+  initialPrompt,
   isOpen,
   isPending,
   messages,
+  onGenerateAction,
+  onLinkAction,
   onOpenChange,
-  onPromptChange,
   onRestoreCheckpoint,
-  onSubmit,
-  prompt,
+  onSelectAction,
+  onSubmitPrompt,
+  onTabChange,
+  onUnlinkAction,
+  promptResetKey,
   restoringScreenJsonId,
+  sandboxState,
+  selectedAction,
   sessionTitle,
+  sessions,
 }: {
+  actionLinks: ScreenActionLink[];
   activeScreenJsonId: string | null;
+  activeTab: DockTab;
   activeVersion: number | null;
   activities: DockActivity[];
-  checkpoints: ScreenJson[];
+  availableActions: AppAction[];
+  composeNotice: BindingNotice | null;
+  checkpoints: ScreenCheckpoint[];
+  currentSessionId: string | null;
   hasActiveScreen: boolean;
+  initialPrompt: string;
   isOpen: boolean;
   isPending: boolean;
   messages: ChatMessage[];
+  onGenerateAction: (action: AppAction) => void;
+  onLinkAction: (input: { targetPath?: string | null; targetSessionId?: string | null }) => void;
   onOpenChange: (value: boolean) => void;
-  onPromptChange: (value: string) => void;
   onRestoreCheckpoint: (screenJsonId: string) => void;
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
-  prompt: string;
+  onSelectAction: (action: AppAction) => void;
+  onSubmitPrompt: (prompt: string) => void;
+  onTabChange: (tab: DockTab) => void;
+  onUnlinkAction: () => void;
+  promptResetKey: number;
   restoringScreenJsonId: string | null;
+  sandboxState?: SandboxStateResponse | null;
+  selectedAction: SelectedAction | null;
   sessionTitle?: string;
+  sessions: PromptSessionSummary[];
 }) {
+  const [prompt, setPrompt] = useState(initialPrompt);
+
+  useEffect(() => {
+    if (promptResetKey > 0) setPrompt('');
+  }, [promptResetKey]);
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const trimmed = prompt.trim();
+    if (!trimmed || isPending) return;
+    onSubmitPrompt(trimmed);
+  };
+
   if (!isOpen) {
     return (
       <button
@@ -823,92 +1071,369 @@ function ChatDock({
         </div>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
-        {checkpoints.length > 0 ? (
-          <section className="mb-4 rounded-md border border-border bg-background/70 p-3">
-            <div className="mb-2 text-muted-foreground text-xs font-medium uppercase">
-              Checkpoints
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {checkpoints.map((checkpoint) => {
-                const isActive = checkpoint.id === activeScreenJsonId;
-                const isRestoring = checkpoint.id === restoringScreenJsonId;
-                return (
-                  <button
-                    className="rounded-md border border-border bg-card px-2.5 py-1 text-xs hover:bg-secondary disabled:cursor-default disabled:opacity-60"
-                    disabled={isActive || isRestoring}
-                    key={checkpoint.id}
-                    onClick={() => onRestoreCheckpoint(checkpoint.id)}
-                    title={checkpoint.schema.page}
-                    type="button"
-                  >
-                    {isRestoring
-                      ? '復元中'
-                      : isActive
-                        ? `現在 v${checkpoint.version}`
-                        : `v${checkpoint.version}`}
-                  </button>
-                );
-              })}
-            </div>
-          </section>
-        ) : null}
-
-        <div aria-live="polite" className="grid gap-3">
-          {messages.map((message) => (
-            <ChatBubble
-              activeScreenJsonId={activeScreenJsonId}
-              key={message.id}
-              message={message}
-              onRestoreCheckpoint={onRestoreCheckpoint}
-              restoringScreenJsonId={restoringScreenJsonId}
-            />
-          ))}
-        </div>
-
-        {activities.length > 0 ? (
-          <section className="mt-4 rounded-md border border-border bg-background/70 p-3">
-            <div className="mb-2 flex items-center gap-2 text-muted-foreground text-xs font-medium uppercase">
-              <Activity className="h-3.5 w-3.5" />
-              Activity
-            </div>
-            <div className="grid gap-2">
-              {activities.map((activity) => (
-                <ActivityRow activity={activity} key={activity.id} />
-              ))}
-            </div>
-          </section>
-        ) : null}
+      <div className="grid grid-cols-2 border-b border-border p-1">
+        <button
+          className={cn(
+            'inline-flex h-8 items-center justify-center gap-2 rounded-md text-xs font-medium',
+            activeTab === 'chat' ? 'bg-secondary text-foreground' : 'text-muted-foreground'
+          )}
+          onClick={() => onTabChange('chat')}
+          type="button"
+        >
+          <MessageSquare className="h-3.5 w-3.5" />
+          AI Chat
+        </button>
+        <button
+          className={cn(
+            'inline-flex h-8 items-center justify-center gap-2 rounded-md text-xs font-medium',
+            activeTab === 'compose' ? 'bg-secondary text-foreground' : 'text-muted-foreground'
+          )}
+          onClick={() => onTabChange('compose')}
+          type="button"
+        >
+          <Link2 className="h-3.5 w-3.5" />
+          Compose
+        </button>
       </div>
 
-      <form className="grid gap-2 border-t border-border p-3" onSubmit={onSubmit}>
-        <textarea
-          aria-label="Prompt"
-          className="max-h-40 min-h-24 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm leading-6 outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          maxLength={2000}
-          onChange={(event) => onPromptChange(event.target.value)}
-          placeholder={hasActiveScreen ? 'この画面の修正内容を入力' : '作りたい画面を入力'}
-          value={prompt}
-        />
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-muted-foreground text-xs">{prompt.length}/2000</span>
-          <button
-            aria-label="Send prompt"
-            className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-3 text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
-            disabled={isPending || prompt.trim().length === 0}
-            type="submit"
-          >
-            {isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Send className="h-4 w-4" />
-            )}
-            Send
-          </button>
-        </div>
-      </form>
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+        {activeTab === 'chat' ? (
+          <>
+            {checkpoints.length > 0 ? (
+              <section className="mb-4 rounded-md border border-border bg-background/70 p-3">
+                <div className="mb-2 text-muted-foreground text-xs font-medium uppercase">
+                  Checkpoints
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {checkpoints.map((checkpoint) => {
+                    const isActive = checkpoint.id === activeScreenJsonId;
+                    const isRestoring = checkpoint.id === restoringScreenJsonId;
+                    const status = databaseVersionStatus(checkpoint, sandboxState);
+                    return (
+                      <button
+                        className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1 text-xs hover:bg-secondary disabled:cursor-default disabled:opacity-60"
+                        disabled={isActive || isRestoring}
+                        key={checkpoint.id}
+                        onClick={() => onRestoreCheckpoint(checkpoint.id)}
+                        title={`${checkpoint.page} / ${databaseVersionStatusLabel(status)}`}
+                        type="button"
+                      >
+                        <DatabaseVersionIcon status={status} />
+                        <span>
+                          {isRestoring
+                            ? '復元中'
+                            : isActive
+                              ? `現在 v${checkpoint.version}`
+                              : `v${checkpoint.version}`}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            ) : null}
+
+            <div aria-live="polite" className="grid gap-3">
+              {messages.map((message) => (
+                <ChatBubble
+                  activeScreenJsonId={activeScreenJsonId}
+                  key={message.id}
+                  message={message}
+                  onRestoreCheckpoint={onRestoreCheckpoint}
+                  restoringScreenJsonId={restoringScreenJsonId}
+                />
+              ))}
+            </div>
+
+            {activities.length > 0 ? (
+              <section className="mt-4 rounded-md border border-border bg-background/70 p-3">
+                <div className="mb-2 flex items-center gap-2 text-muted-foreground text-xs font-medium uppercase">
+                  <Activity className="h-3.5 w-3.5" />
+                  Activity
+                </div>
+                <div className="grid gap-2">
+                  {activities.map((activity) => (
+                    <ActivityRow activity={activity} key={activity.id} />
+                  ))}
+                </div>
+              </section>
+            ) : null}
+          </>
+        ) : (
+          <ComposePanel
+            actionLinks={actionLinks}
+            actions={availableActions}
+            composeNotice={composeNotice}
+            currentSessionId={currentSessionId}
+            isPending={isPending}
+            onGenerateAction={onGenerateAction}
+            onLinkAction={onLinkAction}
+            onSelectAction={onSelectAction}
+            onUnlinkAction={onUnlinkAction}
+            selectedAction={selectedAction}
+            sessions={sessions}
+          />
+        )}
+      </div>
+
+      {activeTab === 'chat' ? (
+        <form className="grid gap-2 border-t border-border p-3" onSubmit={handleSubmit}>
+          <textarea
+            aria-label="Prompt"
+            className="max-h-40 min-h-24 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm leading-6 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            maxLength={2000}
+            onChange={(event) => setPrompt(event.target.value)}
+            placeholder={hasActiveScreen ? 'この画面の修正内容を入力' : '作りたい画面を入力'}
+            value={prompt}
+          />
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-muted-foreground text-xs">{prompt.length}/2000</span>
+            <button
+              aria-label="Send prompt"
+              className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-3 text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={isPending || prompt.trim().length === 0}
+              type="submit"
+            >
+              {isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
+              Send
+            </button>
+          </div>
+        </form>
+      ) : null}
     </aside>
   );
+}
+
+function ComposePanel({
+  actionLinks,
+  actions,
+  composeNotice,
+  currentSessionId,
+  isPending,
+  onGenerateAction,
+  onLinkAction,
+  onSelectAction,
+  onUnlinkAction,
+  selectedAction,
+  sessions,
+}: {
+  actionLinks: ScreenActionLink[];
+  actions: AppAction[];
+  composeNotice: BindingNotice | null;
+  currentSessionId: string | null;
+  isPending: boolean;
+  onGenerateAction: (action: AppAction) => void;
+  onLinkAction: (input: { targetPath?: string | null; targetSessionId?: string | null }) => void;
+  onSelectAction: (action: AppAction) => void;
+  onUnlinkAction: () => void;
+  selectedAction: SelectedAction | null;
+  sessions: PromptSessionSummary[];
+}) {
+  const [targetSessionId, setTargetSessionId] = useState('');
+  const [targetPath, setTargetPath] = useState('');
+  const selectedLink = selectedAction
+    ? actionLinks.find((link) => link.actionId === selectedAction.action.id)
+    : null;
+  const effectiveTargetPath = selectedLink?.targetPath ?? selectedAction?.action.target ?? null;
+  const targetSession = sessions.find((session) => session.id === selectedLink?.targetSessionId);
+  const linkByActionId = new Map(actionLinks.map((link) => [link.actionId, link]));
+  const pageOptions = sessions.filter((session) => session.id !== currentSessionId);
+
+  useEffect(() => {
+    setTargetSessionId(selectedLink?.targetSessionId ?? '');
+    setTargetPath(selectedLink?.targetPath ?? selectedAction?.action.target ?? '');
+  }, [selectedAction?.action.target, selectedLink?.targetPath, selectedLink?.targetSessionId]);
+
+  return (
+    <div className="grid gap-4">
+      <section className="rounded-md border border-border bg-background/70 p-3">
+        <div className="mb-2 flex items-center gap-2 text-muted-foreground text-xs font-medium uppercase">
+          <Link2 className="h-3.5 w-3.5" />
+          Actions
+        </div>
+        {actions.length > 0 ? (
+          <div className="grid gap-2">
+            {actions.map((action) => {
+              const link = linkByActionId.get(action.id);
+              const linkedSession = sessions.find(
+                (session) => session.id === link?.targetSessionId
+              );
+              const isSelected = selectedAction?.action.id === action.id;
+              return (
+                <button
+                  className={cn(
+                    'grid gap-1 rounded-md border px-3 py-2 text-left text-xs hover:bg-secondary',
+                    isSelected ? 'border-primary bg-secondary' : 'border-border bg-card'
+                  )}
+                  key={action.id}
+                  onClick={() => onSelectAction(action)}
+                  type="button"
+                >
+                  <span className="font-medium text-foreground">{action.label}</span>
+                  <span className="truncate text-muted-foreground">
+                    {link?.targetSessionId
+                      ? `-> ${linkedSession?.page ?? linkedSession?.title ?? 'Linked page'}`
+                      : link?.targetPath
+                        ? `-> ${link.targetPath}`
+                        : action.target
+                          ? `schema -> ${action.target}`
+                          : 'Unlinked'}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="text-muted-foreground text-sm">Action がありません。</p>
+        )}
+      </section>
+
+      <section className="rounded-md border border-border bg-background/70 p-3">
+        <div className="mb-2 text-muted-foreground text-xs font-medium uppercase">Link</div>
+        {selectedAction ? (
+          <div className="grid gap-3">
+            <div className="grid gap-1 text-sm">
+              <div className="font-medium">{selectedAction.action.label}</div>
+              <div className="text-muted-foreground text-xs">{selectedAction.action.id}</div>
+              <div className="text-muted-foreground text-xs">{selectedAction.sourcePage}</div>
+            </div>
+
+            <div className="rounded-md border border-border bg-card p-2 text-xs">
+              {selectedLink?.targetSessionId ? (
+                <div className="flex items-center justify-between gap-2">
+                  <span className="min-w-0 truncate">
+                    {targetSession?.page ?? targetSession?.title ?? 'Linked page'}
+                  </span>
+                  <Link
+                    className="inline-flex h-7 items-center gap-1 rounded-md px-2 font-medium hover:bg-secondary"
+                    params={{ sessionId: selectedLink.targetSessionId }}
+                    to="/prompt/session/$sessionId"
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                    Open
+                  </Link>
+                </div>
+              ) : effectiveTargetPath ? (
+                <div className="flex items-center justify-between gap-2">
+                  <span className="min-w-0 truncate">{effectiveTargetPath}</span>
+                  <Link
+                    className="inline-flex h-7 items-center gap-1 rounded-md px-2 font-medium hover:bg-secondary"
+                    to={effectiveTargetPath as never}
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                    Open
+                  </Link>
+                </div>
+              ) : (
+                <span className="text-muted-foreground">Unlinked</span>
+              )}
+            </div>
+
+            {composeNotice ? (
+              <p
+                className={cn(
+                  'rounded-md border px-2 py-1 text-xs',
+                  composeNotice.tone === 'success'
+                    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700'
+                    : 'border-destructive/30 bg-destructive/10 text-destructive'
+                )}
+              >
+                {composeNotice.message}
+              </p>
+            ) : null}
+
+            <div className="grid gap-2">
+              <select
+                className="h-9 rounded-md border border-input bg-background px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                onChange={(event) => setTargetSessionId(event.target.value)}
+                value={targetSessionId}
+              >
+                <option value="">既存ページを選択</option>
+                {pageOptions.map((session) => (
+                  <option key={session.id} value={session.id}>
+                    {session.page ?? session.title}
+                  </option>
+                ))}
+              </select>
+              <button
+                className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-card px-3 text-sm font-medium hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={!targetSessionId || isPending}
+                onClick={() => onLinkAction({ targetSessionId })}
+                type="button"
+              >
+                <Link2 className="h-4 w-4" />
+                Link page
+              </button>
+            </div>
+
+            <div className="grid gap-2">
+              <input
+                className="h-9 rounded-md border border-input bg-background px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                onChange={(event) => setTargetPath(event.target.value)}
+                placeholder="/path"
+                value={targetPath}
+              />
+              <button
+                className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-card px-3 text-sm font-medium hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={!targetPath.trim() || isPending}
+                onClick={() => onLinkAction({ targetPath: targetPath.trim() })}
+                type="button"
+              >
+                <ExternalLink className="h-4 w-4" />
+                Link path
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-primary px-3 text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={selectedAction.action.kind !== 'generate-screen' || isPending}
+                onClick={() => onGenerateAction(selectedAction.action)}
+                type="button"
+              >
+                <Plus className="h-4 w-4" />
+                New page
+              </button>
+              <button
+                className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-card px-3 text-sm font-medium hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={!selectedLink || isPending}
+                onClick={onUnlinkAction}
+                type="button"
+              >
+                <Unlink className="h-4 w-4" />
+                Unlink
+              </button>
+            </div>
+          </div>
+        ) : (
+          <p className="text-muted-foreground text-sm">Action 未選択</p>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function DatabaseVersionIcon({ status }: { status: DatabaseVersionStatus }) {
+  const className = 'h-3.5 w-3.5 shrink-0';
+  switch (status) {
+    case 'live':
+      return <Database aria-hidden="true" className={cn(className, 'text-emerald-600')} />;
+    case 'draft':
+      return <FileJson aria-hidden="true" className={cn(className, 'text-amber-600')} />;
+    case 'checking':
+      return (
+        <Loader2
+          aria-hidden="true"
+          className={cn(className, 'animate-spin text-muted-foreground')}
+        />
+      );
+    case 'ui-only':
+      return <WandSparkles aria-hidden="true" className={cn(className, 'text-muted-foreground')} />;
+  }
 }
 
 function ChatBubble({

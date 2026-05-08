@@ -3,8 +3,12 @@ import { Loader2, WandSparkles } from 'lucide-react';
 import { useState } from 'react';
 import type { ScreenListQuery } from '../../shared/schemas/screen-history.schema';
 import { useAuth } from '../lib/auth';
-import { ScreenHistoryTable } from '../modules/screen-history/components/ScreenHistoryTable';
 import {
+  type ScreenHistoryDeleteTarget,
+  ScreenHistoryTable,
+} from '../modules/screen-history/components/ScreenHistoryTable';
+import {
+  useDeletePromptSession,
   useDeleteScreen,
   useScreenHistory,
 } from '../modules/screen-history/hooks/screen-history.hooks';
@@ -25,10 +29,20 @@ function HistoryPage() {
   });
   const history = useScreenHistory(query, Boolean(auth.user));
   const deleteScreen = useDeleteScreen();
+  const deletePromptSession = useDeletePromptSession();
 
   const screens = history.data?.screens ?? [];
   const sessions = history.data?.sessions ?? [];
   const total = history.data?.total ?? 0;
+  const isDeleting = deleteScreen.isPending || deletePromptSession.isPending;
+
+  const handleDelete = (target: ScreenHistoryDeleteTarget) => {
+    if (target.type === 'session') {
+      deletePromptSession.mutate(target.id);
+      return;
+    }
+    deleteScreen.mutate(target.id);
+  };
 
   if (auth.isLoading) {
     return (
@@ -79,8 +93,8 @@ function HistoryPage() {
       ) : (
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
           <ScreenHistoryTable
-            isDeleting={deleteScreen.isPending}
-            onDelete={(id) => deleteScreen.mutate(id)}
+            isDeleting={isDeleting}
+            onDelete={handleDelete}
             onQueryChange={setQuery}
             query={query}
             screens={screens}

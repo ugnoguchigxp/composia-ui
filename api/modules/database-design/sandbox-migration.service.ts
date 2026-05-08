@@ -13,6 +13,7 @@ import type {
   DatabaseSchemaJsonRecord,
 } from './database-design.repository';
 import { getSandboxSql } from './sandbox-client';
+import { invalidateSandboxStateCache } from './sandbox-query.service';
 
 function quoteIdent(identifier: string) {
   return `"${identifier.replace(/"/g, '""')}"`;
@@ -239,6 +240,7 @@ export function createSandboxMigrationService(repo: DatabaseDesignRepository) {
           status: 'applied',
         });
         await repo.replaceManagedObjects(managedObjectsForSchema(schemaRecord, applied.id));
+        invalidateSandboxStateCache(repo);
         return applied;
       } catch (error) {
         return repo.updateMigrationRun(run.id, {
@@ -272,6 +274,7 @@ export function createSandboxMigrationService(repo: DatabaseDesignRepository) {
       }
       await repo.markManagedObjectsDropped(objects.map((object) => object.id));
       await repo.markAppliedMigrationRunsReverted();
+      invalidateSandboxStateCache(repo);
 
       return { success: true, droppedObjects: objects.length };
     },

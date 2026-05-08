@@ -32,6 +32,13 @@ type HistoryEntry = {
   activeScreenId: string | null;
 };
 
+export type ScreenHistoryDeleteTarget = {
+  id: string;
+  type: 'screen' | 'session';
+  title: string;
+  versionCount: number;
+};
+
 type ScreenHistoryTableProps = {
   screens: GeneratedScreenSummary[];
   sessions: PromptSessionSummary[];
@@ -39,7 +46,7 @@ type ScreenHistoryTableProps = {
   query: ScreenListQuery;
   onQueryChange: (query: ScreenListQuery) => void;
   isDeleting?: boolean;
-  onDelete?: (id: string) => void;
+  onDelete?: (target: ScreenHistoryDeleteTarget) => void;
 };
 
 function formatDate(value: string) {
@@ -236,14 +243,27 @@ export function ScreenHistoryTable({
         id: 'actions',
         cell: ({ row }) => {
           const entry = row.original;
-          const deleteId = entry.activeScreenId || entry.id;
+          const deleteTarget: ScreenHistoryDeleteTarget = {
+            id: entry.type === 'session' ? entry.id : (entry.activeScreenId ?? entry.id),
+            type: entry.type,
+            title: entry.title,
+            versionCount: entry.versionCount,
+          };
+          const confirmMessage =
+            entry.type === 'session'
+              ? `Delete "${entry.title}" and all ${entry.versionCount} versions?`
+              : `Delete "${entry.title}"?`;
           return (
             <div className="flex justify-end">
               <button
-                aria-label="Delete entry"
+                aria-label={`Delete ${entry.title}`}
                 className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors disabled:opacity-50"
                 disabled={isDeleting}
-                onClick={() => onDelete?.(deleteId)}
+                onClick={() => {
+                  if (window.confirm(confirmMessage)) {
+                    onDelete?.(deleteTarget);
+                  }
+                }}
                 type="button"
               >
                 <Trash2 className="h-4 w-4" />

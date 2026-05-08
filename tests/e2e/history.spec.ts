@@ -38,6 +38,8 @@ function screenPayload(input: { id?: string; page?: string; version?: number } =
         },
       ],
     },
+    databaseSchemaJsonId: null,
+    dataBindings: [],
     contextSnapshot: {},
     providerMeta: {
       provider: 'mock',
@@ -137,7 +139,14 @@ test.describe('Generated screen history @regression', () => {
           },
           activeScreenJsonId: screenId,
           activeVersion: 1,
-          screenJsons: [screenJson, futureScreenJson],
+          activeScreenJson: screenJson,
+          checkpoints: [screenJson, futureScreenJson].map(
+            ({ schema, contextSnapshot, providerMeta, ...checkpoint }) => ({
+              ...checkpoint,
+              page: schema.page,
+            })
+          ),
+          screenJsons: [],
           messages: [
             {
               id: '33333333-3333-4333-8333-333333333333',

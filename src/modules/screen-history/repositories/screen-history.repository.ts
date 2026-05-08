@@ -1,5 +1,8 @@
 import type {
   ScreenActionGenerateRequest,
+  ScreenActionLinkDeleteResponse,
+  ScreenActionLinkResponse,
+  ScreenActionLinkUpsertRequest,
   ScreenCheckpointRestoreResponse,
   ScreenChildrenResponse,
   ScreenConversationResponse,
@@ -13,6 +16,8 @@ import type {
   ScreenResponse,
 } from '../../../../shared/schemas/screen-history.schema';
 import {
+  screenActionLinkDeleteResponseSchema,
+  screenActionLinkResponseSchema,
   screenCheckpointRestoreResponseSchema,
   screenChildrenResponseSchema,
   screenConversationResponseSchema,
@@ -46,6 +51,11 @@ export const screenHistoryRepository = {
   },
   delete: async (screenId: string): Promise<ScreenDeleteResponse> => {
     const response = await client.screens[':screenId'].$delete({ param: { screenId } });
+    if (!response.ok) throw new Error(await readErrorMessage(response));
+    return screenDeleteResponseSchema.parse(await response.json());
+  },
+  deleteSession: async (sessionId: string): Promise<ScreenDeleteResponse> => {
+    const response = await client.sessions[':sessionId'].$delete({ param: { sessionId } });
     if (!response.ok) throw new Error(await readErrorMessage(response));
     return screenDeleteResponseSchema.parse(await response.json());
   },
@@ -85,6 +95,28 @@ export const screenHistoryRepository = {
     });
     if (!response.ok) throw new Error(await readErrorMessage(response));
     return screenResponseSchema.parse(await response.json());
+  },
+  linkAction: async (
+    sessionId: string,
+    actionId: string,
+    input: ScreenActionLinkUpsertRequest
+  ): Promise<ScreenActionLinkResponse> => {
+    const response = await client.sessions[':sessionId'].actions[':actionId'].link.$put({
+      json: input,
+      param: { actionId, sessionId },
+    });
+    if (!response.ok) throw new Error(await readErrorMessage(response));
+    return screenActionLinkResponseSchema.parse(await response.json());
+  },
+  unlinkAction: async (
+    sessionId: string,
+    actionId: string
+  ): Promise<ScreenActionLinkDeleteResponse> => {
+    const response = await client.sessions[':sessionId'].actions[':actionId'].link.$delete({
+      param: { actionId, sessionId },
+    });
+    if (!response.ok) throw new Error(await readErrorMessage(response));
+    return screenActionLinkDeleteResponseSchema.parse(await response.json());
   },
   get: async (screenId: string): Promise<ScreenResponse> => {
     const response = await client.screens[':screenId'].$get({ param: { screenId } });

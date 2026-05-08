@@ -434,6 +434,8 @@ export function createDatabaseDesignService(
 
   const listDrafts = async (userId: string) => {
     const rows = await repo.listSchemaJsonsForUser(userId);
+    if (rows.length === 0) return { drafts: [] };
+
     const ids = rows.map((row) => row.databaseSchemaJson.id);
     const [sandboxState, migrationRuns, sourceScreenRows, boundScreenRows] = await Promise.all([
       sandboxQueryService.state(),

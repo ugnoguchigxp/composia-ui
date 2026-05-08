@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { aiActivitySchema, aiSourceContextSchema } from './ai.schema';
 import { dataBindingSchema } from './data-binding.schema';
-import { appActionSchema, appUiSchemaSchema } from './ui-schema.schema';
+import { appActionSchema, appRelativePathSchema, appUiSchemaSchema } from './ui-schema.schema';
 
 export const screenTriggerSchema = z.enum([
   'initial-prompt',
@@ -105,6 +105,37 @@ export const promptSessionMessageSchema = z
   })
   .strict();
 
+export const screenActionLinkSchema = z
+  .object({
+    id: z.string().uuid(),
+    sourceSessionId: z.string().uuid(),
+    actionId: z.string().min(1),
+    targetSessionId: z.string().uuid().nullable(),
+    targetPath: appRelativePathSchema.nullable(),
+    createdAt: z.string().datetime(),
+    updatedAt: z.string().datetime(),
+  })
+  .strict();
+
+export const screenCheckpointSchema = screenJsonSchema
+  .pick({
+    id: true,
+    sessionId: true,
+    version: true,
+    prompt: true,
+    trigger: true,
+    inferredIntent: true,
+    action: true,
+    databaseSchemaJsonId: true,
+    dataBindings: true,
+    createdAt: true,
+    updatedAt: true,
+  })
+  .extend({
+    page: z.string().min(1),
+  })
+  .strict();
+
 export const generatedScreenSummarySchema = generatedScreenSchema
   .pick({
     id: true,
@@ -157,6 +188,16 @@ export const screenActionGenerateRequestSchema = z
   })
   .strict();
 
+export const screenActionLinkUpsertRequestSchema = z
+  .object({
+    targetSessionId: z.string().uuid().nullable().optional(),
+    targetPath: appRelativePathSchema.nullable().optional(),
+  })
+  .strict()
+  .refine((value) => Boolean(value.targetSessionId) !== Boolean(value.targetPath), {
+    message: 'targetSessionId or targetPath is required',
+  });
+
 export const screenRegenerateRequestSchema = z
   .object({
     prompt: z.string().trim().min(1).max(2000).optional(),
@@ -207,8 +248,17 @@ export const screenConversationResponseSchema = z
     session: promptSessionSchema,
     activeScreenJsonId: z.string().uuid().nullable(),
     activeVersion: z.number().int().min(1).nullable(),
-    screenJsons: z.array(screenJsonSchema),
+    activeScreenJson: screenJsonSchema.nullable().default(null),
+    checkpoints: z.array(screenCheckpointSchema).default([]),
+    screenJsons: z.array(screenJsonSchema).default([]),
+    actionLinks: z.array(screenActionLinkSchema).default([]),
     messages: z.array(promptSessionMessageSchema),
+  })
+  .strict();
+
+export const screenActionLinkResponseSchema = z
+  .object({
+    link: screenActionLinkSchema,
   })
   .strict();
 
@@ -232,21 +282,28 @@ export const screenDeleteResponseSchema = z
   })
   .strict();
 
+export const screenActionLinkDeleteResponseSchema = z.object({ success: z.boolean() }).strict();
+
 export type ScreenTrigger = z.infer<typeof screenTriggerSchema>;
 export type PromptSession = z.infer<typeof promptSessionSchema>;
 export type GeneratedScreen = z.infer<typeof generatedScreenSchema>;
 export type ScreenJson = z.infer<typeof screenJsonSchema>;
 export type PromptSessionMessage = z.infer<typeof promptSessionMessageSchema>;
+export type ScreenActionLink = z.infer<typeof screenActionLinkSchema>;
+export type ScreenCheckpoint = z.infer<typeof screenCheckpointSchema>;
 export type GeneratedScreenSummary = z.infer<typeof generatedScreenSummarySchema>;
 export type PromptSessionSummary = z.infer<typeof promptSessionSummarySchema>;
 export type ScreenGenerateRequest = z.infer<typeof screenGenerateRequestSchema>;
 export type ScreenActionGenerateRequest = z.infer<typeof screenActionGenerateRequestSchema>;
+export type ScreenActionLinkUpsertRequest = z.infer<typeof screenActionLinkUpsertRequestSchema>;
 export type ScreenRegenerateRequest = z.infer<typeof screenRegenerateRequestSchema>;
 export type ScreenEditRequest = z.infer<typeof screenEditRequestSchema>;
 export type ScreenListResponse = z.infer<typeof screenListResponseSchema>;
 export type ScreenResponse = z.infer<typeof screenResponseSchema>;
 export type ScreenChildrenResponse = z.infer<typeof screenChildrenResponseSchema>;
 export type ScreenConversationResponse = z.infer<typeof screenConversationResponseSchema>;
+export type ScreenActionLinkResponse = z.infer<typeof screenActionLinkResponseSchema>;
 export type ScreenJsonResponse = z.infer<typeof screenJsonResponseSchema>;
 export type ScreenCheckpointRestoreResponse = z.infer<typeof screenCheckpointRestoreResponseSchema>;
 export type ScreenDeleteResponse = z.infer<typeof screenDeleteResponseSchema>;
+export type ScreenActionLinkDeleteResponse = z.infer<typeof screenActionLinkDeleteResponseSchema>;

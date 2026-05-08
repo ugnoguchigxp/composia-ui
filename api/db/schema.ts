@@ -116,6 +116,11 @@ export const normalizedEntities = pgTable(
   },
   (table) => ({
     sourceDefinitionIdx: index('ne_source_definition_idx').on(table.sourceDefinitionId),
+    sourceDefinitionPublishedIdx: index('ne_source_definition_published_idx').on(
+      table.sourceDefinitionId,
+      table.publishedAt,
+      table.createdAt
+    ),
     entityTypeIdx: index('ne_entity_type_idx').on(table.entityType),
     sourceExternalUniqueIdx: uniqueIndex('ne_source_external_uidx').on(
       table.sourceDefinitionId,
@@ -151,6 +156,29 @@ export const promptSessions = pgTable(
   },
   (table) => ({
     createdByIdx: index('prompt_sessions_created_by_idx').on(table.createdBy),
+  })
+);
+
+export const screenActionLinks = pgTable(
+  'screen_action_links',
+  {
+    ...commonColumns,
+    sourceSessionId: uuid('source_session_id')
+      .notNull()
+      .references(() => promptSessions.id, { onDelete: 'cascade' }),
+    actionId: text('action_id').notNull(),
+    targetSessionId: uuid('target_session_id').references(() => promptSessions.id, {
+      onDelete: 'set null',
+    }),
+    targetPath: text('target_path'),
+  },
+  (table) => ({
+    sourceActionUniqueIdx: uniqueIndex('screen_action_links_source_action_uidx').on(
+      table.sourceSessionId,
+      table.actionId
+    ),
+    sourceSessionIdx: index('screen_action_links_source_session_idx').on(table.sourceSessionId),
+    targetSessionIdx: index('screen_action_links_target_session_idx').on(table.targetSessionId),
   })
 );
 
@@ -229,7 +257,16 @@ export const screenJsons = pgTable(
     databaseSchemaJsonIdx: index('screen_jsons_database_schema_json_idx').on(
       table.databaseSchemaJsonId
     ),
+    databaseSchemaJsonVersionIdx: index('screen_jsons_database_schema_json_version_idx').on(
+      table.databaseSchemaJsonId,
+      table.version,
+      table.createdAt
+    ),
     sessionIdx: index('screen_jsons_session_idx').on(table.sessionId),
+    sessionCreatedAtIdx: index('screen_jsons_session_created_at_idx').on(
+      table.sessionId,
+      table.createdAt
+    ),
     sessionVersionUniqueIdx: uniqueIndex('screen_jsons_session_version_uidx').on(
       table.sessionId,
       table.version
@@ -259,8 +296,15 @@ export const databaseDesignMessages = pgTable(
     databaseSchemaJsonIdx: index('database_design_messages_database_schema_json_idx').on(
       table.databaseSchemaJsonId
     ),
+    databaseSchemaJsonCreatedAtIdx: index(
+      'database_design_messages_database_schema_json_created_at_idx'
+    ).on(table.databaseSchemaJsonId, table.createdAt),
     designSessionIdx: index('database_design_messages_design_session_idx').on(
       table.designSessionId
+    ),
+    designSessionCreatedAtIdx: index('database_design_messages_design_session_created_at_idx').on(
+      table.designSessionId,
+      table.createdAt
     ),
     screenJsonIdx: index('database_design_messages_screen_json_idx').on(table.screenJsonId),
   })
@@ -285,6 +329,14 @@ export const sandboxMigrationRuns = pgTable(
     checksumIdx: index('sandbox_migration_runs_checksum_idx').on(table.checksum),
     databaseSchemaJsonIdx: index('sandbox_migration_runs_database_schema_json_idx').on(
       table.databaseSchemaJsonId
+    ),
+    databaseSchemaJsonAppliedAtIdx: index(
+      'sandbox_migration_runs_database_schema_json_applied_at_idx'
+    ).on(table.databaseSchemaJsonId, table.appliedAt, table.createdAt),
+    statusAppliedAtIdx: index('sandbox_migration_runs_status_applied_at_idx').on(
+      table.status,
+      table.appliedAt,
+      table.createdAt
     ),
   })
 );
@@ -335,6 +387,10 @@ export const promptSessionMessages = pgTable(
     createdAtIdx: index('prompt_session_messages_created_at_idx').on(table.createdAt),
     screenJsonIdx: index('prompt_session_messages_screen_json_idx').on(table.screenJsonId),
     sessionIdx: index('prompt_session_messages_session_idx').on(table.sessionId),
+    sessionCreatedAtIdx: index('prompt_session_messages_session_created_at_idx').on(
+      table.sessionId,
+      table.createdAt
+    ),
   })
 );
 
@@ -359,5 +415,9 @@ export const generatedScreens = pgTable(
   (table) => ({
     parentScreenIdx: index('generated_screens_parent_idx').on(table.parentScreenId),
     sessionIdx: index('generated_screens_session_idx').on(table.sessionId),
+    sessionCreatedAtIdx: index('generated_screens_session_created_at_idx').on(
+      table.sessionId,
+      table.createdAt
+    ),
   })
 );

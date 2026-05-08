@@ -2,6 +2,9 @@ import { createRoute, z } from '@hono/zod-openapi';
 import type { Context } from 'hono';
 import {
   screenActionGenerateRequestSchema,
+  screenActionLinkDeleteResponseSchema,
+  screenActionLinkResponseSchema,
+  screenActionLinkUpsertRequestSchema,
   screenCheckpointRestoreResponseSchema,
   screenChildrenResponseSchema,
   screenConversationResponseSchema,
@@ -157,6 +160,18 @@ const conversationRoute = createRoute({
   },
 });
 
+const sessionDeleteRoute = createRoute({
+  method: 'delete',
+  path: '/:sessionId',
+  request: { params: sessionParamSchema },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: screenDeleteResponseSchema } },
+      description: 'Delete prompt session and all ScreenJSON versions',
+    },
+  },
+});
+
 const editRoute = createRoute({
   method: 'post',
   path: '/:sessionId/edit',
@@ -195,6 +210,39 @@ const sessionActionGenerateRoute = createRoute({
     200: {
       content: { 'application/json': { schema: screenResponseSchema } },
       description: 'Generate and save the next ScreenJSON from the active session screen',
+    },
+  },
+});
+
+const sessionActionLinkRoute = createRoute({
+  method: 'put',
+  path: '/:sessionId/actions/:actionId/link',
+  request: {
+    params: sessionActionParamSchema,
+    body: {
+      content: {
+        'application/json': {
+          schema: screenActionLinkUpsertRequestSchema,
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: screenActionLinkResponseSchema } },
+      description: 'Link a screen action to a target prompt session or app path',
+    },
+  },
+});
+
+const sessionActionUnlinkRoute = createRoute({
+  method: 'delete',
+  path: '/:sessionId/actions/:actionId/link',
+  request: { params: sessionActionParamSchema },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: screenActionLinkDeleteResponseSchema } },
+      description: 'Remove a screen action link',
     },
   },
 });
@@ -323,6 +371,9 @@ export const screenSessionRouter = protectedSessionsRouter
   .openapi(conversationRoute, async (c) =>
     c.json(await screenHistoryService.conversation(userId(c), c.req.valid('param').sessionId), 200)
   )
+  .openapi(sessionDeleteRoute, async (c) =>
+    c.json(await screenHistoryService.deleteSession(userId(c), c.req.valid('param').sessionId), 200)
+  )
   .openapi(editRoute, async (c) =>
     c.json(
       await screenHistoryService.edit(
@@ -344,6 +395,17 @@ export const screenSessionRouter = protectedSessionsRouter
       ),
       200
     );
+  })
+  .openapi(sessionActionLinkRoute, async (c) => {
+    const { actionId, sessionId } = c.req.valid('param');
+    return c.json(
+      await screenHistoryService.linkAction(userId(c), sessionId, actionId, c.req.valid('json')),
+      200
+    );
+  })
+  .openapi(sessionActionUnlinkRoute, async (c) => {
+    const { actionId, sessionId } = c.req.valid('param');
+    return c.json(await screenHistoryService.unlinkAction(userId(c), sessionId, actionId), 200);
   })
   .openapi(sessionRegenerateRoute, async (c) =>
     c.json(

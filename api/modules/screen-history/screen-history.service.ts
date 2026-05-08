@@ -11,6 +11,11 @@ import type {
   PromptSessionMessage,
   PromptSessionSummary,
   ScreenActionGenerateRequest,
+  ScreenActionLink,
+  ScreenActionLinkDeleteResponse,
+  ScreenActionLinkResponse,
+  ScreenActionLinkUpsertRequest,
+  ScreenCheckpoint,
   ScreenCheckpointRestoreResponse,
   ScreenConversationResponse,
   ScreenEditRequest,
@@ -32,7 +37,9 @@ import {
   type GeneratedScreenWithSessionRecord,
   type PromptSessionMessageRecord,
   type PromptSessionRecord,
+  type ScreenActionLinkRecord,
   type ScreenHistoryRepository,
+  type ScreenJsonCheckpointRecord,
   type ScreenJsonRecord,
   type ScreenJsonWithSessionRecord,
   screenHistoryRepository,
@@ -49,6 +56,11 @@ type ScreenHistoryAiService = {
 type ScreenHistoryContextReader = {
   getLayoutContext: () => Promise<AiSourceContext>;
 };
+
+type MessageCheckpoint = Pick<
+  ScreenCheckpoint,
+  'createdAt' | 'id' | 'page' | 'prompt' | 'sessionId' | 'trigger' | 'updatedAt' | 'version'
+>;
 
 function providerMeta(): GeneratedScreen['providerMeta'] {
   if (
@@ -115,7 +127,10 @@ function mapLegacyScreen(row: GeneratedScreenRecord): GeneratedScreen {
   };
 }
 
-function mapScreenJson(row: ScreenJsonRecord): ScreenJson {
+function mapScreenJson(
+  row: ScreenJsonRecord,
+  options: { includeContextSnapshot?: boolean } = {}
+): ScreenJson {
   return {
     id: row.id,
     sessionId: row.sessionId,
@@ -127,8 +142,25 @@ function mapScreenJson(row: ScreenJsonRecord): ScreenJson {
     schema: appUiSchemaSchema.parse(row.schema),
     databaseSchemaJsonId: row.databaseSchemaJsonId ?? null,
     dataBindings: row.dataBindings ?? [],
-    contextSnapshot: row.contextSnapshot,
+    contextSnapshot: options.includeContextSnapshot === false ? {} : row.contextSnapshot,
     providerMeta: row.providerMeta,
+    createdAt: dateIso(row.createdAt),
+    updatedAt: dateIso(row.updatedAt),
+  };
+}
+
+function mapScreenCheckpoint(row: ScreenJsonCheckpointRecord): ScreenCheckpoint {
+  return {
+    id: row.id,
+    sessionId: row.sessionId,
+    version: row.version,
+    trigger: row.trigger as ScreenCheckpoint['trigger'],
+    prompt: row.prompt,
+    inferredIntent: row.inferredIntent,
+    action: row.action ?? null,
+    page: row.page ?? row.inferredIntent,
+    databaseSchemaJsonId: row.databaseSchemaJsonId ?? null,
+    dataBindings: row.dataBindings ?? [],
     createdAt: dateIso(row.createdAt),
     updatedAt: dateIso(row.updatedAt),
   };
@@ -150,6 +182,18 @@ function mapMessage(row: PromptSessionMessageRecord): PromptSessionMessage {
     role: row.role as PromptSessionMessage['role'],
     content: row.content,
     metadata: row.metadata ?? {},
+    createdAt: dateIso(row.createdAt),
+    updatedAt: dateIso(row.updatedAt),
+  };
+}
+
+function mapActionLink(row: ScreenActionLinkRecord): ScreenActionLink {
+  return {
+    id: row.id,
+    sourceSessionId: row.sourceSessionId,
+    actionId: row.actionId,
+    targetSessionId: row.targetSessionId ?? null,
+    targetPath: row.targetPath ?? null,
     createdAt: dateIso(row.createdAt),
     updatedAt: dateIso(row.updatedAt),
   };
@@ -325,32 +369,32 @@ async function contextSnapshot(
   };
 }
 
-function fallbackMessages(screenJsons: ScreenJson[]): PromptSessionMessage[] {
-  return screenJsons.flatMap((screenJson) => {
-    const createdAt = screenJson.createdAt;
+function fallbackMessages(checkpoints: MessageCheckpoint[]): PromptSessionMessage[] {
+  return checkpoints.flatMap((checkpoint) => {
+    const createdAt = checkpoint.createdAt;
     return [
       {
-        id: `00000000-0000-4000-8000-${screenJson.version.toString().padStart(12, '0')}`,
-        sessionId: screenJson.sessionId,
-        screenJsonId: screenJson.id,
+        id: `00000000-0000-4000-8000-${checkpoint.version.toString().padStart(12, '0')}`,
+        sessionId: checkpoint.sessionId,
+        screenJsonId: checkpoint.id,
         role: 'user' as const,
-        content: screenJson.prompt,
+        content: checkpoint.prompt,
         metadata: {},
         createdAt,
         updatedAt: createdAt,
       },
       {
-        id: `00000000-0000-4000-8001-${screenJson.version.toString().padStart(12, '0')}`,
-        sessionId: screenJson.sessionId,
-        screenJsonId: screenJson.id,
+        id: `00000000-0000-4000-8001-${checkpoint.version.toString().padStart(12, '0')}`,
+        sessionId: checkpoint.sessionId,
+        screenJsonId: checkpoint.id,
         role: 'assistant' as const,
-        content: `${screenJson.schema.page} を保存しました。`,
+        content: `${checkpoint.page} を保存しました。`,
         metadata: {
-          checkpointScreenJsonId: screenJson.id,
+          checkpointScreenJsonId: checkpoint.id,
           checkpointLabel,
-          generatedPage: screenJson.schema.page,
-          version: screenJson.version,
-          trigger: screenJson.trigger,
+          generatedPage: checkpoint.page,
+          version: checkpoint.version,
+          trigger: checkpoint.trigger,
         },
         createdAt,
         updatedAt: createdAt,
@@ -360,7 +404,7 @@ function fallbackMessages(screenJsons: ScreenJson[]): PromptSessionMessage[] {
 }
 
 function messagesWithFallbacks(
-  screenJsons: ScreenJson[],
+  checkpoints: MessageCheckpoint[],
   storedMessages: PromptSessionMessage[]
 ): PromptSessionMessage[] {
   const messagesByScreenJsonId = new Map<string, PromptSessionMessage[]>();
@@ -371,9 +415,9 @@ function messagesWithFallbacks(
     ]);
   }
 
-  return screenJsons.flatMap((screenJson) => {
-    const messages = messagesByScreenJsonId.get(screenJson.id);
-    return messages && messages.length > 0 ? messages : fallbackMessages([screenJson]);
+  return checkpoints.flatMap((checkpoint) => {
+    const messages = messagesByScreenJsonId.get(checkpoint.id);
+    return messages && messages.length > 0 ? messages : fallbackMessages([checkpoint]);
   });
 }
 
@@ -386,23 +430,31 @@ export function createScreenHistoryService(
     userId: string,
     sessionId: string
   ): Promise<ScreenConversationResponse> => {
-    const session = await repo.findSessionById(userId, sessionId);
+    const [session, activeRow, checkpointRows, storedMessageRows, actionLinkRows] =
+      await Promise.all([
+        repo.findSessionById(userId, sessionId),
+        repo.findActiveSessionScreenJson(userId, sessionId),
+        repo.listSessionScreenJsonCheckpoints(userId, sessionId),
+        repo.listSessionMessages(userId, sessionId),
+        repo.listSessionActionLinks(userId, sessionId),
+      ]);
     if (!session) throw new NotFoundError('Prompt session not found');
 
-    const rows = await repo.listSessionScreenJsons(userId, sessionId);
-    const screenJsons = rows.map((row) => mapScreenJson(row.screenJson));
-    const active =
-      screenJsons.find((screenJson) => screenJson.id === session.activeScreenJsonId) ??
-      screenJsons.at(-1) ??
-      null;
-    const storedMessages = (await repo.listSessionMessages(userId, sessionId)).map(mapMessage);
+    const checkpoints = checkpointRows.map(mapScreenCheckpoint);
+    const active = activeRow
+      ? mapScreenJson(activeRow.screenJson, { includeContextSnapshot: false })
+      : null;
+    const storedMessages = storedMessageRows.map(mapMessage);
 
     return {
       session: mapSession({ ...session, activeScreenJsonId: active?.id ?? null }),
       activeScreenJsonId: active?.id ?? null,
       activeVersion: active?.version ?? null,
-      screenJsons,
-      messages: messagesWithFallbacks(screenJsons, storedMessages),
+      activeScreenJson: active,
+      checkpoints,
+      screenJsons: [],
+      actionLinks: actionLinkRows.map(mapActionLink),
+      messages: messagesWithFallbacks(checkpoints, storedMessages),
     };
   };
 
@@ -470,12 +522,17 @@ export function createScreenHistoryService(
   };
 
   const activeScreenJsonForSession = async (userId: string, sessionId: string) => {
-    const conversation = await sessionConversation(userId, sessionId);
-    const active = conversation.screenJsons.find(
-      (screenJson) => screenJson.id === conversation.activeScreenJsonId
-    );
+    const active = await repo.findActiveSessionScreenJson(userId, sessionId);
     if (!active) throw new NotFoundError('Active ScreenJSON not found');
-    return active;
+    return mapScreenJson(active.screenJson);
+  };
+
+  const assertSessionAction = async (userId: string, sessionId: string, actionId: string) => {
+    const current = await activeScreenJsonForSession(userId, sessionId);
+    return {
+      action: findAction(current.schema, actionId),
+      current,
+    };
   };
 
   const nextVersionAfter = async (userId: string, sessionId: string, version?: number) => {
@@ -529,6 +586,12 @@ export function createScreenHistoryService(
         screenJsonRow.session.id,
         remaining.at(-1)?.screenJson.id ?? null
       );
+      return { success: true };
+    },
+    deleteSession: async (userId: string, sessionId: string) => {
+      const session = await repo.findSessionById(userId, sessionId);
+      if (!session) throw new NotFoundError('Prompt session not found');
+      await repo.deleteSession(userId, sessionId);
       return { success: true };
     },
     edit: async (
@@ -587,23 +650,31 @@ export function createScreenHistoryService(
       }
 
       const context = await contextSnapshot(contextReader, current.screen.schema);
-      const version =
-        current.kind === 'screen-json'
-          ? await nextVersionAfter(userId, current.screen.sessionId, current.screen.version)
-          : await nextVersionAfter(userId, current.screen.sessionId);
-      return saveScreenJson({
+      const targetSession = await repo.createSession({
+        activeScreenJsonId: null,
+        createdBy: userId,
+        title: titleFromPrompt(action.label),
+      });
+      const result = await saveScreenJson({
         action,
         assistantContent: (screenJson) =>
           `${appUiSchemaSchema.parse(screenJson.schema).page} を生成しました。`,
         layoutPrompt: promptForAction(current.screen, action, input.prompt),
         providerContext: context.providerContext,
-        sessionId: current.screen.sessionId,
+        sessionId: targetSession.id,
         snapshot: context.snapshot,
         storedPrompt: input.prompt ?? action.label,
         trigger: 'action-click',
         userContent: action.label,
-        version,
+        version: 1,
       });
+      await repo.upsertActionLink({
+        actionId,
+        sourceSessionId: current.screen.sessionId,
+        targetPath: null,
+        targetSessionId: result.screen.sessionId,
+      });
+      return result;
     },
     generateFromSessionAction: async (
       userId: string,
@@ -618,20 +689,31 @@ export function createScreenHistoryService(
       }
 
       const context = await contextSnapshot(contextReader, current.schema);
-      const version = await nextVersionAfter(userId, sessionId, current.version);
-      return saveScreenJson({
+      const targetSession = await repo.createSession({
+        activeScreenJsonId: null,
+        createdBy: userId,
+        title: titleFromPrompt(action.label),
+      });
+      const result = await saveScreenJson({
         action,
         assistantContent: (screenJson) =>
           `${appUiSchemaSchema.parse(screenJson.schema).page} を生成しました。`,
         layoutPrompt: promptForAction(current, action, input.prompt),
         providerContext: context.providerContext,
-        sessionId,
+        sessionId: targetSession.id,
         snapshot: context.snapshot,
         storedPrompt: input.prompt ?? action.label,
         trigger: 'action-click',
         userContent: action.label,
-        version,
+        version: 1,
       });
+      await repo.upsertActionLink({
+        actionId,
+        sourceSessionId: sessionId,
+        targetPath: null,
+        targetSessionId: result.screen.sessionId,
+      });
+      return result;
     },
     get: async (userId: string, screenId: string): Promise<ScreenResponse> => {
       const current = await getScreenJsonOrLegacy(userId, screenId);
@@ -640,27 +722,14 @@ export function createScreenHistoryService(
     list: async (userId: string, _query?: ScreenListQuery) => {
       const screenJsonRows = await repo.listScreenJsons(userId);
       const sessionIds = Array.from(new Set(screenJsonRows.map((row) => row.session.id)));
-      const messageStatEntries = await Promise.all(
-        sessionIds.map(
-          async (
-            sessionId
-          ): Promise<readonly [string, { count: number; searchText: string | null }]> => {
-            const messages = await repo.listSessionMessages(userId, sessionId);
-            return [
-              sessionId,
-              {
-                count: messages.length,
-                searchText:
-                  messages.length > 0
-                    ? messages.map((message) => message.content).join('\n')
-                    : null,
-              },
-            ];
-          }
-        )
-      );
       const messageStats = new Map<string, { count: number; searchText: string | null }>(
-        messageStatEntries
+        (await repo.listSessionMessageStats(userId, sessionIds)).map((row) => [
+          row.sessionId,
+          {
+            count: row.count,
+            searchText: row.searchText,
+          },
+        ])
       );
       const screenJsonIds = new Set(screenJsonRows.map((row) => row.screenJson.id));
       const legacyRows = (await repo.listLegacyScreens(userId)).filter(
@@ -682,6 +751,42 @@ export function createScreenHistoryService(
         sessions: sessions,
         total,
       };
+    },
+    linkAction: async (
+      userId: string,
+      sessionId: string,
+      actionId: string,
+      input: ScreenActionLinkUpsertRequest
+    ): Promise<ScreenActionLinkResponse> => {
+      const { action } = await assertSessionAction(userId, sessionId, actionId);
+      if (action.kind === 'submit') {
+        throw new ValidationError('Submit actions cannot link to a page');
+      }
+      if (input.targetSessionId) {
+        const target = await repo.findSessionById(userId, input.targetSessionId);
+        if (!target) throw new NotFoundError('Target prompt session not found');
+      }
+
+      return {
+        link: mapActionLink(
+          await repo.upsertActionLink({
+            actionId,
+            sourceSessionId: sessionId,
+            targetPath: input.targetPath ?? null,
+            targetSessionId: input.targetSessionId ?? null,
+          })
+        ),
+      };
+    },
+    unlinkAction: async (
+      userId: string,
+      sessionId: string,
+      actionId: string
+    ): Promise<ScreenActionLinkDeleteResponse> => {
+      const session = await repo.findSessionById(userId, sessionId);
+      if (!session) throw new NotFoundError('Prompt session not found');
+      await repo.deleteActionLink(sessionId, actionId);
+      return { success: true };
     },
     regenerate: async (
       userId: string,

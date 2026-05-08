@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   ScreenActionGenerateRequest,
+  ScreenActionLinkUpsertRequest,
   ScreenEditRequest,
   ScreenGenerateRequest,
   ScreenListQuery,
@@ -100,6 +101,34 @@ export function useGenerateScreenFromSessionAction(sessionId: string | null) {
   });
 }
 
+export function useLinkScreenAction(sessionId: string | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ actionId, input }: { actionId: string; input: ScreenActionLinkUpsertRequest }) =>
+      screenHistoryRepository.linkAction(sessionId ?? '', actionId, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: screenHistoryQueryKeys.lists() });
+      if (sessionId) {
+        queryClient.invalidateQueries({ queryKey: screenHistoryQueryKeys.conversation(sessionId) });
+      }
+    },
+  });
+}
+
+export function useUnlinkScreenAction(sessionId: string | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (actionId: string) =>
+      screenHistoryRepository.unlinkAction(sessionId ?? '', actionId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: screenHistoryQueryKeys.lists() });
+      if (sessionId) {
+        queryClient.invalidateQueries({ queryKey: screenHistoryQueryKeys.conversation(sessionId) });
+      }
+    },
+  });
+}
+
 export function useEditSessionScreen(sessionId: string | null) {
   const queryClient = useQueryClient();
   return useMutation({
@@ -168,6 +197,17 @@ export function useDeleteScreen() {
     mutationFn: (screenId: string) => screenHistoryRepository.delete(screenId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: screenHistoryQueryKeys.lists() });
+    },
+  });
+}
+
+export function useDeletePromptSession() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (sessionId: string) => screenHistoryRepository.deleteSession(sessionId),
+    onSuccess: (_data, sessionId) => {
+      queryClient.invalidateQueries({ queryKey: screenHistoryQueryKeys.lists() });
+      queryClient.removeQueries({ queryKey: screenHistoryQueryKeys.conversation(sessionId) });
     },
   });
 }

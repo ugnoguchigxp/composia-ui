@@ -5,11 +5,12 @@ import type {
   PromptSessionSummary,
 } from '../../../../shared/schemas/screen-history.schema';
 import { cn } from '../../../lib/utils';
+import type { ScreenHistoryDeleteTarget } from './ScreenHistoryTable';
 
 type ScreenHistoryListProps = {
   activeScreenId?: string | null;
   isDeleting?: boolean;
-  onDelete?: (screenId: string) => void;
+  onDelete?: (target: ScreenHistoryDeleteTarget) => void;
   screens: GeneratedScreenSummary[];
   sessions?: PromptSessionSummary[];
 };
@@ -66,12 +67,24 @@ export function ScreenHistoryList({
                     {session.inferredIntent ?? session.title}
                   </p>
                 </Link>
-                {onDelete && session.activeScreenJsonId ? (
+                {onDelete ? (
                   <button
                     aria-label={`Delete ${session.page ?? session.title}`}
                     className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md hover:bg-secondary disabled:opacity-50"
                     disabled={isDeleting}
-                    onClick={() => onDelete(session.activeScreenJsonId ?? '')}
+                    onClick={() => {
+                      const title = session.page ?? session.title;
+                      if (
+                        window.confirm(`Delete "${title}" and all ${session.screenCount} versions?`)
+                      ) {
+                        onDelete({
+                          id: session.id,
+                          title,
+                          type: 'session',
+                          versionCount: session.screenCount,
+                        });
+                      }
+                    }}
                     type="button"
                   >
                     <Trash2 className="h-4 w-4" />
@@ -141,7 +154,16 @@ export function ScreenHistoryList({
                 aria-label={`Delete ${screen.page}`}
                 className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md hover:bg-secondary disabled:opacity-50"
                 disabled={isDeleting}
-                onClick={() => onDelete(screen.id)}
+                onClick={() => {
+                  if (window.confirm(`Delete "${screen.page}"?`)) {
+                    onDelete({
+                      id: screen.id,
+                      title: screen.page,
+                      type: 'screen',
+                      versionCount: 1,
+                    });
+                  }
+                }}
                 type="button"
               >
                 <Trash2 className="h-4 w-4" />

@@ -12,6 +12,10 @@ import {
 
 export type DatabaseDesignSessionRecord = typeof databaseDesignSessions.$inferSelect;
 export type DatabaseSchemaJsonRecord = typeof databaseSchemaJsons.$inferSelect;
+export type DatabaseSchemaJsonDraftRecord = Pick<
+  DatabaseSchemaJsonRecord,
+  'createdAt' | 'designSessionId' | 'id' | 'prompt' | 'schema' | 'trigger' | 'updatedAt' | 'version'
+>;
 export type DatabaseDesignMessageRecord = typeof databaseDesignMessages.$inferSelect;
 export type SandboxMigrationRunRecord = typeof sandboxMigrationRuns.$inferSelect;
 export type SandboxManagedObjectRecord = typeof sandboxManagedObjects.$inferSelect;
@@ -22,6 +26,11 @@ export type ScreenJsonWithPromptSessionRecord = {
 
 export type DatabaseSchemaJsonWithSessionRecord = {
   databaseSchemaJson: DatabaseSchemaJsonRecord;
+  session: DatabaseDesignSessionRecord;
+};
+
+export type DatabaseSchemaJsonDraftWithSessionRecord = {
+  databaseSchemaJson: DatabaseSchemaJsonDraftRecord;
   session: DatabaseDesignSessionRecord;
 };
 
@@ -76,7 +85,7 @@ export type DatabaseDesignRepository = {
   ) => Promise<SandboxMigrationRunRecord[]>;
   listManagedObjects: () => Promise<SandboxManagedObjectRecord[]>;
   listSchemaJsons: (designSessionId: string) => Promise<DatabaseSchemaJsonRecord[]>;
-  listSchemaJsonsForUser: (userId: string) => Promise<DatabaseSchemaJsonWithSessionRecord[]>;
+  listSchemaJsonsForUser: (userId: string) => Promise<DatabaseSchemaJsonDraftWithSessionRecord[]>;
   listSourceScreenJsonIdsBySchemaJsonIds: (
     databaseSchemaJsonIds: string[]
   ) => Promise<DatabaseDesignSourceScreenRecord[]>;
@@ -266,14 +275,26 @@ export const databaseDesignRepository: DatabaseDesignRepository = {
       .orderBy(asc(databaseSchemaJsons.version)),
   listSchemaJsonsForUser: async (userId) =>
     db
-      .select({ databaseSchemaJson: databaseSchemaJsons, session: databaseDesignSessions })
-      .from(databaseSchemaJsons)
+      .select({
+        databaseSchemaJson: {
+          createdAt: databaseSchemaJsons.createdAt,
+          designSessionId: databaseSchemaJsons.designSessionId,
+          id: databaseSchemaJsons.id,
+          prompt: databaseSchemaJsons.prompt,
+          schema: databaseSchemaJsons.schema,
+          trigger: databaseSchemaJsons.trigger,
+          updatedAt: databaseSchemaJsons.updatedAt,
+          version: databaseSchemaJsons.version,
+        },
+        session: databaseDesignSessions,
+      })
+      .from(databaseDesignSessions)
       .innerJoin(
-        databaseDesignSessions,
-        eq(databaseSchemaJsons.designSessionId, databaseDesignSessions.id)
+        databaseSchemaJsons,
+        eq(databaseDesignSessions.activeDatabaseSchemaJsonId, databaseSchemaJsons.id)
       )
       .where(eq(databaseDesignSessions.createdBy, userId))
-      .orderBy(desc(databaseSchemaJsons.createdAt)),
+      .orderBy(desc(databaseDesignSessions.updatedAt), desc(databaseSchemaJsons.createdAt)),
   listSourceScreenJsonIdsBySchemaJsonIds: async (databaseSchemaJsonIds) => {
     if (databaseSchemaJsonIds.length === 0) return [];
     return db

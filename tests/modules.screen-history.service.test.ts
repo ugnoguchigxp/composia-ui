@@ -4,7 +4,9 @@ import type {
   GeneratedScreenWithSessionRecord,
   PromptSessionMessageRecord,
   PromptSessionRecord,
+  ScreenActionLinkRecord,
   ScreenHistoryRepository,
+  ScreenJsonCheckpointRecord,
   ScreenJsonRecord,
   ScreenJsonWithSessionRecord,
 } from '../api/modules/screen-history/screen-history.repository';
@@ -15,6 +17,7 @@ const userId = '11111111-1111-4111-8111-111111111111';
 const sessionId = '22222222-2222-4222-8222-222222222222';
 const screenId = '33333333-3333-4333-8333-333333333333';
 const childScreenId = '44444444-4444-4444-8444-444444444444';
+const childSessionId = '44444444-4444-4444-9444-444444444444';
 const editScreenId = '55555555-5555-4555-8555-555555555555';
 const now = new Date('2026-05-07T00:00:00.000Z');
 
@@ -65,6 +68,8 @@ function screenJsonRecord(input: Partial<ScreenJsonRecord> = {}): ScreenJsonReco
     inferredIntent: input.inferredIntent ?? 'Flower shop top page',
     action: input.action ?? null,
     schema: input.schema ?? schema(),
+    databaseSchemaJsonId: input.databaseSchemaJsonId ?? null,
+    dataBindings: input.dataBindings ?? [],
     contextSnapshot: input.contextSnapshot ?? {},
     providerMeta: input.providerMeta ?? {
       provider: 'mock',
@@ -113,10 +118,12 @@ function messageRecord(
 }
 
 function createFakeRepository({
+  initialActionLinks = [],
   initialMessages = [],
   initialLegacyScreens = [],
   initialScreenJsons = [],
 }: {
+  initialActionLinks?: ScreenActionLinkRecord[];
   initialMessages?: PromptSessionMessageRecord[];
   initialLegacyScreens?: GeneratedScreenRecord[];
   initialScreenJsons?: ScreenJsonRecord[];
@@ -124,17 +131,34 @@ function createFakeRepository({
   let session = sessionRecord({
     activeScreenJsonId: initialScreenJsons.at(-1)?.id ?? screenId,
   });
+  const sessions = new Map<string, PromptSessionRecord>([[session.id, session]]);
+  let createSessionCount = 0;
   const screenJsons = [...initialScreenJsons];
   const legacyScreens = [...initialLegacyScreens];
   const messages: PromptSessionMessageRecord[] = [...initialMessages];
+  const actionLinks: ScreenActionLinkRecord[] = [...initialActionLinks];
 
   const withSession = (screenJson: ScreenJsonRecord): ScreenJsonWithSessionRecord => ({
     screenJson,
-    session,
+    session: sessions.get(screenJson.sessionId) ?? sessionRecord({ id: screenJson.sessionId }),
+  });
+  const checkpoint = (screenJson: ScreenJsonRecord): ScreenJsonCheckpointRecord => ({
+    id: screenJson.id,
+    sessionId: screenJson.sessionId,
+    version: screenJson.version,
+    trigger: screenJson.trigger,
+    prompt: screenJson.prompt,
+    inferredIntent: screenJson.inferredIntent,
+    action: screenJson.action,
+    page: screenJson.schema.page,
+    databaseSchemaJsonId: screenJson.databaseSchemaJsonId,
+    dataBindings: screenJson.dataBindings,
+    createdAt: screenJson.createdAt,
+    updatedAt: screenJson.updatedAt,
   });
   const legacyWithSession = (screen: GeneratedScreenRecord): GeneratedScreenWithSessionRecord => ({
     screen,
-    session,
+    session: sessions.get(screen.sessionId) ?? sessionRecord({ id: screen.sessionId }),
   });
 
   const repo: ScreenHistoryRepository = {
@@ -154,18 +178,38 @@ function createFakeRepository({
       const created = screenJsonRecord({
         ...input,
         id:
-          input.version === 1
-            ? screenId
-            : input.trigger === 'chat-edit'
-              ? editScreenId
-              : childScreenId,
+          input.sessionId !== sessionId
+            ? childScreenId
+            : input.version === 1
+              ? screenId
+              : input.trigger === 'chat-edit'
+                ? editScreenId
+                : childScreenId,
       });
       screenJsons.push(created);
       return created;
     }),
     createSession: vi.fn(async (input) => {
-      session = sessionRecord({ ...input, activeScreenJsonId: input.activeScreenJsonId ?? null });
+      const generatedId =
+        createSessionCount === 0 &&
+        initialScreenJsons.length === 0 &&
+        initialLegacyScreens.length === 0
+          ? sessionId
+          : childSessionId;
+      createSessionCount += 1;
+      session = sessionRecord({
+        ...input,
+        id: input.id ?? generatedId,
+        activeScreenJsonId: input.activeScreenJsonId ?? null,
+      });
+      sessions.set(session.id, session);
       return session;
+    }),
+    deleteActionLink: vi.fn(async (sourceSessionId, actionId) => {
+      const index = actionLinks.findIndex(
+        (link) => link.sourceSessionId === sourceSessionId && link.actionId === actionId
+      );
+      if (index >= 0) actionLinks.splice(index, 1);
     }),
     deleteLegacyScreen: vi.fn(async (_userId, id) => {
       const index = legacyScreens.findIndex((screen) => screen.id === id);
@@ -193,6 +237,25 @@ function createFakeRepository({
         if ((screenJsons[index]?.version ?? 0) > version) screenJsons.splice(index, 1);
       }
     }),
+    deleteSession: vi.fn(async (_userId, id) => {
+      sessions.delete(id);
+      for (let index = screenJsons.length - 1; index >= 0; index -= 1) {
+        if (screenJsons[index]?.sessionId === id) screenJsons.splice(index, 1);
+      }
+      for (let index = legacyScreens.length - 1; index >= 0; index -= 1) {
+        if (legacyScreens[index]?.sessionId === id) legacyScreens.splice(index, 1);
+      }
+      for (let index = messages.length - 1; index >= 0; index -= 1) {
+        if (messages[index]?.sessionId === id) messages.splice(index, 1);
+      }
+      for (let index = actionLinks.length - 1; index >= 0; index -= 1) {
+        if (actionLinks[index]?.sourceSessionId === id) {
+          actionLinks.splice(index, 1);
+        } else if (actionLinks[index]?.targetSessionId === id) {
+          actionLinks[index].targetSessionId = null;
+        }
+      }
+    }),
     findLegacyScreenById: vi.fn(async (_userId, id) => {
       const screen = legacyScreens.find((item) => item.id === id);
       return screen ? legacyWithSession(screen) : null;
@@ -201,7 +264,16 @@ function createFakeRepository({
       const screenJson = screenJsons.find((item) => item.id === id);
       return screenJson ? withSession(screenJson) : null;
     }),
-    findSessionById: vi.fn(async (_userId, id) => (id === session.id ? session : null)),
+    findActiveSessionScreenJson: vi.fn(async (_userId, id) => {
+      const current = sessions.get(id);
+      if (!current) return null;
+      const sessionScreenJsons = screenJsons.filter((item) => item.sessionId === id);
+      const active =
+        sessionScreenJsons.find((item) => item.id === current.activeScreenJsonId) ??
+        sessionScreenJsons.sort((a, b) => b.version - a.version).at(0);
+      return active ? withSession(active) : null;
+    }),
+    findSessionById: vi.fn(async (_userId, id) => sessions.get(id) ?? null),
     listLegacyChildren: vi.fn(async (_userId, parentId) =>
       legacyScreens
         .filter((screen) => screen.parentScreenId === parentId)
@@ -209,18 +281,68 @@ function createFakeRepository({
     ),
     listLegacyScreens: vi.fn(async () => legacyScreens.map((screen) => legacyWithSession(screen))),
     listScreenJsons: vi.fn(async () => screenJsons.map((screenJson) => withSession(screenJson))),
-    listSessionMessages: vi.fn(async () => messages),
-    listSessionScreenJsons: vi.fn(async () =>
+    listSessionActionLinks: vi.fn(async (_userId, sourceSessionId) =>
+      actionLinks.filter((link) => link.sourceSessionId === sourceSessionId)
+    ),
+    listSessionMessageStats: vi.fn(async (_userId, sessionIds) =>
+      sessionIds.map((id) => {
+        const sessionMessages = messages.filter((message) => message.sessionId === id);
+        return {
+          sessionId: id,
+          count: sessionMessages.length,
+          searchText:
+            sessionMessages.length > 0
+              ? sessionMessages.map((message) => message.content).join('\n')
+              : null,
+        };
+      })
+    ),
+    listSessionMessages: vi.fn(async (_userId, id) =>
+      messages.filter((message) => message.sessionId === id)
+    ),
+    listSessionScreenJsonCheckpoints: vi.fn(async (_userId, id) =>
       [...screenJsons]
+        .filter((screenJson) => screenJson.sessionId === id)
+        .sort((a, b) => a.version - b.version)
+        .map(checkpoint)
+    ),
+    listSessionScreenJsons: vi.fn(async (_userId, id) =>
+      [...screenJsons]
+        .filter((screenJson) => screenJson.sessionId === id)
         .sort((a, b) => a.version - b.version)
         .map((screenJson) => withSession(screenJson))
     ),
-    updateSessionActiveScreenJson: vi.fn(async (_sessionId, screenJsonId) => {
-      session = sessionRecord({ ...session, activeScreenJsonId: screenJsonId });
+    updateSessionActiveScreenJson: vi.fn(async (id, screenJsonId) => {
+      const current = sessions.get(id) ?? sessionRecord({ id });
+      session = sessionRecord({ ...current, activeScreenJsonId: screenJsonId });
+      sessions.set(id, session);
       return session;
     }),
+    upsertActionLink: vi.fn(async (input) => {
+      const existing = actionLinks.find(
+        (link) => link.sourceSessionId === input.sourceSessionId && link.actionId === input.actionId
+      );
+      if (existing) {
+        existing.targetPath = input.targetPath ?? null;
+        existing.targetSessionId = input.targetSessionId ?? null;
+        existing.updatedAt = now;
+        return existing;
+      }
+
+      const created: ScreenActionLinkRecord = {
+        id: `77777777-7777-4777-8777-${(actionLinks.length + 1).toString().padStart(12, '0')}`,
+        sourceSessionId: input.sourceSessionId,
+        actionId: input.actionId,
+        targetSessionId: input.targetSessionId ?? null,
+        targetPath: input.targetPath ?? null,
+        createdAt: now,
+        updatedAt: now,
+      };
+      actionLinks.push(created);
+      return created;
+    }),
   };
-  return { messages, repo, screenJsons };
+  return { actionLinks, messages, repo, screenJsons };
 }
 
 describe('screen history service', () => {
@@ -265,7 +387,7 @@ describe('screen history service', () => {
     ]);
   });
 
-  it('generates the next ScreenJSON from a clicked action', async () => {
+  it('generates a linked target ScreenJSON from a clicked action', async () => {
     const parent = screenJsonRecord();
     const { repo } = createFakeRepository({ initialScreenJsons: [parent] });
     const layoutService = {
@@ -294,9 +416,15 @@ describe('screen history service', () => {
     const result = await service.generateFromAction(userId, parent.id, 'flower-detail', {});
 
     expect(result.screen.parentScreenId).toBeNull();
-    expect(result.screen.version).toBe(2);
+    expect(result.screen.version).toBe(1);
     expect(result.screen.trigger).toBe('action-click');
     expect(result.screen.schema.page).toBe('Flower Details');
+    expect(repo.upsertActionLink).toHaveBeenCalledWith({
+      actionId: 'flower-detail',
+      sourceSessionId: parent.sessionId,
+      targetPath: null,
+      targetSessionId: result.screen.sessionId,
+    });
     expect(layoutService.generateLayout).toHaveBeenCalledWith(
       expect.objectContaining({
         prompt: expect.stringContaining('Clicked action label: Flower details'),
@@ -392,6 +520,12 @@ describe('screen history service', () => {
 
     expect(result.screen.id).toBe(first.id);
     expect(result.conversation.activeScreenJsonId).toBe(first.id);
+    expect(result.conversation.activeScreenJson?.id).toBe(first.id);
+    expect(result.conversation.checkpoints.map((checkpoint) => checkpoint.id)).toEqual([
+      first.id,
+      second.id,
+    ]);
+    expect(result.conversation.screenJsons).toEqual([]);
     expect(screenJsons.map((item) => item.id)).toEqual([first.id, second.id]);
     expect(repo.deleteScreenJsonsAfterVersion).not.toHaveBeenCalled();
     expect(layoutService.generateLayout).not.toHaveBeenCalled();
@@ -428,6 +562,9 @@ describe('screen history service', () => {
 
     const result = await service.conversation(userId, sessionId);
 
+    expect(result.activeScreenJson?.id).toBe(second.id);
+    expect(result.checkpoints.map((checkpoint) => checkpoint.id)).toEqual([first.id, second.id]);
+    expect(result.screenJsons).toEqual([]);
     expect(result.messages.map((message) => message.content)).toEqual([
       'ECサイトのトップ画面',
       'Flower Shop を保存しました。',
@@ -469,6 +606,89 @@ describe('screen history service', () => {
     expect(result.sessions[0]?.messageCount).toBe(2);
     expect(result.sessions[0]?.messageSearchText).toContain('予約導線をもっと目立たせる');
     expect(result.sessions[0]?.messageSearchText).toContain('Flower Shop を更新しました。');
+    expect(repo.listSessionMessageStats).toHaveBeenCalledWith(userId, [sessionId]);
+    expect(repo.listSessionMessages).not.toHaveBeenCalled();
+  });
+
+  it('saves action links separately from ScreenJSON versions', async () => {
+    const current = screenJsonRecord({ id: screenId, version: 1 });
+    const { repo } = createFakeRepository({ initialScreenJsons: [current] });
+    const layoutService = {
+      generateLayout: vi.fn(async () => ({ schema: schema(), activities: [] })),
+    };
+    const service = createScreenHistoryService(repo, layoutService);
+
+    const result = await service.linkAction(userId, sessionId, 'flower-detail', {
+      targetPath: '/flower-details',
+    });
+    const conversation = await service.conversation(userId, sessionId);
+
+    expect(result.link).toEqual(
+      expect.objectContaining({
+        actionId: 'flower-detail',
+        sourceSessionId: sessionId,
+        targetPath: '/flower-details',
+        targetSessionId: null,
+      })
+    );
+    expect(conversation.actionLinks).toHaveLength(1);
+    expect(repo.createScreenJson).not.toHaveBeenCalled();
+
+    await service.unlinkAction(userId, sessionId, 'flower-detail');
+    expect(repo.deleteActionLink).toHaveBeenCalledWith(sessionId, 'flower-detail');
+  });
+
+  it('deletes a prompt session with all ScreenJSON versions and messages', async () => {
+    const first = screenJsonRecord({ id: screenId, version: 1 });
+    const second = screenJsonRecord({
+      id: childScreenId,
+      version: 2,
+      schema: schema({ page: 'Edited Flower Shop' }),
+    });
+    const { actionLinks, messages, repo, screenJsons } = createFakeRepository({
+      initialActionLinks: [
+        {
+          id: '77777777-7777-4777-8777-777777777777',
+          sourceSessionId: sessionId,
+          actionId: 'flower-detail',
+          targetSessionId: childSessionId,
+          targetPath: null,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: '88888888-8888-4888-8888-888888888888',
+          sourceSessionId: childSessionId,
+          actionId: 'back',
+          targetSessionId: sessionId,
+          targetPath: null,
+          createdAt: now,
+          updatedAt: now,
+        },
+      ],
+      initialMessages: [
+        messageRecord({ id: '66666666-6666-4666-8666-000000000001', screenJsonId: first.id }),
+        messageRecord({ id: '66666666-6666-4666-8666-000000000002', screenJsonId: second.id }),
+      ],
+      initialScreenJsons: [first, second],
+    });
+    const layoutService = {
+      generateLayout: vi.fn(async () => ({ schema: schema(), activities: [] })),
+    };
+    const service = createScreenHistoryService(repo, layoutService);
+
+    await expect(service.deleteSession(userId, sessionId)).resolves.toEqual({ success: true });
+
+    expect(repo.deleteSession).toHaveBeenCalledWith(userId, sessionId);
+    expect(screenJsons).toEqual([]);
+    expect(messages).toEqual([]);
+    expect(actionLinks).toEqual([
+      expect.objectContaining({
+        actionId: 'back',
+        sourceSessionId: childSessionId,
+        targetSessionId: null,
+      }),
+    ]);
   });
 
   it('edits from the active checkpoint using only compact current JSON and the latest instruction', async () => {

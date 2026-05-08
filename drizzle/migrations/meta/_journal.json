@@ -64,6 +64,20 @@
       "when": 1778158345754,
       "tag": "0008_parallel_weapon_omega",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1778192972070,
+      "tag": "0009_blue_hammerhead",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1778194857696,
+      "tag": "0010_sour_madame_hydra",
+      "breakpoints": true
     }
   ]
 }
