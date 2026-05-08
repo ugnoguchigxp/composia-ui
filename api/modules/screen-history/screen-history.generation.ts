@@ -172,7 +172,7 @@ export async function saveScreenJson(
     providerContext?: AiSourceContext;
     session?: PromptSessionRecord;
     sessionId: string;
-    snapshot: any;
+    snapshot: ScreenJson['contextSnapshot'];
     storedPrompt: string;
     trigger: ScreenJson['trigger'];
     userContent: string;

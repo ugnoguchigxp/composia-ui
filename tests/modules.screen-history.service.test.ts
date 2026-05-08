@@ -129,17 +129,24 @@ function createFakeRepository({
   initialActionLinks = [],
   initialMessages = [],
   initialLegacyScreens = [],
+  initialSessions = [],
   initialScreenJsons = [],
 }: {
   initialActionLinks?: ScreenActionLinkRecord[];
   initialMessages?: PromptSessionMessageRecord[];
   initialLegacyScreens?: GeneratedScreenRecord[];
+  initialSessions?: PromptSessionRecord[];
   initialScreenJsons?: ScreenJsonRecord[];
 } = {}) {
+  const defaultSessionActiveScreenId =
+    initialScreenJsons.findLast((screenJson) => screenJson.sessionId === sessionId)?.id ?? screenId;
   let session = sessionRecord({
-    activeScreenJsonId: initialScreenJsons.at(-1)?.id ?? screenId,
+    activeScreenJsonId: defaultSessionActiveScreenId,
   });
-  const sessions = new Map<string, PromptSessionRecord>([[session.id, session]]);
+  const sessions = new Map<string, PromptSessionRecord>([
+    [session.id, session],
+    ...initialSessions.map((item) => [item.id, item] as const),
+  ]);
   const projects = new Map<string, UiProjectRecord>();
   let createSessionCount = 0;
   let createProjectCount = 0;
@@ -729,6 +736,81 @@ describe('screen history service', () => {
     expect(result.sessions[0]?.messageSearchText).toContain('Flower Shop を更新しました。');
     expect(repo.listSessionMessageStats).toHaveBeenCalledWith(userId, [sessionId]);
     expect(repo.listSessionMessages).not.toHaveBeenCalled();
+  });
+
+  it('applies search, sort, and pagination to session summaries', async () => {
+    const cartSessionId = childSessionId;
+    const cartScreenId = childScreenId;
+    const billingSessionId = '88888888-8888-4888-8888-888888888888';
+    const billingScreenId = '99999999-9999-4999-8999-999999999998';
+    const flowerScreen = screenJsonRecord({
+      id: screenId,
+      sessionId,
+      schema: schema({ page: 'Flower Shop' }),
+    });
+    const cartScreen = screenJsonRecord({
+      id: cartScreenId,
+      sessionId: cartSessionId,
+      schema: schema({ page: 'Cart Checkout' }),
+    });
+    const billingScreen = screenJsonRecord({
+      id: billingScreenId,
+      sessionId: billingSessionId,
+      schema: schema({ page: 'Billing Checkout' }),
+    });
+    const { repo } = createFakeRepository({
+      initialSessions: [
+        sessionRecord({
+          activeScreenJsonId: cartScreenId,
+          id: cartSessionId,
+          title: 'Cart flow',
+          updatedAt: new Date('2026-05-08T00:00:00.000Z'),
+        }),
+        sessionRecord({
+          activeScreenJsonId: billingScreenId,
+          id: billingSessionId,
+          title: 'Billing flow',
+          updatedAt: new Date('2026-05-09T00:00:00.000Z'),
+        }),
+      ],
+      initialScreenJsons: [flowerScreen, cartScreen, billingScreen],
+      initialMessages: [
+        messageRecord({
+          content: 'checkout friction notes',
+          screenJsonId: cartScreenId,
+          sessionId: cartSessionId,
+        }),
+      ],
+    });
+    const layoutService = {
+      generateLayout: vi.fn(async () => ({ schema: schema(), activities: [] })),
+    };
+    const service = createScreenHistoryService(repo, layoutService);
+
+    const result = await service.list(userId, {
+      limit: 1,
+      page: 2,
+      search: 'checkout',
+      sortBy: 'title',
+      sortOrder: 'asc',
+    });
+
+    expect(result.total).toBe(2);
+    expect(result.sessions.map((session) => session.id)).toEqual([cartSessionId]);
+    expect(result.screens.map((screen) => screen.id)).toEqual([cartScreenId]);
+  });
+
+  it('does not synthesize project canonical paths for non-project sessions', async () => {
+    const current = screenJsonRecord({ id: screenId, version: 1 });
+    const { repo } = createFakeRepository({ initialScreenJsons: [current] });
+    const layoutService = {
+      generateLayout: vi.fn(async () => ({ schema: schema(), activities: [] })),
+    };
+    const service = createScreenHistoryService(repo, layoutService);
+
+    const result = await service.list(userId);
+
+    expect(result.sessions[0]?.canonicalPath).toBeNull();
   });
 
   it('saves action links separately from ScreenJSON versions', async () => {

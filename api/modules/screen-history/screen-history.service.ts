@@ -1,5 +1,7 @@
 import type { AiActivity } from '../../../shared/schemas/ai.schema';
 import type {
+  GeneratedScreenSummary,
+  PromptSessionSummary,
   PromptSessionVisibilityResponse,
   PromptSessionVisibilityUpdateRequest,
   ScreenActionGenerateRequest,
@@ -13,6 +15,7 @@ import type {
   ScreenJsonResponse,
   ScreenJsonSaveRequest,
   ScreenListQuery,
+  ScreenListResponse,
   ScreenProjectPageResponse,
   ScreenRegenerateRequest,
   ScreenResponse,
@@ -21,7 +24,11 @@ import {
   collectRenderableActions,
   updateRenderableActionTarget,
 } from '../../../shared/schemas/ui-action-collector';
-import { type AppAction, appUiSchemaSchema } from '../../../shared/schemas/ui-schema.schema';
+import {
+  type AppAction,
+  type AppUiSchema,
+  appUiSchemaSchema,
+} from '../../../shared/schemas/ui-schema.schema';
 import { NotFoundError, ValidationError } from '../../lib/errors';
 import { aiService, createDefaultAiLayoutContextReader } from '../ai/ai.service';
 import { messagesWithFallbacks } from './screen-history.conversation';
@@ -37,6 +44,7 @@ import {
   titleFromPrompt,
 } from './screen-history.generation';
 import {
+  canonicalPathForSession,
   mapActionLink,
   mapLegacyScreen,
   mapLegacySummary,
@@ -56,9 +64,111 @@ import {
 import {
   type PromptSessionRecord,
   type ScreenHistoryRepository,
+  type ScreenJsonWithSessionRecord,
   screenHistoryRepository,
 } from './screen-history.repository';
 import { renderPublishedScreenHtml } from './screen-static-publisher';
+
+const defaultScreenListQuery: ScreenListQuery = {
+  limit: 10,
+  page: 1,
+  sortBy: 'updatedAt',
+  sortOrder: 'desc',
+};
+
+function normalizeScreenListQuery(query?: ScreenListQuery): ScreenListQuery {
+  const search = query?.search?.trim();
+  return {
+    ...defaultScreenListQuery,
+    ...query,
+    search: search ? search : undefined,
+  };
+}
+
+function hasSearchText(values: Array<string | null | undefined>, search: string) {
+  const normalized = search.toLocaleLowerCase();
+  return values.some((value) => value?.toLocaleLowerCase().includes(normalized));
+}
+
+function compareText(left: string | null | undefined, right: string | null | undefined) {
+  return (left ?? '').localeCompare(right ?? '', undefined, { numeric: true, sensitivity: 'base' });
+}
+
+function sortDirectionMultiplier(sortOrder: ScreenListQuery['sortOrder']) {
+  return sortOrder === 'asc' ? 1 : -1;
+}
+
+function paginate<T>(items: T[], query: ScreenListQuery) {
+  const start = (query.page - 1) * query.limit;
+  return items.slice(start, start + query.limit);
+}
+
+function applySessionListQuery(
+  sessions: PromptSessionSummary[],
+  query: ScreenListQuery
+): { sessions: PromptSessionSummary[]; total: number } {
+  const search = query.search;
+  const searched = search
+    ? sessions.filter((session) =>
+        hasSearchText(
+          [
+            session.title,
+            session.page,
+            session.prompt,
+            session.inferredIntent,
+            session.messageSearchText,
+            session.pagePath,
+          ],
+          search
+        )
+      )
+    : sessions;
+
+  const direction = sortDirectionMultiplier(query.sortOrder);
+  const sorted = [...searched].sort((a, b) => {
+    switch (query.sortBy) {
+      case 'createdAt':
+        return (Date.parse(a.createdAt) - Date.parse(b.createdAt)) * direction;
+      case 'screenCount':
+        return (a.screenCount - b.screenCount) * direction;
+      case 'title':
+        return compareText(a.page ?? a.title, b.page ?? b.title) * direction;
+    }
+    return (Date.parse(a.updatedAt) - Date.parse(b.updatedAt)) * direction;
+  });
+
+  return { sessions: paginate(sorted, query), total: searched.length };
+}
+
+function applyScreenListQuery(
+  screens: GeneratedScreenSummary[],
+  query: ScreenListQuery
+): { screens: GeneratedScreenSummary[]; total: number } {
+  const search = query.search;
+  const searched = search
+    ? screens.filter((screen) =>
+        hasSearchText(
+          [screen.page, screen.prompt, screen.inferredIntent, screen.sessionTitle],
+          search
+        )
+      )
+    : screens;
+
+  const direction = sortDirectionMultiplier(query.sortOrder);
+  const sorted = [...searched].sort((a, b) => {
+    switch (query.sortBy) {
+      case 'createdAt':
+        return (Date.parse(a.createdAt) - Date.parse(b.createdAt)) * direction;
+      case 'screenCount':
+        return 0;
+      case 'title':
+        return compareText(a.page, b.page) * direction;
+    }
+    return (Date.parse(a.updatedAt) - Date.parse(b.updatedAt)) * direction;
+  });
+
+  return { screens: paginate(sorted, query), total: searched.length };
+}
 
 export function createScreenHistoryService(
   repo: ScreenHistoryRepository,
@@ -121,7 +231,7 @@ export function createScreenHistoryService(
     );
   };
 
-  const findAction = (schema: any, actionId: string): AppAction => {
+  const findAction = (schema: AppUiSchema, actionId: string): AppAction => {
     const found = collectRenderableActions(schema).find((action) => action.id === actionId);
     if (found) return found;
     throw new NotFoundError('Screen action not found');
@@ -192,10 +302,10 @@ export function createScreenHistoryService(
   };
 
   const summarizeSessions = (
-    rows: any[],
+    rows: ScreenJsonWithSessionRecord[],
     messageStats = new Map<string, { count: number; searchText: string | null }>()
-  ) => {
-    const grouped = new Map<string, any[]>();
+  ): PromptSessionSummary[] => {
+    const grouped = new Map<string, ScreenJsonWithSessionRecord[]>();
     for (const row of rows) {
       grouped.set(row.session.id, [...(grouped.get(row.session.id) ?? []), row]);
     }
@@ -227,11 +337,7 @@ export function createScreenHistoryService(
           publishedAt: session.publishedAt ? session.publishedAt.toISOString() : null,
           projectId: session.projectId ?? null,
           pagePath: session.pagePath ?? null,
-          canonicalPath: projectRoutePath(
-            session.projectId ?? '',
-            session.pagePath ?? '',
-            session.id
-          ),
+          canonicalPath: canonicalPathForSession(session),
           page: activeScreenJson?.schema.page ?? null,
           prompt: activeScreenJson?.prompt ?? null,
           inferredIntent: activeScreenJson?.inferredIntent ?? null,
@@ -242,8 +348,8 @@ export function createScreenHistoryService(
           updatedAt: latestUpdatedAt.toISOString(),
         };
       })
-      .filter((summary) => Boolean(summary))
-      .sort((a, b) => Date.parse(b?.updatedAt ?? '') - Date.parse(a?.updatedAt ?? ''));
+      .filter((summary): summary is PromptSessionSummary => Boolean(summary))
+      .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
   };
 
   return {
@@ -466,7 +572,8 @@ export function createScreenHistoryService(
         sessionId: session.id,
       };
     },
-    list: async (userId: string, _query?: ScreenListQuery) => {
+    list: async (userId: string, queryInput?: ScreenListQuery): Promise<ScreenListResponse> => {
+      const query = normalizeScreenListQuery(queryInput);
       const screenJsonRows = await repo.listScreenJsons(userId);
       const sessionIds = Array.from(new Set(screenJsonRows.map((row) => row.session.id)));
       const messageStats = new Map<string, { count: number; searchText: string | null }>(
@@ -489,12 +596,22 @@ export function createScreenHistoryService(
         ...legacyRows.map(mapLegacySummary),
       ].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
 
-      const total = sessions.length > 0 ? sessions.length : screenSummaries.length;
+      if (sessions.length > 0) {
+        const result = applySessionListQuery(sessions, query);
+        const visibleSessionIds = new Set(result.sessions.map((session) => session.id));
+        return {
+          screens: screenSummaries.filter((screen) => visibleSessionIds.has(screen.sessionId)),
+          sessions: result.sessions,
+          total: result.total,
+        };
+      }
+
+      const result = applyScreenListQuery(screenSummaries, query);
 
       return {
-        screens: screenSummaries,
-        sessions: sessions as any,
-        total,
+        screens: result.screens,
+        sessions: [],
+        total: result.total,
       };
     },
     linkAction: async (

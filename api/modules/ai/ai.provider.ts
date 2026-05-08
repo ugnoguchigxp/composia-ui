@@ -370,17 +370,25 @@ function extractAnthropicMessageText(payload: Record<string, unknown>) {
 
 function extractGoogleAiMessageText(payload: Record<string, unknown>) {
   const candidates = Array.isArray(payload.candidates) ? payload.candidates : [];
-  const firstCandidate = candidates[0] as Record<string, any> | undefined;
-  if (!firstCandidate || typeof firstCandidate !== 'object') {
+  const firstCandidate = candidates[0];
+  if (typeof firstCandidate !== 'object' || firstCandidate === null) {
     throw providerError('Google AI response did not include candidates');
   }
 
-  const parts = Array.isArray(firstCandidate.content?.parts)
-    ? (firstCandidate.content.parts as Array<{ text?: string }>)
-    : [];
+  const content = (firstCandidate as { content?: unknown }).content;
+  const parts =
+    typeof content === 'object' &&
+    content !== null &&
+    Array.isArray((content as { parts?: unknown }).parts)
+      ? (content as { parts: unknown[] }).parts
+      : [];
   const firstPart = parts[0];
-  if (firstPart && typeof firstPart.text === 'string') {
-    return firstPart.text;
+  if (
+    typeof firstPart === 'object' &&
+    firstPart !== null &&
+    typeof (firstPart as { text?: unknown }).text === 'string'
+  ) {
+    return (firstPart as { text: string }).text;
   }
 
   throw providerError('Google AI response did not include text content');
