@@ -1,8 +1,9 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { Loader2, WandSparkles } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ScreenListQuery } from '../../shared/schemas/screen-history.schema';
 import { useAuth } from '../lib/auth';
+import { logRenderPerf, renderPerfStart } from '../lib/render-performance';
 import {
   type ScreenHistoryDeleteTarget,
   ScreenHistoryTable,
@@ -19,6 +20,7 @@ export const Route = createFileRoute('/history' as any)({
 });
 
 function HistoryPage() {
+  const renderStartedAt = renderPerfStart();
   const auth = useAuth();
   const [query, setQuery] = useState<ScreenListQuery>({
     page: 1,
@@ -35,6 +37,17 @@ function HistoryPage() {
   const sessions = history.data?.sessions ?? [];
   const total = history.data?.total ?? 0;
   const isDeleting = deleteScreen.isPending || deletePromptSession.isPending;
+
+  useEffect(() => {
+    logRenderPerf('HistoryPage.commit', renderStartedAt, {
+      authLoading: auth.isLoading,
+      historyFetching: history.isFetching,
+      historyLoading: history.isLoading,
+      screenCount: screens.length,
+      sessionCount: sessions.length,
+      total,
+    });
+  });
 
   const handleDelete = (target: ScreenHistoryDeleteTarget) => {
     if (target.type === 'session') {
@@ -85,13 +98,13 @@ function HistoryPage() {
         </section>
       ) : history.isLoading ? (
         <div className="flex items-center justify-center py-24">
-          <div className="flex flex-col items-center gap-4 text-muted-foreground animate-in fade-in slide-in-from-bottom-4 duration-700">
+          <div className="flex flex-col items-center gap-4 text-muted-foreground">
             <Loader2 className="h-10 w-10 animate-spin text-primary/60" />
             <p className="text-sm font-medium tracking-wide">Retrieving your generations...</p>
           </div>
         </div>
       ) : (
-        <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div>
           <ScreenHistoryTable
             isDeleting={isDeleting}
             onDelete={handleDelete}

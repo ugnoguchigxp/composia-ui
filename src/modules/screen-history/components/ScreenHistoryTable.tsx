@@ -18,6 +18,7 @@ import type {
   PromptSessionSummary,
   ScreenListQuery,
 } from '../../../../shared/schemas/screen-history.schema';
+import { logRenderPerf, measureRenderTask, renderPerfStart } from '../../../lib/render-performance';
 
 type HistoryEntry = {
   id: string;
@@ -65,6 +66,7 @@ export function ScreenHistoryTable({
   isDeleting,
   onDelete,
 }: ScreenHistoryTableProps) {
+  const renderStartedAt = renderPerfStart();
   const [searchValue, setSearchValue] = useState(query.search ?? '');
 
   // Debounce search input
@@ -78,204 +80,220 @@ export function ScreenHistoryTable({
   }, [searchValue, query, onQueryChange]);
 
   const data = useMemo<HistoryEntry[]>(() => {
-    if (sessions.length > 0) {
-      return sessions.map((s) => ({
-        id: s.id,
-        sessionId: s.id,
-        type: 'session',
-        title: s.page ?? s.title,
-        intent: s.inferredIntent,
-        prompt: s.prompt,
-        updatedAt: s.updatedAt,
-        versionCount: s.screenCount,
-        activeVersion: s.activeVersion,
-        activeScreenId: s.activeScreenJsonId,
-      }));
-    }
-    return screens.map((s) => ({
-      id: s.id,
-      sessionId: s.sessionId,
-      type: 'screen',
-      title: s.page,
-      intent: s.inferredIntent,
-      prompt: s.prompt,
-      updatedAt: s.updatedAt,
-      versionCount: 1,
-      activeVersion: s.version,
-      activeScreenId: s.id,
-    }));
+    return measureRenderTask(
+      'ScreenHistoryTable.data',
+      () => {
+        if (sessions.length > 0) {
+          return sessions.map((s) => ({
+            id: s.id,
+            sessionId: s.id,
+            type: 'session' as const,
+            title: s.page ?? s.title,
+            intent: s.inferredIntent,
+            prompt: s.prompt,
+            updatedAt: s.updatedAt,
+            versionCount: s.screenCount,
+            activeVersion: s.activeVersion,
+            activeScreenId: s.activeScreenJsonId,
+          }));
+        }
+        return screens.map((s) => ({
+          id: s.id,
+          sessionId: s.sessionId,
+          type: 'screen' as const,
+          title: s.page,
+          intent: s.inferredIntent,
+          prompt: s.prompt,
+          updatedAt: s.updatedAt,
+          versionCount: 1,
+          activeVersion: s.version,
+          activeScreenId: s.id,
+        }));
+      },
+      (result) => ({
+        historyEntryCount: result.length,
+        screenCount: screens.length,
+        sessionCount: sessions.length,
+      })
+    );
   }, [screens, sessions]);
 
   const columns = useMemo<ColumnDef<HistoryEntry>[]>(
-    () => [
-      {
-        accessorKey: 'title',
-        header: () => {
-          const isSorted = query.sortBy === 'title';
-          return (
-            <button
-              className="flex items-center gap-1 hover:text-foreground transition-colors"
-              onClick={() =>
-                onQueryChange({
-                  ...query,
-                  sortBy: 'title',
-                  sortOrder: isSorted && query.sortOrder === 'asc' ? 'desc' : 'asc',
-                })
-              }
-              type="button"
-            >
-              Title
-              {isSorted ? (
-                query.sortOrder === 'asc' ? (
-                  <ArrowUp className="h-3 w-3 text-primary" />
-                ) : (
-                  <ArrowDown className="h-3 w-3 text-primary" />
-                )
-              ) : (
-                <ArrowUpDown className="h-3 w-3 opacity-30" />
-              )}
-            </button>
-          );
-        },
-        cell: ({ row }) => {
-          const entry = row.original;
-          const linkProps =
-            entry.type === 'session'
-              ? // biome-ignore lint/suspicious/noExplicitAny: route path type is generated dynamically.
-                { to: '/prompt/session/$sessionId' as any, params: { sessionId: entry.id } }
-              : // biome-ignore lint/suspicious/noExplicitAny: route path type is generated dynamically.
-                { to: '/prompt/$screenId' as any, params: { screenId: entry.id } };
-
-          return (
-            <div className="flex flex-col gap-0.5">
-              <Link
-                // biome-ignore lint/suspicious/noExplicitAny: dynamic link props
-                {...(linkProps as any)}
-                className="font-semibold text-primary hover:text-primary/80 hover:underline decoration-primary/50 underline-offset-4 transition-colors"
-              >
-                {entry.title}
-              </Link>
-              <span className="text-muted-foreground text-[11px] line-clamp-1">
-                {entry.intent || 'No intent description'}
-              </span>
-            </div>
-          );
-        },
-      },
-      {
-        accessorKey: 'versionCount',
-        header: () => {
-          const isSorted = query.sortBy === 'screenCount';
-          return (
-            <button
-              className="flex items-center gap-1 hover:text-foreground transition-colors"
-              onClick={() =>
-                onQueryChange({
-                  ...query,
-                  sortBy: 'screenCount',
-                  sortOrder: isSorted && query.sortOrder === 'asc' ? 'desc' : 'asc',
-                })
-              }
-              type="button"
-            >
-              Checkpoints
-              {isSorted ? (
-                query.sortOrder === 'asc' ? (
-                  <ArrowUp className="h-3 w-3 text-primary" />
-                ) : (
-                  <ArrowDown className="h-3 w-3 text-primary" />
-                )
-              ) : (
-                <ArrowUpDown className="h-3 w-3 opacity-30" />
-              )}
-            </button>
-          );
-        },
-        cell: ({ row }) => (
-          <div className="flex items-center gap-1.5 text-muted-foreground text-xs">
-            <Layers3 className="h-3 w-3" />
-            <span>{row.original.versionCount}</span>
-            {row.original.activeVersion && (
-              <span className="text-[10px] bg-secondary/50 text-secondary-foreground px-1.5 py-0.5 rounded">
-                v{row.original.activeVersion}
-              </span>
-            )}
-          </div>
-        ),
-      },
-      {
-        accessorKey: 'updatedAt',
-        header: () => {
-          const isSorted = query.sortBy === 'updatedAt';
-          return (
-            <button
-              className="flex items-center gap-1 hover:text-foreground transition-colors"
-              onClick={() =>
-                onQueryChange({
-                  ...query,
-                  sortBy: 'updatedAt',
-                  sortOrder: isSorted && query.sortOrder === 'asc' ? 'desc' : 'asc',
-                })
-              }
-              type="button"
-            >
-              Last Updated
-              {isSorted ? (
-                query.sortOrder === 'asc' ? (
-                  <ArrowUp className="h-3 w-3 text-primary" />
-                ) : (
-                  <ArrowDown className="h-3 w-3 text-primary" />
-                )
-              ) : (
-                <ArrowUpDown className="h-3 w-3 opacity-30" />
-              )}
-            </button>
-          );
-        },
-        cell: ({ row }) => (
-          <div className="flex items-center gap-1.5 text-muted-foreground text-xs whitespace-nowrap">
-            <Clock className="h-3 w-3" />
-            {formatDate(row.original.updatedAt)}
-          </div>
-        ),
-      },
-      {
-        id: 'actions',
-        cell: ({ row }) => {
-          const entry = row.original;
-          const deleteTarget: ScreenHistoryDeleteTarget = {
-            id: entry.type === 'session' ? entry.id : (entry.activeScreenId ?? entry.id),
-            type: entry.type,
-            title: entry.title,
-            versionCount: entry.versionCount,
-          };
-          const confirmMessage =
-            entry.type === 'session'
-              ? `Delete "${entry.title}" and all ${entry.versionCount} versions?`
-              : `Delete "${entry.title}"?`;
-          return (
-            <div className="flex justify-end">
-              <button
-                aria-label={`Delete ${entry.title}`}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors disabled:opacity-50"
-                disabled={isDeleting}
-                onClick={() => {
-                  if (window.confirm(confirmMessage)) {
-                    onDelete?.(deleteTarget);
+    () =>
+      measureRenderTask(
+        'ScreenHistoryTable.columns',
+        () => [
+          {
+            accessorKey: 'title',
+            header: () => {
+              const isSorted = query.sortBy === 'title';
+              return (
+                <button
+                  className="flex items-center gap-1 hover:text-foreground transition-colors"
+                  onClick={() =>
+                    onQueryChange({
+                      ...query,
+                      sortBy: 'title',
+                      sortOrder: isSorted && query.sortOrder === 'asc' ? 'desc' : 'asc',
+                    })
                   }
-                }}
-                type="button"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
-            </div>
-          );
-        },
-      },
-    ],
+                  type="button"
+                >
+                  Title
+                  {isSorted ? (
+                    query.sortOrder === 'asc' ? (
+                      <ArrowUp className="h-3 w-3 text-primary" />
+                    ) : (
+                      <ArrowDown className="h-3 w-3 text-primary" />
+                    )
+                  ) : (
+                    <ArrowUpDown className="h-3 w-3 opacity-30" />
+                  )}
+                </button>
+              );
+            },
+            cell: ({ row }) => {
+              const entry = row.original;
+              const linkProps =
+                entry.type === 'session'
+                  ? // biome-ignore lint/suspicious/noExplicitAny: route path type is generated dynamically.
+                    { to: '/prompt/session/$sessionId' as any, params: { sessionId: entry.id } }
+                  : // biome-ignore lint/suspicious/noExplicitAny: route path type is generated dynamically.
+                    { to: '/prompt/$screenId' as any, params: { screenId: entry.id } };
+
+              return (
+                <div className="flex flex-col gap-0.5">
+                  <Link
+                    // biome-ignore lint/suspicious/noExplicitAny: dynamic link props
+                    {...(linkProps as any)}
+                    className="font-semibold text-primary hover:text-primary/80 hover:underline decoration-primary/50 underline-offset-4 transition-colors"
+                  >
+                    {entry.title}
+                  </Link>
+                  <span className="text-muted-foreground text-[11px] line-clamp-1">
+                    {entry.intent || 'No intent description'}
+                  </span>
+                </div>
+              );
+            },
+          },
+          {
+            accessorKey: 'versionCount',
+            header: () => {
+              const isSorted = query.sortBy === 'screenCount';
+              return (
+                <button
+                  className="flex items-center gap-1 hover:text-foreground transition-colors"
+                  onClick={() =>
+                    onQueryChange({
+                      ...query,
+                      sortBy: 'screenCount',
+                      sortOrder: isSorted && query.sortOrder === 'asc' ? 'desc' : 'asc',
+                    })
+                  }
+                  type="button"
+                >
+                  Checkpoints
+                  {isSorted ? (
+                    query.sortOrder === 'asc' ? (
+                      <ArrowUp className="h-3 w-3 text-primary" />
+                    ) : (
+                      <ArrowDown className="h-3 w-3 text-primary" />
+                    )
+                  ) : (
+                    <ArrowUpDown className="h-3 w-3 opacity-30" />
+                  )}
+                </button>
+              );
+            },
+            cell: ({ row }) => (
+              <div className="flex items-center gap-1.5 text-muted-foreground text-xs">
+                <Layers3 className="h-3 w-3" />
+                <span>{row.original.versionCount}</span>
+                {row.original.activeVersion && (
+                  <span className="text-[10px] bg-secondary/50 text-secondary-foreground px-1.5 py-0.5 rounded">
+                    v{row.original.activeVersion}
+                  </span>
+                )}
+              </div>
+            ),
+          },
+          {
+            accessorKey: 'updatedAt',
+            header: () => {
+              const isSorted = query.sortBy === 'updatedAt';
+              return (
+                <button
+                  className="flex items-center gap-1 hover:text-foreground transition-colors"
+                  onClick={() =>
+                    onQueryChange({
+                      ...query,
+                      sortBy: 'updatedAt',
+                      sortOrder: isSorted && query.sortOrder === 'asc' ? 'desc' : 'asc',
+                    })
+                  }
+                  type="button"
+                >
+                  Last Updated
+                  {isSorted ? (
+                    query.sortOrder === 'asc' ? (
+                      <ArrowUp className="h-3 w-3 text-primary" />
+                    ) : (
+                      <ArrowDown className="h-3 w-3 text-primary" />
+                    )
+                  ) : (
+                    <ArrowUpDown className="h-3 w-3 opacity-30" />
+                  )}
+                </button>
+              );
+            },
+            cell: ({ row }) => (
+              <div className="flex items-center gap-1.5 text-muted-foreground text-xs whitespace-nowrap">
+                <Clock className="h-3 w-3" />
+                {formatDate(row.original.updatedAt)}
+              </div>
+            ),
+          },
+          {
+            id: 'actions',
+            cell: ({ row }) => {
+              const entry = row.original;
+              const deleteTarget: ScreenHistoryDeleteTarget = {
+                id: entry.type === 'session' ? entry.id : (entry.activeScreenId ?? entry.id),
+                type: entry.type,
+                title: entry.title,
+                versionCount: entry.versionCount,
+              };
+              const confirmMessage =
+                entry.type === 'session'
+                  ? `Delete "${entry.title}" and all ${entry.versionCount} versions?`
+                  : `Delete "${entry.title}"?`;
+              return (
+                <div className="flex justify-end">
+                  <button
+                    aria-label={`Delete ${entry.title}`}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors disabled:opacity-50"
+                    disabled={isDeleting}
+                    onClick={() => {
+                      if (window.confirm(confirmMessage)) {
+                        onDelete?.(deleteTarget);
+                      }
+                    }}
+                    type="button"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              );
+            },
+          },
+        ],
+        (result) => ({ columnCount: result.length })
+      ),
     [query, onQueryChange, isDeleting, onDelete]
   );
 
+  const tableStartedAt = renderPerfStart();
   const table = useReactTable({
     data,
     columns,
@@ -284,8 +302,33 @@ export function ScreenHistoryTable({
     manualSorting: true,
     manualFiltering: true,
   });
+  logRenderPerf('ScreenHistoryTable.useReactTable', tableStartedAt, {
+    columnCount: columns.length,
+    rowCount: data.length,
+  });
+
+  const headerGroupsStartedAt = renderPerfStart();
+  const headerGroups = table.getHeaderGroups();
+  logRenderPerf('ScreenHistoryTable.getHeaderGroups', headerGroupsStartedAt, {
+    headerGroupCount: headerGroups.length,
+  });
+
+  const rowModelStartedAt = renderPerfStart();
+  const tableRows = table.getRowModel().rows;
+  logRenderPerf('ScreenHistoryTable.getRowModel', rowModelStartedAt, {
+    rowCount: tableRows.length,
+  });
 
   const pageCount = Math.ceil(total / query.limit) || 1;
+
+  useEffect(() => {
+    logRenderPerf('ScreenHistoryTable.commit', renderStartedAt, {
+      columnCount: columns.length,
+      historyEntryCount: data.length,
+      page: query.page,
+      total,
+    });
+  });
 
   return (
     <div className="space-y-4">
@@ -318,7 +361,7 @@ export function ScreenHistoryTable({
         <div className="overflow-x-auto">
           <table className="w-full text-left text-[13px]">
             <thead className="bg-muted/50 border-b border-border">
-              {table.getHeaderGroups().map((headerGroup) => (
+              {headerGroups.map((headerGroup) => (
                 <tr key={headerGroup.id}>
                   {headerGroup.headers.map((header) => (
                     <th className="px-4 py-2.5 font-medium text-muted-foreground" key={header.id}>
@@ -332,7 +375,7 @@ export function ScreenHistoryTable({
             </thead>
             <tbody className="divide-y divide-border">
               {data.length > 0 ? (
-                table.getRowModel().rows.map((row) => (
+                tableRows.map((row) => (
                   <tr className="group hover:bg-muted/30 transition-colors" key={row.id}>
                     {row.getVisibleCells().map((cell) => (
                       <td className="px-4 py-2.5" key={cell.id}>

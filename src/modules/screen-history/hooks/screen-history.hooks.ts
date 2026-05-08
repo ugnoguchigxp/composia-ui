@@ -4,6 +4,7 @@ import type {
   ScreenActionLinkUpsertRequest,
   ScreenEditRequest,
   ScreenGenerateRequest,
+  ScreenJsonSaveRequest,
   ScreenListQuery,
   ScreenRegenerateRequest,
 } from '../../../../shared/schemas/screen-history.schema';
@@ -133,6 +134,21 @@ export function useEditSessionScreen(sessionId: string | null) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: ScreenEditRequest) => screenHistoryRepository.edit(sessionId ?? '', input),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: screenHistoryQueryKeys.lists() });
+      if (sessionId) {
+        queryClient.invalidateQueries({ queryKey: screenHistoryQueryKeys.conversation(sessionId) });
+      }
+      queryClient.setQueryData(screenHistoryQueryKeys.detail(data.screen.id), data);
+    },
+  });
+}
+
+export function useSaveSessionScreenJson(sessionId: string | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: ScreenJsonSaveRequest) =>
+      screenHistoryRepository.saveScreenJson(sessionId ?? '', input),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: screenHistoryQueryKeys.lists() });
       if (sessionId) {

@@ -126,6 +126,38 @@ describe('ai service', () => {
     );
   });
 
+  it('accepts empty page intent from edit requests that remove page-level copy', async () => {
+    const service = createAiService({
+      generateLayout: async () => ({
+        page: 'Home',
+        intent: '',
+        layout: 'screen',
+        sections: [
+          {
+            component: 'NavigationPanel',
+            source: 'navigation',
+            props: {
+              title: 'Menu',
+              links: [
+                { label: 'Home', href: '/' },
+                { label: 'Deals', href: '/deals' },
+              ],
+            },
+          },
+        ],
+      }),
+    });
+
+    await expect(
+      service.generateLayout({ prompt: 'Remove the page-level Home description copy' })
+    ).resolves.toMatchObject({
+      schema: {
+        page: 'Home',
+        intent: '',
+      },
+    });
+  });
+
   it('returns a validated cached layout without calling the provider', async () => {
     const cachedSchema = {
       page: 'Cached operations',

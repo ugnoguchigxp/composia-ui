@@ -5,14 +5,12 @@ import {
   CheckCircle2,
   ChevronDown,
   Database,
-  ExternalLink,
   FileJson,
   Link2,
   Loader2,
   MessageSquare,
   Plus,
   Send,
-  Unlink,
   User,
   WandSparkles,
   XCircle,
@@ -28,8 +26,13 @@ import type {
   ScreenCheckpoint,
   ScreenJson,
 } from '../../../../shared/schemas/screen-history.schema';
-import type { AppAction } from '../../../../shared/schemas/ui-schema.schema';
+import {
+  collectRenderableActions,
+  updateRenderableActionTarget,
+} from '../../../../shared/schemas/ui-action-collector';
+import type { AppAction, AppUiSchema } from '../../../../shared/schemas/ui-schema.schema';
 import { useAuth } from '../../../lib/auth';
+import { logRenderPerf, measureRenderTask, renderPerfStart } from '../../../lib/render-performance';
 import { cn } from '../../../lib/utils';
 import {
   useInsertSandboxRow,
@@ -43,11 +46,9 @@ import {
   useGenerateScreen,
   useGenerateScreenFromAction,
   useGenerateScreenFromSessionAction,
-  useLinkScreenAction,
   useRestoreScreenJsonCheckpoint,
   useScreenConversation,
   useScreenHistory,
-  useUnlinkScreenAction,
 } from '../hooks/screen-history.hooks';
 import {
   type BindingRuntimeIssue,
@@ -202,11 +203,12 @@ export function PromptWorkspace({
   screenId?: string | null;
   sessionId?: string | null;
 }) {
+  const renderStartedAt = renderPerfStart();
   const auth = useAuth();
   const navigate = useNavigate();
   const [isDockOpen, setIsDockOpen] = useState(true);
   const [dockTab, setDockTab] = useState<DockTab>('chat');
-  const [localScreen, setLocalScreen] = useState<GeneratedScreen | null>(null);
+  const [localScreen, setLocalScreen] = useState<WorkspaceScreen | null>(null);
   const [pendingActionId, setPendingActionId] = useState<string | null>(null);
   const [restoringScreenJsonId, setRestoringScreenJsonId] = useState<string | null>(null);
   const [selectedAction, setSelectedAction] = useState<SelectedAction | null>(null);
@@ -225,8 +227,6 @@ export function PromptWorkspace({
   const editSessionScreen = useEditSessionScreen(routeSessionId);
   const restoreCheckpoint = useRestoreScreenJsonCheckpoint(routeSessionId);
   const insertSandboxRow = useInsertSandboxRow();
-  const linkScreenAction = useLinkScreenAction(routeSessionId);
-  const unlinkScreenAction = useUnlinkScreenAction(routeSessionId);
   const historyQuery = useScreenHistory(
     { limit: 100, page: 1, sortBy: 'updatedAt', sortOrder: 'desc' },
     Boolean(auth.user && isDockOpen && dockTab === 'compose')
@@ -241,17 +241,30 @@ export function PromptWorkspace({
   const generateFromActionMutate = generateFromAction.mutate;
   const generateFromSessionActionMutate = generateFromSessionAction.mutate;
   const insertSandboxRowMutate = insertSandboxRow.mutate;
-  const linkScreenActionMutate = linkScreenAction.mutate;
-  const unlinkScreenActionMutate = unlinkScreenAction.mutate;
   const activeConversationScreen = conversationQuery.data?.activeScreenJson ?? null;
+  const activeScreenStartedAt = renderPerfStart();
   const activeScreen: WorkspaceScreen | null =
     localScreen ??
     (sessionId
       ? activeConversationScreen
       : (screenQuery.data?.screen ?? activeConversationScreen)) ??
     null;
+  logRenderPerf('PromptWorkspace.activeScreenSelection', activeScreenStartedAt, {
+    hasActiveConversationScreen: Boolean(activeConversationScreen),
+    hasLocalScreen: Boolean(localScreen),
+    hasScreenQueryData: Boolean(screenQuery.data?.screen),
+    route: sessionId ? 'session' : screenId ? 'screen' : 'new',
+  });
   const checkpointHasDatabaseVersion = useMemo(
-    () => Boolean(conversationQuery.data?.checkpoints.some(hasDatabaseVersionSignal)),
+    () =>
+      measureRenderTask(
+        'PromptWorkspace.checkpointHasDatabaseVersion',
+        () => Boolean(conversationQuery.data?.checkpoints.some(hasDatabaseVersionSignal)),
+        (result) => ({
+          checkpointCount: conversationQuery.data?.checkpoints.length ?? 0,
+          result,
+        })
+      ),
     [conversationQuery.data?.checkpoints]
   );
   const sandboxState = useSandboxState(
@@ -262,26 +275,44 @@ export function PromptWorkspace({
     )
   );
   const availableActions = useMemo(
-    () => activeScreen?.schema.sections.flatMap((section) => section.actions ?? []) ?? [],
-    [activeScreen?.schema.sections]
+    () =>
+      measureRenderTask(
+        'PromptWorkspace.availableActions',
+        () => (activeScreen ? collectRenderableActions(activeScreen.schema) : []),
+        (result) => ({
+          actionCount: result.length,
+          sectionCount: activeScreen?.schema.sections.length ?? 0,
+        })
+      ),
+    [activeScreen]
   );
   const persistedMessages = useMemo(() => {
-    const conversation = conversationQuery.data;
-    if (!conversation) return [];
+    return measureRenderTask(
+      'PromptWorkspace.persistedMessages',
+      () => {
+        const conversation = conversationQuery.data;
+        if (!conversation) return [];
 
-    const checkpointVersionById = new Map(
-      conversation.checkpoints.map((checkpoint) => [checkpoint.id, checkpoint.version])
-    );
-    const activeVersion = conversation.activeVersion;
+        const checkpointVersionById = new Map(
+          conversation.checkpoints.map((checkpoint) => [checkpoint.id, checkpoint.version])
+        );
+        const activeVersion = conversation.activeVersion;
 
-    return conversation.messages
-      .filter((message) => {
-        if (!activeVersion) return true;
-        const messageVersion =
-          checkpointVersionById.get(message.screenJsonId) ?? message.metadata.version;
-        return !messageVersion || messageVersion <= activeVersion;
+        return conversation.messages
+          .filter((message) => {
+            if (!activeVersion) return true;
+            const messageVersion =
+              checkpointVersionById.get(message.screenJsonId) ?? message.metadata.version;
+            return !messageVersion || messageVersion <= activeVersion;
+          })
+          .map(messageFromStored);
+      },
+      (result) => ({
+        checkpointCount: conversationQuery.data?.checkpoints.length ?? 0,
+        inputMessageCount: conversationQuery.data?.messages.length ?? 0,
+        outputMessageCount: result.length,
       })
-      .map(messageFromStored);
+    );
   }, [conversationQuery.data]);
   const persistedMessageKey = conversationQuery.data?.messages
     .map((message) => message.id)
@@ -296,17 +327,36 @@ export function PromptWorkspace({
   const [pendingBindingId, setPendingBindingId] = useState<string | null>(null);
   const bindingResolution = useMemo(
     () =>
-      activeScreen
-        ? resolveScreenRuntimeBindings(activeScreen.schema, activeScreen.dataBindings)
-        : { issues: [], runtimeBindings: [] },
+      measureRenderTask(
+        'PromptWorkspace.resolveScreenRuntimeBindings',
+        () =>
+          activeScreen
+            ? resolveScreenRuntimeBindings(activeScreen.schema, activeScreen.dataBindings)
+            : { issues: [], runtimeBindings: [] },
+        (result) => ({
+          bindingCount: activeScreen?.dataBindings.length ?? 0,
+          issueCount: result.issues.length,
+          runtimeBindingCount: result.runtimeBindings.length,
+          sectionCount: activeScreen?.schema.sections.length ?? 0,
+        })
+      ),
     [activeScreen]
   );
   const runtimeBindings = bindingResolution.runtimeBindings;
   const readyListBindings = useMemo(
     () =>
-      runtimeBindings.filter(
-        (binding) =>
-          binding.operation === 'list' && bindingRuntimeIsReady(binding, sandboxState.data)
+      measureRenderTask(
+        'PromptWorkspace.readyListBindings',
+        () =>
+          runtimeBindings.filter(
+            (binding) =>
+              binding.operation === 'list' && bindingRuntimeIsReady(binding, sandboxState.data)
+          ),
+        (result) => ({
+          readyListBindingCount: result.length,
+          runtimeBindingCount: runtimeBindings.length,
+          sandboxTableCount: sandboxState.data?.tables.length ?? 0,
+        })
       ),
     [runtimeBindings, sandboxState.data]
   );
@@ -326,36 +376,55 @@ export function PromptWorkspace({
     )
     .join('|');
   const bindingRows = useMemo(() => {
-    if (readyListBindings.length === 0 && rowDataVersion.length === 0) return {};
-    const entries = readyListBindings.flatMap((binding, index) => {
-      const query = rowQueriesRef.current[index];
-      return query?.data ? [[binding.id, query.data.rows] as const] : [];
-    });
-    return Object.fromEntries(entries);
+    return measureRenderTask(
+      'PromptWorkspace.bindingRows',
+      () => {
+        if (readyListBindings.length === 0 && rowDataVersion.length === 0) return {};
+        const entries = readyListBindings.flatMap((binding, index) => {
+          const query = rowQueriesRef.current[index];
+          return query?.data ? [[binding.id, query.data.rows] as const] : [];
+        });
+        return Object.fromEntries(entries);
+      },
+      (result) => ({
+        bindingRowSets: Object.keys(result).length,
+        readyListBindingCount: readyListBindings.length,
+      })
+    );
   }, [readyListBindings, rowDataVersion]);
   const bindingIssues = useMemo(() => {
-    if (
-      bindingResolution.issues.length === 0 &&
-      readyListBindings.length === 0 &&
-      runtimeBindings.length === 0 &&
-      rowErrorVersion.length === 0 &&
-      !sandboxState.data
-    ) {
-      return [];
-    }
-    const issues = [
-      ...bindingResolution.issues,
-      ...runtimeBindings
-        .map((binding) => bindingRuntimeIssue(binding, sandboxState.data))
-        .filter((issue): issue is BindingRuntimeIssue => Boolean(issue)),
-    ];
-    for (const [index, binding] of readyListBindings.entries()) {
-      const error = rowQueriesRef.current[index]?.error;
-      if (error instanceof Error) {
-        issues.push({ bindingId: binding.id, message: error.message });
-      }
-    }
-    return issues;
+    return measureRenderTask(
+      'PromptWorkspace.bindingIssues',
+      () => {
+        if (
+          bindingResolution.issues.length === 0 &&
+          readyListBindings.length === 0 &&
+          runtimeBindings.length === 0 &&
+          rowErrorVersion.length === 0 &&
+          !sandboxState.data
+        ) {
+          return [];
+        }
+        const issues = [
+          ...bindingResolution.issues,
+          ...runtimeBindings
+            .map((binding) => bindingRuntimeIssue(binding, sandboxState.data))
+            .filter((issue): issue is BindingRuntimeIssue => Boolean(issue)),
+        ];
+        for (const [index, binding] of readyListBindings.entries()) {
+          const error = rowQueriesRef.current[index]?.error;
+          if (error instanceof Error) {
+            issues.push({ bindingId: binding.id, message: error.message });
+          }
+        }
+        return issues;
+      },
+      (result) => ({
+        issueCount: result.length,
+        readyListBindingCount: readyListBindings.length,
+        runtimeBindingCount: runtimeBindings.length,
+      })
+    );
   }, [
     bindingResolution.issues,
     readyListBindings,
@@ -369,8 +438,7 @@ export function PromptWorkspace({
     generateFromSessionAction.isPending ||
     editSessionScreen.isPending ||
     restoreCheckpoint.isPending ||
-    linkScreenAction.isPending ||
-    unlinkScreenAction.isPending;
+    insertSandboxRow.isPending;
 
   const openSession = useCallback(
     (nextSessionId: string) => {
@@ -514,6 +582,47 @@ export function PromptWorkspace({
     [activeScreen]
   );
 
+  const handleStageActionTarget = useCallback(
+    (action: AppAction, targetPath: string): AppUiSchema | null => {
+      if (!activeScreen) return null;
+      let invalidTargetMessage: string | null = null;
+      const updated = (() => {
+        try {
+          return updateRenderableActionTarget(activeScreen.schema, action.id, targetPath);
+        } catch (error) {
+          invalidTargetMessage =
+            error instanceof Error ? error.message : '遷移先 path が不正です。';
+          return null;
+        }
+      })();
+      if (!updated) {
+        setComposeNotice({
+          tone: 'error',
+          message:
+            invalidTargetMessage ??
+            `${action.label} の遷移先を ScreenJSON に反映できませんでした。`,
+        });
+        return null;
+      }
+
+      setLocalScreen({
+        ...activeScreen,
+        schema: updated.schema,
+      });
+      setSelectedAction({ action: updated.action, sourcePage: updated.schema.page });
+      setComposeNotice(null);
+      return updated.schema;
+    },
+    [activeScreen]
+  );
+
+  const handleOpenTargetPath = useCallback(
+    (targetPath: string) => {
+      void navigate({ to: targetPath as never });
+    },
+    [navigate]
+  );
+
   const handleGenerateSelectedAction = useCallback(
     (action: AppAction) => {
       if (!activeScreen || generateFromAction.isPending || generateFromSessionAction.isPending) {
@@ -533,6 +642,7 @@ export function PromptWorkspace({
         setLocalScreen(data.screen);
         setActivities(completedActivities(data, endpoint));
         appendAssistantMessage(`${data.screen.schema.page} を生成しました。`, data.screen);
+        setSelectedAction(null);
         openSession(data.screen.sessionId);
       };
       const onError = (error: Error) => {
@@ -569,50 +679,6 @@ export function PromptWorkspace({
       routeSessionId,
     ]
   );
-
-  const handleLinkSelectedAction = useCallback(
-    (input: { targetPath?: string | null; targetSessionId?: string | null }) => {
-      if (!routeSessionId || !selectedAction || linkScreenAction.isPending) return;
-      setComposeNotice(null);
-      linkScreenActionMutate(
-        { actionId: selectedAction.action.id, input },
-        {
-          onError: (error) => {
-            setComposeNotice({
-              tone: 'error',
-              message: error instanceof Error ? error.message : 'Link could not be saved.',
-            });
-          },
-          onSuccess: () => {
-            setComposeNotice({
-              tone: 'success',
-              message: `${selectedAction.action.label} の遷移先を保存しました。`,
-            });
-          },
-        }
-      );
-    },
-    [linkScreenAction.isPending, linkScreenActionMutate, routeSessionId, selectedAction]
-  );
-
-  const handleUnlinkSelectedAction = useCallback(() => {
-    if (!routeSessionId || !selectedAction || unlinkScreenAction.isPending) return;
-    setComposeNotice(null);
-    unlinkScreenActionMutate(selectedAction.action.id, {
-      onError: (error) => {
-        setComposeNotice({
-          tone: 'error',
-          message: error instanceof Error ? error.message : 'Link could not be removed.',
-        });
-      },
-      onSuccess: () => {
-        setComposeNotice({
-          tone: 'success',
-          message: `${selectedAction.action.label} の遷移先を解除しました。`,
-        });
-      },
-    });
-  }, [routeSessionId, selectedAction, unlinkScreenAction.isPending, unlinkScreenActionMutate]);
 
   const handleRestoreCheckpoint = useCallback(
     (screenJsonId: string) => {
@@ -742,61 +808,76 @@ export function PromptWorkspace({
   ]);
 
   const screenContent = useMemo(() => {
-    if ((screenQuery.isLoading && screenId) || (conversationQuery.isLoading && sessionId)) {
-      return (
-        <section className="rounded-lg border border-border bg-card p-[var(--ui-card-padding)] text-muted-foreground">
-          Loading screen...
-        </section>
-      );
-    }
+    return measureRenderTask(
+      'PromptWorkspace.screenContent',
+      () => {
+        if ((screenQuery.isLoading && screenId) || (conversationQuery.isLoading && sessionId)) {
+          return (
+            <section className="rounded-lg border border-border bg-card p-[var(--ui-card-padding)] text-muted-foreground">
+              Loading screen...
+            </section>
+          );
+        }
 
-    if (screenQuery.error && screenId) {
-      return (
-        <section className="rounded-lg border border-destructive/30 bg-destructive/10 p-6">
-          <h1 className="text-lg font-semibold">Screen could not be loaded</h1>
-          <p className="mt-2 text-muted-foreground text-sm">{screenQuery.error.message}</p>
-        </section>
-      );
-    }
+        if (screenQuery.error && screenId) {
+          return (
+            <section className="rounded-lg border border-destructive/30 bg-destructive/10 p-6">
+              <h1 className="text-lg font-semibold">Screen could not be loaded</h1>
+              <p className="mt-2 text-muted-foreground text-sm">{screenQuery.error.message}</p>
+            </section>
+          );
+        }
 
-    if (conversationQuery.error && sessionId) {
-      return (
-        <section className="rounded-lg border border-destructive/30 bg-destructive/10 p-6">
-          <h1 className="text-lg font-semibold">Session could not be loaded</h1>
-          <p className="mt-2 text-muted-foreground text-sm">{conversationQuery.error.message}</p>
-        </section>
-      );
-    }
+        if (conversationQuery.error && sessionId) {
+          return (
+            <section className="rounded-lg border border-destructive/30 bg-destructive/10 p-6">
+              <h1 className="text-lg font-semibold">Session could not be loaded</h1>
+              <p className="mt-2 text-muted-foreground text-sm">
+                {conversationQuery.error.message}
+              </p>
+            </section>
+          );
+        }
 
-    if (activeScreen) {
-      return (
-        <>
-          <BindingRuntimeBanner
-            activeScreenJsonId={activeScreen.id}
-            issues={bindingIssues}
-            notice={bindingNotice}
-          />
-          <JsonRenderRenderer
-            bindingRows={bindingRows}
-            onAction={handleAction}
-            onSubmitBinding={handleSubmitBinding}
-            pendingActionId={pendingActionId}
-            pendingBindingId={pendingBindingId}
-            schema={activeScreen.schema}
-          />
-        </>
-      );
-    }
+        if (activeScreen) {
+          return (
+            <>
+              <BindingRuntimeBanner
+                activeScreenJsonId={activeScreen.id}
+                issues={bindingIssues}
+                notice={bindingNotice}
+              />
+              <JsonRenderRenderer
+                bindingRows={bindingRows}
+                onAction={handleAction}
+                onSubmitBinding={handleSubmitBinding}
+                pendingActionId={pendingActionId}
+                pendingBindingId={pendingBindingId}
+                schema={activeScreen.schema}
+                selectedActionId={selectedAction?.action.id ?? null}
+              />
+            </>
+          );
+        }
 
-    return (
-      <section className="flex min-h-[60vh] items-center justify-center rounded-lg border border-dashed border-border bg-card/40 px-6 py-16 text-center">
-        <div className="max-w-md">
-          <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-md border border-border bg-background">
-            <MessageSquare className="h-5 w-5 text-muted-foreground" />
-          </div>
-          <h1 className="mt-4 text-2xl font-semibold">Prompt</h1>
-        </div>
-      </section>
+        return (
+          <section className="flex min-h-[60vh] items-center justify-center rounded-lg border border-dashed border-border bg-card/40 px-6 py-16 text-center">
+            <div className="max-w-md">
+              <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-md border border-border bg-background">
+                <MessageSquare className="h-5 w-5 text-muted-foreground" />
+              </div>
+              <h1 className="mt-4 text-2xl font-semibold">Prompt</h1>
+            </div>
+          </section>
+        );
+      },
+      () => ({
+        bindingIssueCount: bindingIssues.length,
+        bindingRowSetCount: Object.keys(bindingRows).length,
+        conversationLoading: conversationQuery.isLoading,
+        hasActiveScreen: Boolean(activeScreen),
+        screenLoading: screenQuery.isLoading,
+      })
     );
   }, [
     activeScreen,
@@ -809,11 +890,25 @@ export function PromptWorkspace({
     handleAction,
     pendingBindingId,
     pendingActionId,
+    selectedAction?.action.id,
     screenId,
     screenQuery.error,
     screenQuery.isLoading,
     sessionId,
   ]);
+
+  useEffect(() => {
+    logRenderPerf('PromptWorkspace.commit', renderStartedAt, {
+      activeScreenId: activeScreen?.id ?? null,
+      bindingIssueCount: bindingIssues.length,
+      bindingRowSetCount: Object.keys(bindingRows).length,
+      checkpointCount: conversationQuery.data?.checkpoints.length ?? 0,
+      conversationLoading: conversationQuery.isLoading,
+      displayMessageCount: displayMessages.length,
+      routeSessionId,
+      screenLoading: screenQuery.isLoading,
+    });
+  });
 
   if (auth.isLoading) {
     return <div className="mx-auto max-w-6xl px-4 py-10 text-muted-foreground">Loading...</div>;
@@ -862,16 +957,12 @@ export function PromptWorkspace({
         isPending={isPending}
         messages={displayMessages}
         onGenerateAction={handleGenerateSelectedAction}
-        onLinkAction={handleLinkSelectedAction}
         onOpenChange={setIsDockOpen}
+        onOpenTargetPath={handleOpenTargetPath}
         onRestoreCheckpoint={handleRestoreCheckpoint}
-        onSelectAction={(action) => {
-          setSelectedAction({ action, sourcePage: activeScreen?.schema.page ?? 'Current page' });
-          setComposeNotice(null);
-        }}
+        onStageActionTarget={handleStageActionTarget}
         onSubmitPrompt={handleSubmitPrompt}
         onTabChange={setDockTab}
-        onUnlinkAction={handleUnlinkSelectedAction}
         promptResetKey={promptResetKey}
         restoringScreenJsonId={restoringScreenJsonId}
         sandboxState={sandboxState.data}
@@ -956,13 +1047,12 @@ function ChatDock({
   isPending,
   messages,
   onGenerateAction,
-  onLinkAction,
   onOpenChange,
+  onOpenTargetPath,
   onRestoreCheckpoint,
-  onSelectAction,
+  onStageActionTarget,
   onSubmitPrompt,
   onTabChange,
-  onUnlinkAction,
   promptResetKey,
   restoringScreenJsonId,
   sandboxState,
@@ -985,13 +1075,12 @@ function ChatDock({
   isPending: boolean;
   messages: ChatMessage[];
   onGenerateAction: (action: AppAction) => void;
-  onLinkAction: (input: { targetPath?: string | null; targetSessionId?: string | null }) => void;
   onOpenChange: (value: boolean) => void;
+  onOpenTargetPath: (targetPath: string) => void;
   onRestoreCheckpoint: (screenJsonId: string) => void;
-  onSelectAction: (action: AppAction) => void;
+  onStageActionTarget: (action: AppAction, targetPath: string) => AppUiSchema | null;
   onSubmitPrompt: (prompt: string) => void;
   onTabChange: (tab: DockTab) => void;
-  onUnlinkAction: () => void;
   promptResetKey: number;
   restoringScreenJsonId: string | null;
   sandboxState?: SandboxStateResponse | null;
@@ -1162,14 +1251,13 @@ function ChatDock({
         ) : (
           <ComposePanel
             actionLinks={actionLinks}
-            actions={availableActions}
+            availableActions={availableActions}
             composeNotice={composeNotice}
             currentSessionId={currentSessionId}
             isPending={isPending}
             onGenerateAction={onGenerateAction}
-            onLinkAction={onLinkAction}
-            onSelectAction={onSelectAction}
-            onUnlinkAction={onUnlinkAction}
+            onOpenTargetPath={onOpenTargetPath}
+            onStageActionTarget={onStageActionTarget}
             selectedAction={selectedAction}
             sessions={sessions}
           />
@@ -1208,212 +1296,223 @@ function ChatDock({
   );
 }
 
+type LinkChoice = 'custom-path' | `path:${string}` | `session:${string}`;
+
+function promptSessionPath(sessionId: string) {
+  return `/prompt/session/${sessionId}`;
+}
+
+function choiceForSelectedAction(
+  selectedAction: SelectedAction | null,
+  selectedLink: ScreenActionLink | null
+): LinkChoice {
+  if (selectedLink?.targetSessionId) return `session:${selectedLink.targetSessionId}`;
+  if (selectedLink?.targetPath) return `path:${selectedLink.targetPath}`;
+  if (selectedAction?.action.target) return `path:${selectedAction.action.target}`;
+  return 'custom-path';
+}
+
+function pathFromChoice(choice: LinkChoice, customPath: string) {
+  if (choice === 'custom-path') return customPath.trim() || null;
+  if (choice.startsWith('session:')) return promptSessionPath(choice.slice('session:'.length));
+  if (choice.startsWith('path:')) return choice.slice('path:'.length);
+  return null;
+}
+
 function ComposePanel({
   actionLinks,
-  actions,
+  availableActions,
   composeNotice,
   currentSessionId,
   isPending,
   onGenerateAction,
-  onLinkAction,
-  onSelectAction,
-  onUnlinkAction,
+  onOpenTargetPath,
+  onStageActionTarget,
   selectedAction,
   sessions,
 }: {
   actionLinks: ScreenActionLink[];
-  actions: AppAction[];
+  availableActions: AppAction[];
   composeNotice: BindingNotice | null;
   currentSessionId: string | null;
   isPending: boolean;
   onGenerateAction: (action: AppAction) => void;
-  onLinkAction: (input: { targetPath?: string | null; targetSessionId?: string | null }) => void;
-  onSelectAction: (action: AppAction) => void;
-  onUnlinkAction: () => void;
+  onOpenTargetPath: (targetPath: string) => void;
+  onStageActionTarget: (action: AppAction, targetPath: string) => AppUiSchema | null;
   selectedAction: SelectedAction | null;
   sessions: PromptSessionSummary[];
 }) {
-  const [targetSessionId, setTargetSessionId] = useState('');
-  const [targetPath, setTargetPath] = useState('');
+  const selectRef = useRef<HTMLSelectElement>(null);
+  const [customPath, setCustomPath] = useState('');
+  const [targetChoice, setTargetChoice] = useState<LinkChoice>('custom-path');
   const selectedLink = selectedAction
-    ? actionLinks.find((link) => link.actionId === selectedAction.action.id)
+    ? (actionLinks.find((link) => link.actionId === selectedAction.action.id) ?? null)
     : null;
-  const effectiveTargetPath = selectedLink?.targetPath ?? selectedAction?.action.target ?? null;
   const targetSession = sessions.find((session) => session.id === selectedLink?.targetSessionId);
-  const linkByActionId = new Map(actionLinks.map((link) => [link.actionId, link]));
   const pageOptions = sessions.filter((session) => session.id !== currentSessionId);
+  const pathOptions = useMemo(() => {
+    const byPath = new Map<string, string>();
+    const addPath = (path: string | null | undefined, label?: string) => {
+      const trimmed = path?.trim();
+      if (!trimmed) return;
+      const normalizedLabel = label?.trim();
+      if (!byPath.has(trimmed)) {
+        byPath.set(trimmed, normalizedLabel && normalizedLabel !== trimmed ? normalizedLabel : '');
+        return;
+      }
+      if (!byPath.get(trimmed) && normalizedLabel && normalizedLabel !== trimmed) {
+        byPath.set(trimmed, normalizedLabel);
+      }
+    };
+
+    addPath(selectedLink?.targetPath, '現在のリンク');
+    addPath(selectedAction?.action.target, selectedAction?.action.label);
+    for (const action of availableActions) {
+      addPath(action.target, action.label);
+    }
+    for (const link of actionLinks) {
+      addPath(link.targetPath, '既存リンク');
+    }
+
+    return Array.from(byPath, ([path, label]) => ({ path, label }));
+  }, [actionLinks, availableActions, selectedAction, selectedLink]);
+  const canGenerateNewPage = selectedAction?.action.kind === 'generate-screen';
 
   useEffect(() => {
-    setTargetSessionId(selectedLink?.targetSessionId ?? '');
-    setTargetPath(selectedLink?.targetPath ?? selectedAction?.action.target ?? '');
-  }, [selectedAction?.action.target, selectedLink?.targetPath, selectedLink?.targetSessionId]);
+    setTargetChoice(choiceForSelectedAction(selectedAction, selectedLink));
+    setCustomPath(selectedLink?.targetPath ?? selectedAction?.action.target ?? '');
+    if (selectedAction) {
+      requestAnimationFrame(() => selectRef.current?.focus());
+    }
+  }, [selectedAction, selectedLink]);
+
+  const handleOpenAction = () => {
+    if (!selectedAction || isPending) return;
+    const targetPath = pathFromChoice(targetChoice, customPath);
+    if (!targetPath) return;
+    const staged = onStageActionTarget(selectedAction.action, targetPath);
+    if (!staged) return;
+    onOpenTargetPath(targetPath);
+  };
+
+  const handleGenerateAction = () => {
+    if (!selectedAction || isPending || !canGenerateNewPage) return;
+    onGenerateAction(selectedAction.action);
+  };
+
+  const canOpenTarget = Boolean(
+    selectedAction && !isPending && (targetChoice === 'custom-path' ? customPath.trim() : true)
+  );
+  const canGenerateAction = Boolean(selectedAction && !isPending && canGenerateNewPage);
 
   return (
-    <div className="grid gap-4">
-      <section className="rounded-md border border-border bg-background/70 p-3">
-        <div className="mb-2 flex items-center gap-2 text-muted-foreground text-xs font-medium uppercase">
-          <Link2 className="h-3.5 w-3.5" />
-          Actions
-        </div>
-        {actions.length > 0 ? (
-          <div className="grid gap-2">
-            {actions.map((action) => {
-              const link = linkByActionId.get(action.id);
-              const linkedSession = sessions.find(
-                (session) => session.id === link?.targetSessionId
-              );
-              const isSelected = selectedAction?.action.id === action.id;
-              return (
-                <button
-                  className={cn(
-                    'grid gap-1 rounded-md border px-3 py-2 text-left text-xs hover:bg-secondary',
-                    isSelected ? 'border-primary bg-secondary' : 'border-border bg-card'
-                  )}
-                  key={action.id}
-                  onClick={() => onSelectAction(action)}
-                  type="button"
-                >
-                  <span className="font-medium text-foreground">{action.label}</span>
-                  <span className="truncate text-muted-foreground">
-                    {link?.targetSessionId
-                      ? `-> ${linkedSession?.page ?? linkedSession?.title ?? 'Linked page'}`
-                      : link?.targetPath
-                        ? `-> ${link.targetPath}`
-                        : action.target
-                          ? `schema -> ${action.target}`
-                          : 'Unlinked'}
-                  </span>
-                </button>
-              );
-            })}
+    <section className="rounded-md border border-border bg-background/70 p-3">
+      <div className="mb-2 flex items-center gap-2 text-muted-foreground text-xs font-medium uppercase">
+        <Link2 className="h-3.5 w-3.5" />
+        Link
+      </div>
+      {selectedAction ? (
+        <div className="grid gap-3">
+          <div className="grid gap-1 text-sm">
+            <div className="font-medium">{selectedAction.action.label}</div>
+            <div className="text-muted-foreground text-xs">{selectedAction.action.id}</div>
+            <div className="text-muted-foreground text-xs">{selectedAction.sourcePage}</div>
           </div>
-        ) : (
-          <p className="text-muted-foreground text-sm">Action がありません。</p>
-        )}
-      </section>
 
-      <section className="rounded-md border border-border bg-background/70 p-3">
-        <div className="mb-2 text-muted-foreground text-xs font-medium uppercase">Link</div>
-        {selectedAction ? (
-          <div className="grid gap-3">
-            <div className="grid gap-1 text-sm">
-              <div className="font-medium">{selectedAction.action.label}</div>
-              <div className="text-muted-foreground text-xs">{selectedAction.action.id}</div>
-              <div className="text-muted-foreground text-xs">{selectedAction.sourcePage}</div>
-            </div>
+          {selectedLink?.targetSessionId ? (
+            <p className="rounded-md border border-border bg-card px-2 py-1 text-xs">
+              linked: {targetSession?.page ?? targetSession?.title ?? 'Linked page'}
+            </p>
+          ) : null}
 
-            <div className="rounded-md border border-border bg-card p-2 text-xs">
-              {selectedLink?.targetSessionId ? (
-                <div className="flex items-center justify-between gap-2">
-                  <span className="min-w-0 truncate">
-                    {targetSession?.page ?? targetSession?.title ?? 'Linked page'}
-                  </span>
-                  <Link
-                    className="inline-flex h-7 items-center gap-1 rounded-md px-2 font-medium hover:bg-secondary"
-                    params={{ sessionId: selectedLink.targetSessionId }}
-                    to="/prompt/session/$sessionId"
-                  >
-                    <ExternalLink className="h-3 w-3" />
-                    Open
-                  </Link>
-                </div>
-              ) : effectiveTargetPath ? (
-                <div className="flex items-center justify-between gap-2">
-                  <span className="min-w-0 truncate">{effectiveTargetPath}</span>
-                  <Link
-                    className="inline-flex h-7 items-center gap-1 rounded-md px-2 font-medium hover:bg-secondary"
-                    to={effectiveTargetPath as never}
-                  >
-                    <ExternalLink className="h-3 w-3" />
-                    Open
-                  </Link>
-                </div>
-              ) : (
-                <span className="text-muted-foreground">Unlinked</span>
+          {composeNotice ? (
+            <p
+              className={cn(
+                'rounded-md border px-2 py-1 text-xs',
+                composeNotice.tone === 'success'
+                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700'
+                  : 'border-destructive/30 bg-destructive/10 text-destructive'
               )}
-            </div>
+            >
+              {composeNotice.message}
+            </p>
+          ) : null}
 
-            {composeNotice ? (
-              <p
-                className={cn(
-                  'rounded-md border px-2 py-1 text-xs',
-                  composeNotice.tone === 'success'
-                    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700'
-                    : 'border-destructive/30 bg-destructive/10 text-destructive'
-                )}
-              >
-                {composeNotice.message}
-              </p>
-            ) : null}
+          <label className="grid gap-1 text-sm">
+            <span className="text-muted-foreground text-xs font-medium">リンク先</span>
+            <select
+              className="h-9 rounded-md border border-input bg-background px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onChange={(event) => {
+                const choice = event.target.value as LinkChoice;
+                setTargetChoice(choice);
+                const targetPath = pathFromChoice(choice, customPath);
+                if (selectedAction && targetPath) {
+                  onStageActionTarget(selectedAction.action, targetPath);
+                }
+              }}
+              ref={selectRef}
+              value={targetChoice}
+            >
+              {pageOptions.map((session) => (
+                <option key={session.id} value={`session:${session.id}`}>
+                  既存ページ: {session.page ?? session.title}
+                </option>
+              ))}
+              {pathOptions.map((option) => (
+                <option key={option.path} value={`path:${option.path}`}>
+                  パス: {option.path}
+                  {option.label ? ` (${option.label})` : ''}
+                </option>
+              ))}
+              <option value="custom-path">カスタムパス</option>
+            </select>
+          </label>
 
-            <div className="grid gap-2">
-              <select
-                className="h-9 rounded-md border border-input bg-background px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                onChange={(event) => setTargetSessionId(event.target.value)}
-                value={targetSessionId}
-              >
-                <option value="">既存ページを選択</option>
-                {pageOptions.map((session) => (
-                  <option key={session.id} value={session.id}>
-                    {session.page ?? session.title}
-                  </option>
-                ))}
-              </select>
-              <button
-                className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-card px-3 text-sm font-medium hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={!targetSessionId || isPending}
-                onClick={() => onLinkAction({ targetSessionId })}
-                type="button"
-              >
-                <Link2 className="h-4 w-4" />
-                Link page
-              </button>
-            </div>
-
-            <div className="grid gap-2">
+          {targetChoice === 'custom-path' ? (
+            <label className="grid gap-1 text-sm">
+              <span className="text-muted-foreground text-xs font-medium">カスタムパス</span>
               <input
                 className="h-9 rounded-md border border-input bg-background px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                onChange={(event) => setTargetPath(event.target.value)}
+                onChange={(event) => setCustomPath(event.target.value)}
                 placeholder="/path"
-                value={targetPath}
+                value={customPath}
               />
-              <button
-                className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-card px-3 text-sm font-medium hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={!targetPath.trim() || isPending}
-                onClick={() => onLinkAction({ targetPath: targetPath.trim() })}
-                type="button"
-              >
-                <ExternalLink className="h-4 w-4" />
-                Link path
-              </button>
-            </div>
+            </label>
+          ) : null}
 
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-primary px-3 text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={selectedAction.action.kind !== 'generate-screen' || isPending}
-                onClick={() => onGenerateAction(selectedAction.action)}
-                type="button"
-              >
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-primary px-3 text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={!canOpenTarget}
+              onClick={handleOpenAction}
+              type="button"
+            >
+              <Link2 className="h-4 w-4" />
+              開く
+            </button>
+            <button
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-card px-3 text-sm font-medium hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={!canGenerateAction}
+              onClick={handleGenerateAction}
+              type="button"
+            >
+              {isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
                 <Plus className="h-4 w-4" />
-                New page
-              </button>
-              <button
-                className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-card px-3 text-sm font-medium hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={!selectedLink || isPending}
-                onClick={onUnlinkAction}
-                type="button"
-              >
-                <Unlink className="h-4 w-4" />
-                Unlink
-              </button>
-            </div>
+              )}
+              AI生成
+            </button>
           </div>
-        ) : (
-          <p className="text-muted-foreground text-sm">Action 未選択</p>
-        )}
-      </section>
-    </div>
+          <p className="text-muted-foreground text-xs">
+            AI生成はリンク元の画面文脈と選択したボタンの意味を引き継ぎ、新しい Prompt
+            ページを作成します。
+          </p>
+        </div>
+      ) : (
+        <p className="text-muted-foreground text-sm">画面内のボタンを選択してください。</p>
+      )}
+    </section>
   );
 }
 

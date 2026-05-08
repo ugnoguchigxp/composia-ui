@@ -139,7 +139,7 @@ export const appUiSchemaJsonSchema = {
   required: ['page', 'intent', 'layout', 'sections'],
   properties: {
     page: { type: 'string', minLength: 1 },
-    intent: { type: 'string', minLength: 1 },
+    intent: { type: 'string' },
     layout: {
       type: 'string',
       enum: [
@@ -228,7 +228,8 @@ Action/navigation labels must name the destination or intent, e.g. "注文管理
 Keep generation mechanics only in action.kind and intentHint, never in label fields.
 For FormSection select fields, options must always be objects like {"label":"高","value":"high"}; never return string arrays like ["高","中","低"].
 Keep page titles compact and workmanlike. Do not use oversized landing-page H1 or billboard headline patterns.
-Do not rely on the page-level title or intent as visible hero copy. Put user-facing content in sections only when it is needed.
+The page and intent fields are internal metadata. Do not turn the user's prompt or inferred intent into visible title, description, intro, summary, or sidebar copy.
+Do not create sections that merely restate the request, such as "ホーム" plus a sentence describing the requested EC site. Put only real product content, navigation, search, listings, forms, or workflow UI in sections.
 Do not create standalone menu sections made of button lists, such as "ショップメニュー" or "Shop menu". Put primary navigation in layout:"sidebar" with navigation.items, or use NavigationPanel only as compact local tab navigation.
 Do not add newsletter, email signup, メルマガ, or ニュースレター registration as a default landing-page filler pattern.
 Choose varied layouts. Use dashboards only for analytics-heavy prompts.

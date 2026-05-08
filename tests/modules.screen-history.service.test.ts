@@ -11,6 +11,8 @@ import type {
   ScreenJsonWithSessionRecord,
 } from '../api/modules/screen-history/screen-history.repository';
 import { createScreenHistoryService } from '../api/modules/screen-history/screen-history.service';
+import { screenResponseSchema } from '../shared/schemas/screen-history.schema';
+import { collectRenderableActions } from '../shared/schemas/ui-action-collector';
 import type { AppUiSchema } from '../shared/schemas/ui-schema.schema';
 
 const userId = '11111111-1111-4111-8111-111111111111';
@@ -387,9 +389,9 @@ describe('screen history service', () => {
     ]);
   });
 
-  it('generates a linked target ScreenJSON from a clicked action', async () => {
+  it('generates a target page and persists the source link as a new ScreenJSON version', async () => {
     const parent = screenJsonRecord();
-    const { repo } = createFakeRepository({ initialScreenJsons: [parent] });
+    const { repo, screenJsons } = createFakeRepository({ initialScreenJsons: [parent] });
     const layoutService = {
       generateLayout: vi.fn(async () => ({
         schema: schema({
@@ -419,12 +421,21 @@ describe('screen history service', () => {
     expect(result.screen.version).toBe(1);
     expect(result.screen.trigger).toBe('action-click');
     expect(result.screen.schema.page).toBe('Flower Details');
-    expect(repo.upsertActionLink).toHaveBeenCalledWith({
-      actionId: 'flower-detail',
-      sourceSessionId: parent.sessionId,
-      targetPath: null,
-      targetSessionId: result.screen.sessionId,
-    });
+    expect(repo.upsertActionLink).not.toHaveBeenCalled();
+    const linkedSource = screenJsons.find((item) => item.id === editScreenId);
+    expect(linkedSource).toEqual(
+      expect.objectContaining({
+        sessionId: parent.sessionId,
+        trigger: 'chat-edit',
+        version: 2,
+      })
+    );
+    expect(linkedSource?.schema.sections[0]?.actions?.[0]).toEqual(
+      expect.objectContaining({
+        id: 'flower-detail',
+        target: `/prompt/session/${result.screen.sessionId}`,
+      })
+    );
     expect(layoutService.generateLayout).toHaveBeenCalledWith(
       expect.objectContaining({
         prompt: expect.stringContaining('Clicked action label: Flower details'),
@@ -487,6 +498,65 @@ describe('screen history service', () => {
       })
     ).rejects.toThrow('Screen action not found');
     expect(layoutService.generateLayout).not.toHaveBeenCalled();
+  });
+
+  it('generates from a props href action and persists the updated href in ScreenJSON', async () => {
+    const currentSchema = schema({
+      intent: 'Shop top page',
+      page: 'Shop Home',
+      sections: [
+        {
+          component: 'NavigationPanel',
+          source: 'navigation',
+          props: {
+            title: 'Navigation',
+            links: [{ label: 'Cart', href: '/cart' }],
+          },
+        },
+      ],
+    });
+    const cartAction = collectRenderableActions(currentSchema).find(
+      (action) => action.target === '/cart'
+    );
+    const parent = screenJsonRecord({ schema: currentSchema });
+    const { repo, screenJsons } = createFakeRepository({ initialScreenJsons: [parent] });
+    const layoutService = {
+      generateLayout: vi.fn(async () => ({
+        schema: schema({ intent: 'Cart page', page: 'Cart' }),
+        activities: [],
+      })),
+    };
+    const service = createScreenHistoryService(repo, layoutService, {
+      getLayoutContext: async () => ({ entities: [], sources: [] }),
+    });
+
+    const result = await service.generateFromSessionAction(
+      userId,
+      sessionId,
+      cartAction?.id ?? '',
+      {}
+    );
+
+    expect(cartAction).toEqual(
+      expect.objectContaining({ kind: 'generate-screen', label: 'Cart', target: '/cart' })
+    );
+    expect(result.screen.schema.page).toBe('Cart');
+    expect(repo.upsertActionLink).not.toHaveBeenCalled();
+    const linkedSource = screenJsons.find((item) => item.id === editScreenId);
+    const firstLink = linkedSource?.schema.sections[0]?.props.links as
+      | { href: string; label: string }[]
+      | undefined;
+    expect(firstLink?.[0]).toEqual(
+      expect.objectContaining({
+        href: `/prompt/session/${result.screen.sessionId}`,
+        label: 'Cart',
+      })
+    );
+    expect(layoutService.generateLayout).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: expect.stringContaining('Action target: /cart'),
+      })
+    );
   });
 
   it('replays a saved ScreenJSON without calling the layout service', async () => {
@@ -691,6 +761,71 @@ describe('screen history service', () => {
     ]);
   });
 
+  it('saves a provided ScreenJSON schema as a new version without calling the layout service', async () => {
+    const current = screenJsonRecord({ id: screenId, version: 1 });
+    const nextSchema = schema({
+      page: 'Linked Flower Shop',
+      sections: [
+        {
+          component: 'InsightPanel',
+          source: 'summary',
+          props: {
+            title: 'Fresh flowers',
+            body: 'Seasonal bouquets are ready.',
+          },
+          actions: [
+            {
+              id: 'flower-detail',
+              label: 'Flower details',
+              kind: 'generate-screen',
+              target: '/prompt/session/44444444-4444-4444-9444-444444444444',
+            },
+          ],
+        },
+      ],
+    });
+    const { repo } = createFakeRepository({ initialScreenJsons: [current] });
+    const layoutService = {
+      generateLayout: vi.fn(async () => ({ schema: schema(), activities: [] })),
+    };
+    const service = createScreenHistoryService(repo, layoutService);
+
+    const result = await service.saveSessionScreenJson(userId, sessionId, {
+      prompt: 'リンク設定を保存',
+      schema: nextSchema,
+    });
+
+    expect(result.screen.id).toBe(editScreenId);
+    expect(result.screen.version).toBe(2);
+    expect(result.screen.schema.page).toBe('Linked Flower Shop');
+    expect(repo.createScreenJson).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: 'リンク設定を保存',
+        trigger: 'chat-edit',
+        version: 2,
+      })
+    );
+    expect(repo.createScreenJson).toHaveBeenCalledWith(
+      expect.objectContaining({
+        schema: expect.objectContaining({
+          page: 'Linked Flower Shop',
+          sections: expect.arrayContaining([
+            expect.objectContaining({
+              actions: expect.arrayContaining([
+                expect.objectContaining({
+                  id: 'flower-detail',
+                  target: '/prompt/session/44444444-4444-4444-9444-444444444444',
+                }),
+              ]),
+            }),
+          ]),
+        }),
+      })
+    );
+    expect(repo.updateSessionActiveScreenJson).toHaveBeenCalledWith(sessionId, editScreenId);
+    expect(layoutService.generateLayout).not.toHaveBeenCalled();
+  });
+
   it('edits from the active checkpoint using only compact current JSON and the latest instruction', async () => {
     const current = screenJsonRecord({ id: screenId, version: 1 });
     const future = screenJsonRecord({
@@ -734,6 +869,25 @@ describe('screen history service', () => {
         prompt: expect.stringContaining('Latest user instruction:\nタイトルを控えめにする'),
       })
     );
+  });
+
+  it('returns a parseable screen response when an edit removes page-level intent copy', async () => {
+    const current = screenJsonRecord({ id: screenId, version: 1 });
+    const { repo } = createFakeRepository({ initialScreenJsons: [current] });
+    const layoutService = {
+      generateLayout: vi.fn(async () => ({
+        schema: schema({ page: 'Home', intent: '' }),
+        activities: [],
+      })),
+    };
+    const service = createScreenHistoryService(repo, layoutService);
+
+    const result = await service.edit(userId, sessionId, {
+      prompt: 'ページ上部の説明文を消す',
+    });
+
+    expect(result.screen.inferredIntent).toBe('');
+    expect(screenResponseSchema.parse(result).screen.inferredIntent).toBe('');
   });
 
   it('rejects edit prompts that exceed the 24k token budget before calling the LLM', async () => {

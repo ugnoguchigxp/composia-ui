@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
+import { collectRenderableActions } from '../shared/schemas/ui-action-collector';
 import { appUiSchemaSchema } from '../shared/schemas/ui-schema.schema';
 import { JsonRenderRenderer } from '../src/modules/ui-schema/components/JsonRenderRenderer';
 import { uiSchemaPreviewRepository } from '../src/modules/ui-schema/repositories/ui-schema-preview.repository';
@@ -104,6 +105,71 @@ describe('ui schema renderer', () => {
     expect(html).toContain('Fresh flowers for every room');
     expect(html).toContain('Popular bouquets');
     expect(html).toContain('Tulip set');
+  });
+
+  it('keeps page-level intent out of visible page shell copy', () => {
+    const schema = appUiSchemaSchema.parse({
+      page: 'Home',
+      intent:
+        'AmazonライクなECサイトのトップページ。プロモーション、検索・絞り込み、注目カテゴリと売れ筋商品を提示し、商品詳細・カート・タイムセールへの導線を提供する',
+      layout: 'screen',
+      sections: [
+        {
+          component: 'NavigationPanel',
+          source: 'navigation',
+          props: {
+            title: 'Tabs',
+            links: [
+              { label: 'Home', href: '/' },
+              { label: 'Deals', href: '/deals' },
+            ],
+          },
+        },
+      ],
+    });
+
+    const spec = appUiSchemaToJsonRenderSpec(schema);
+
+    expect(spec.elements[spec.root].props).not.toHaveProperty('description');
+  });
+
+  it('does not render page title or inferred intent as sidebar intro copy', () => {
+    const schema = appUiSchemaSchema.parse({
+      page: 'ホーム',
+      intent:
+        'AmazonライクなECサイトのトップページ。プロモーション、検索・絞り込み、注目カテゴリと売れ筋商品を提示し、商品詳細・カート・タイムセールへの導線を提供する',
+      layout: 'sidebar',
+      navigation: {
+        items: [
+          { label: 'タイムセール', href: '/deals' },
+          { label: 'カート', href: '/cart' },
+        ],
+      },
+      sections: [
+        {
+          component: 'FilterBarSection',
+          source: 'app',
+          props: {
+            searchPlaceholder: '商品を検索',
+            filters: [{ label: 'カテゴリ', value: 'category' }],
+          },
+        },
+        {
+          component: 'CardGridSection',
+          source: 'app',
+          props: {
+            title: '売れ筋商品',
+            items: [{ title: 'ワイヤレスイヤホン', href: '/products/earbuds' }],
+          },
+        },
+      ],
+    });
+    const html = renderToStaticMarkup(<JsonRenderRenderer schema={schema} />);
+
+    expect(html).not.toContain('>ホーム<');
+    expect(html).not.toContain('AmazonライクなECサイトのトップページ');
+    expect(html).toContain('タイムセール');
+    expect(html).toContain('売れ筋商品');
   });
 
   it('renders a data table when AI omits optional rows', () => {
@@ -311,41 +377,76 @@ describe('ui schema renderer', () => {
   });
 
   it('does not attach the first generated action to unrelated links', () => {
+    const schema = appUiSchemaSchema.parse({
+      page: 'Operations',
+      intent: 'Show mixed navigation',
+      layout: 'screen',
+      sections: [
+        {
+          component: 'NavigationPanel',
+          source: 'navigation',
+          props: {
+            title: 'Navigation',
+            links: [
+              { label: 'Settings', href: '/settings' },
+              { label: 'Order management', href: '/orders' },
+            ],
+          },
+          actions: [
+            {
+              id: 'orders',
+              label: 'Order management',
+              kind: 'generate-screen',
+              target: '/orders',
+            },
+          ],
+        },
+      ],
+    });
+    const html = renderToStaticMarkup(
+      <JsonRenderRenderer onAction={() => undefined} schema={schema} />
+    );
+    const actions = collectRenderableActions(schema);
+    const settingsAction = actions.find((action) => action.target === '/settings');
+
+    expect(html).toContain('Settings');
+    expect(settingsAction).toEqual(
+      expect.objectContaining({ kind: 'generate-screen', label: 'Settings', target: '/settings' })
+    );
+    expect(html).toContain(`data-action-id="${settingsAction?.id}"`);
+    expect(html).not.toContain('href="/settings"');
+    expect(html).toContain('Order management');
+  });
+
+  it('marks the selected canvas action while intercepting href links', () => {
+    const schema = appUiSchemaSchema.parse({
+      page: 'Shop',
+      intent: 'Show shop navigation',
+      layout: 'screen',
+      sections: [
+        {
+          component: 'NavigationPanel',
+          source: 'navigation',
+          props: {
+            title: 'Navigation',
+            links: [{ label: 'Cart', href: '/cart' }],
+          },
+        },
+      ],
+    });
+    const cartAction = collectRenderableActions(schema).find((action) => action.target === '/cart');
     const html = renderToStaticMarkup(
       <JsonRenderRenderer
         onAction={() => undefined}
-        schema={{
-          page: 'Operations',
-          intent: 'Show mixed navigation',
-          layout: 'screen',
-          sections: [
-            {
-              component: 'NavigationPanel',
-              source: 'navigation',
-              props: {
-                title: 'Navigation',
-                links: [
-                  { label: 'Settings', href: '/settings' },
-                  { label: 'Order management', href: '/orders' },
-                ],
-              },
-              actions: [
-                {
-                  id: 'orders',
-                  label: 'Order management',
-                  kind: 'generate-screen',
-                  target: '/orders',
-                },
-              ],
-            },
-          ],
-        }}
+        schema={schema}
+        selectedActionId={cartAction?.id}
       />
     );
 
-    expect(html).toContain('Settings');
-    expect(html).toContain('href="/settings"');
-    expect(html).toContain('Order management');
+    expect(cartAction?.label).toBe('Cart');
+    expect(html).toContain('aria-pressed="true"');
+    expect(html).toContain('data-selected="true"');
+    expect(html).not.toContain('href="/cart"');
   });
 
   it('renders card grid metadata objects from AI output', () => {

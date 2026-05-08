@@ -75,7 +75,7 @@ export const appUiSchemaSectionSchema = z
 export const appUiSchemaSchema = z
   .object({
     page: z.string().min(1),
-    intent: z.string().min(1),
+    intent: z.string().default(''),
     layout: appUiLayoutSchema,
     density: visualIntentSchema.shape.density.optional(),
     tone: visualIntentSchema.shape.tone.optional(),

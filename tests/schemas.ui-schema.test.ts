@@ -56,6 +56,26 @@ describe('ui schema', () => {
     });
   });
 
+  it('allows an empty page intent when the generated page should not show page-level copy', () => {
+    const parsed = appUiSchemaSchema.parse({
+      page: 'Home',
+      intent: '',
+      layout: 'screen',
+      sections: [
+        {
+          component: 'NavigationPanel',
+          source: 'navigation',
+          props: {
+            title: 'Menu',
+            links: [{ label: 'Home', href: '/' }],
+          },
+        },
+      ],
+    });
+
+    expect(parsed.intent).toBe('');
+  });
+
   it('validates optional data binding ids on sections', () => {
     const parsed = appUiSchemaSchema.parse({
       page: 'Products',

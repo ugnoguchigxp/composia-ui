@@ -1,4 +1,4 @@
-import { createContext, type ReactNode, useContext } from 'react';
+import { createContext, type ReactNode, useContext, useMemo } from 'react';
 import type { AppAction } from '../../../../shared/schemas/ui-schema.schema';
 import { cn } from '../../../lib/utils';
 
@@ -12,6 +12,7 @@ type AppActionContextValue = {
   onSubmitBinding?: (dataBindingId: string, value: Record<string, unknown>) => void;
   pendingBindingId?: string | null;
   pendingActionId?: string | null;
+  selectedActionId?: string | null;
 };
 
 const AppActionRenderContext = createContext<AppActionContextValue>({});
@@ -21,14 +22,16 @@ export function AppActionRenderProvider({
   onAction,
   pendingActionId,
   pendingBindingId,
+  selectedActionId,
   onSubmitBinding,
 }: AppActionContextValue & { children: ReactNode }) {
+  const value = useMemo(
+    () => ({ onAction, onSubmitBinding, pendingActionId, pendingBindingId, selectedActionId }),
+    [onAction, onSubmitBinding, pendingActionId, pendingBindingId, selectedActionId]
+  );
+
   return (
-    <AppActionRenderContext.Provider
-      value={{ onAction, onSubmitBinding, pendingActionId, pendingBindingId }}
-    >
-      {children}
-    </AppActionRenderContext.Provider>
+    <AppActionRenderContext.Provider value={value}>{children}</AppActionRenderContext.Provider>
   );
 }
 
@@ -78,14 +81,22 @@ export function AppActionControl({
   fallbackHref,
   fallbackLabel,
 }: AppActionControlProps) {
-  const { onAction, pendingActionId } = useContext(AppActionRenderContext);
+  const { onAction, pendingActionId, selectedActionId } = useContext(AppActionRenderContext);
   const label = action?.label ?? fallbackLabel;
   if (!label) return null;
+  const isSelected = Boolean(action && action.id === selectedActionId);
 
-  if (action?.kind === 'generate-screen' && onAction) {
+  if (action && onAction) {
     return (
       <button
-        className={cn(className, 'disabled:cursor-not-allowed disabled:opacity-60')}
+        aria-pressed={isSelected}
+        className={cn(
+          className,
+          'disabled:cursor-not-allowed disabled:opacity-60',
+          isSelected && 'border-primary text-primary ring-2 ring-primary/40 ring-offset-1'
+        )}
+        data-action-id={action.id}
+        data-selected={isSelected ? 'true' : undefined}
         disabled={pendingActionId === action.id}
         onClick={() => onAction(action)}
         type="button"
@@ -95,7 +106,7 @@ export function AppActionControl({
     );
   }
 
-  if (action?.kind === 'navigate' && action.target) {
+  if (action?.kind !== 'submit' && action?.target) {
     return (
       <a className={className} href={action.target}>
         {label}

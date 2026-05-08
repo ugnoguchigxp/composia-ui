@@ -10,6 +10,7 @@ import type {
   ScreenEditRequest,
   ScreenGenerateRequest,
   ScreenJsonResponse,
+  ScreenJsonSaveRequest,
   ScreenListQuery,
   ScreenListResponse,
   ScreenRegenerateRequest,
@@ -61,6 +62,17 @@ export const screenHistoryRepository = {
   },
   edit: async (sessionId: string, input: ScreenEditRequest): Promise<ScreenResponse> => {
     const response = await client.sessions[':sessionId'].edit.$post({
+      json: input,
+      param: { sessionId },
+    });
+    if (!response.ok) throw new Error(await readErrorMessage(response));
+    return screenResponseSchema.parse(await response.json());
+  },
+  saveScreenJson: async (
+    sessionId: string,
+    input: ScreenJsonSaveRequest
+  ): Promise<ScreenResponse> => {
+    const response = await client.sessions[':sessionId']['screen-json'].$post({
       json: input,
       param: { sessionId },
     });

@@ -19,7 +19,8 @@ describe('ai provider system context', () => {
     expect(layoutSystemContext).toContain('Do not write labels like');
     expect(layoutSystemContext).toContain('Use sidebar + navigation.items');
     expect(layoutSystemContext).toContain('Keep page titles compact');
-    expect(layoutSystemContext).toContain('Do not rely on the page-level title');
+    expect(layoutSystemContext).toContain('The page and intent fields are internal metadata');
+    expect(layoutSystemContext).toContain('Do not create sections that merely restate the request');
     expect(layoutSystemContext).toContain('Do not create standalone menu sections');
     expect(layoutSystemContext).toContain('NavigationPanel only as compact local tab navigation');
     expect(layoutSystemContext).toContain('Do not add newsletter');

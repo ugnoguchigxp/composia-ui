@@ -12,6 +12,7 @@ import {
   screenEditRequestSchema,
   screenGenerateRequestSchema,
   screenJsonResponseSchema,
+  screenJsonSaveRequestSchema,
   screenListQuerySchema,
   screenListResponseSchema,
   screenRegenerateRequestSchema,
@@ -189,6 +190,28 @@ const editRoute = createRoute({
     200: {
       content: { 'application/json': { schema: screenResponseSchema } },
       description: 'Edit the active ScreenJSON in a session',
+    },
+  },
+});
+
+const sessionScreenJsonSaveRoute = createRoute({
+  method: 'post',
+  path: '/:sessionId/screen-json',
+  request: {
+    params: sessionParamSchema,
+    body: {
+      content: {
+        'application/json': {
+          schema: screenJsonSaveRequestSchema,
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: screenResponseSchema } },
+      description:
+        'Save the active session ScreenJSON as a new version without calling the AI provider',
     },
   },
 });
@@ -377,6 +400,16 @@ export const screenSessionRouter = protectedSessionsRouter
   .openapi(editRoute, async (c) =>
     c.json(
       await screenHistoryService.edit(
+        userId(c),
+        c.req.valid('param').sessionId,
+        c.req.valid('json')
+      ),
+      200
+    )
+  )
+  .openapi(sessionScreenJsonSaveRoute, async (c) =>
+    c.json(
+      await screenHistoryService.saveSessionScreenJson(
         userId(c),
         c.req.valid('param').sessionId,
         c.req.valid('json')

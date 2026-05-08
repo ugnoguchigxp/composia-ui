@@ -1,4 +1,5 @@
 import type { Spec } from '@json-render/react';
+import { collectSectionRenderableActions } from '../../../../shared/schemas/ui-action-collector';
 import type { AppUiLayout, AppUiSchema } from '../../../../shared/schemas/ui-schema.schema';
 import { appUiSchemaSchema } from '../../../../shared/schemas/ui-schema.schema';
 import { assertAppUiSchemaCatalog } from '../../component-registry/services/registry.service';
@@ -69,7 +70,6 @@ export function appUiSchemaToJsonRenderSpec(
         type: layoutComponentMap[schema.layout],
         props: {
           title: schema.page,
-          description: schema.intent,
           navigation: schema.navigation?.items ?? [],
           visualIntent: pageVisualIntent,
         },
@@ -89,7 +89,7 @@ export function appUiSchemaToJsonRenderSpec(
                 ...section.props,
                 ...(rows && section.component === 'DataTableSection' ? { rows } : {}),
                 dataBindingId: section.dataBindingId,
-                actions: section.actions ?? [],
+                actions: collectSectionRenderableActions(section, index),
                 visualIntent: section.visualIntent ?? pageVisualIntent,
               },
               children: [],

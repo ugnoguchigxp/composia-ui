@@ -41,7 +41,7 @@ export const generatedScreenSchema = z
     version: z.number().int().min(1).default(1),
     trigger: screenTriggerSchema,
     prompt: z.string().min(1),
-    inferredIntent: z.string().min(1),
+    inferredIntent: z.string(),
     action: generatedScreenActionSchema.nullable().optional(),
     schema: appUiSchemaSchema,
     databaseSchemaJsonId: z.string().uuid().nullable().default(null),
@@ -65,7 +65,7 @@ export const screenJsonSchema = z
     version: z.number().int().min(1),
     prompt: z.string().min(1),
     trigger: screenTriggerSchema,
-    inferredIntent: z.string().min(1),
+    inferredIntent: z.string(),
     action: generatedScreenActionSchema.nullable().optional(),
     schema: appUiSchemaSchema,
     databaseSchemaJsonId: z.string().uuid().nullable().default(null),
@@ -165,7 +165,7 @@ export const promptSessionSummarySchema = z
     activeVersion: z.number().int().min(1).nullable(),
     page: z.string().min(1).nullable(),
     prompt: z.string().min(1).nullable(),
-    inferredIntent: z.string().min(1).nullable(),
+    inferredIntent: z.string().nullable(),
     screenCount: z.number().int().min(0),
     messageCount: z.number().int().min(0),
     messageSearchText: z.string().nullable().default(null),
@@ -207,6 +207,13 @@ export const screenRegenerateRequestSchema = z
 export const screenEditRequestSchema = z
   .object({
     prompt: z.string().trim().min(1).max(2000),
+  })
+  .strict();
+
+export const screenJsonSaveRequestSchema = z
+  .object({
+    schema: appUiSchemaSchema,
+    prompt: z.string().trim().min(1).max(2000).optional(),
   })
   .strict();
 
@@ -298,6 +305,7 @@ export type ScreenActionGenerateRequest = z.infer<typeof screenActionGenerateReq
 export type ScreenActionLinkUpsertRequest = z.infer<typeof screenActionLinkUpsertRequestSchema>;
 export type ScreenRegenerateRequest = z.infer<typeof screenRegenerateRequestSchema>;
 export type ScreenEditRequest = z.infer<typeof screenEditRequestSchema>;
+export type ScreenJsonSaveRequest = z.infer<typeof screenJsonSaveRequestSchema>;
 export type ScreenListResponse = z.infer<typeof screenListResponseSchema>;
 export type ScreenResponse = z.infer<typeof screenResponseSchema>;
 export type ScreenChildrenResponse = z.infer<typeof screenChildrenResponseSchema>;
