@@ -9,6 +9,8 @@ export const screenTriggerSchema = z.enum([
   'regenerate',
   'chat-edit',
 ]);
+export const promptSessionVisibilitySchema = z.enum(['private', 'public']);
+export const canonicalPromptPathSchema = appRelativePathSchema.nullable().default(null);
 
 export const screenProviderMetaSchema = z
   .object({
@@ -24,6 +26,11 @@ export const promptSessionSchema = z
     title: z.string().min(1),
     createdBy: z.string().uuid(),
     activeScreenJsonId: z.string().uuid().nullable().default(null),
+    visibility: promptSessionVisibilitySchema.default('private'),
+    publishedAt: z.string().datetime().nullable().default(null),
+    projectId: z.string().uuid().nullable().default(null),
+    pagePath: z.string().min(1).nullable().default(null),
+    canonicalPath: canonicalPromptPathSchema,
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
   })
@@ -37,6 +44,9 @@ export const generatedScreenSchema = z
   .object({
     id: z.string().uuid(),
     sessionId: z.string().uuid(),
+    projectId: z.string().uuid().nullable().default(null),
+    pagePath: z.string().min(1).nullable().default(null),
+    canonicalPath: canonicalPromptPathSchema,
     parentScreenId: z.string().uuid().nullable().optional(),
     version: z.number().int().min(1).default(1),
     trigger: screenTriggerSchema,
@@ -62,6 +72,9 @@ export const screenJsonSchema = z
   .object({
     id: z.string().uuid(),
     sessionId: z.string().uuid(),
+    projectId: z.string().uuid().nullable().default(null),
+    pagePath: z.string().min(1).nullable().default(null),
+    canonicalPath: canonicalPromptPathSchema,
     version: z.number().int().min(1),
     prompt: z.string().min(1),
     trigger: screenTriggerSchema,
@@ -121,6 +134,9 @@ export const screenCheckpointSchema = screenJsonSchema
   .pick({
     id: true,
     sessionId: true,
+    projectId: true,
+    pagePath: true,
+    canonicalPath: true,
     version: true,
     prompt: true,
     trigger: true,
@@ -140,6 +156,9 @@ export const generatedScreenSummarySchema = generatedScreenSchema
   .pick({
     id: true,
     sessionId: true,
+    projectId: true,
+    pagePath: true,
+    canonicalPath: true,
     parentScreenId: true,
     trigger: true,
     prompt: true,
@@ -163,6 +182,11 @@ export const promptSessionSummarySchema = z
     title: z.string().min(1),
     activeScreenJsonId: z.string().uuid().nullable(),
     activeVersion: z.number().int().min(1).nullable(),
+    visibility: promptSessionVisibilitySchema.default('private'),
+    publishedAt: z.string().datetime().nullable().default(null),
+    projectId: z.string().uuid().nullable().default(null),
+    pagePath: z.string().min(1).nullable().default(null),
+    canonicalPath: canonicalPromptPathSchema,
     page: z.string().min(1).nullable(),
     prompt: z.string().min(1).nullable(),
     inferredIntent: z.string().nullable(),
@@ -217,6 +241,12 @@ export const screenJsonSaveRequestSchema = z
   })
   .strict();
 
+export const promptSessionVisibilityUpdateRequestSchema = z
+  .object({
+    visibility: promptSessionVisibilitySchema,
+  })
+  .strict();
+
 export const screenListQuerySchema = z
   .object({
     page: z.coerce.number().int().min(1).default(1),
@@ -263,9 +293,25 @@ export const screenConversationResponseSchema = z
   })
   .strict();
 
+export const screenProjectPageResponseSchema = z
+  .object({
+    projectId: z.string().uuid(),
+    pagePath: z.string().min(1),
+    sessionId: z.string().uuid(),
+    canonicalPath: appRelativePathSchema,
+    session: promptSessionSchema,
+  })
+  .strict();
+
 export const screenActionLinkResponseSchema = z
   .object({
     link: screenActionLinkSchema,
+  })
+  .strict();
+
+export const promptSessionVisibilityResponseSchema = z
+  .object({
+    session: promptSessionSchema,
   })
   .strict();
 
@@ -292,6 +338,8 @@ export const screenDeleteResponseSchema = z
 export const screenActionLinkDeleteResponseSchema = z.object({ success: z.boolean() }).strict();
 
 export type ScreenTrigger = z.infer<typeof screenTriggerSchema>;
+export type PromptSessionVisibility = z.infer<typeof promptSessionVisibilitySchema>;
+export type CanonicalPromptPath = z.infer<typeof canonicalPromptPathSchema>;
 export type PromptSession = z.infer<typeof promptSessionSchema>;
 export type GeneratedScreen = z.infer<typeof generatedScreenSchema>;
 export type ScreenJson = z.infer<typeof screenJsonSchema>;
@@ -306,11 +354,16 @@ export type ScreenActionLinkUpsertRequest = z.infer<typeof screenActionLinkUpser
 export type ScreenRegenerateRequest = z.infer<typeof screenRegenerateRequestSchema>;
 export type ScreenEditRequest = z.infer<typeof screenEditRequestSchema>;
 export type ScreenJsonSaveRequest = z.infer<typeof screenJsonSaveRequestSchema>;
+export type PromptSessionVisibilityUpdateRequest = z.infer<
+  typeof promptSessionVisibilityUpdateRequestSchema
+>;
 export type ScreenListResponse = z.infer<typeof screenListResponseSchema>;
 export type ScreenResponse = z.infer<typeof screenResponseSchema>;
 export type ScreenChildrenResponse = z.infer<typeof screenChildrenResponseSchema>;
 export type ScreenConversationResponse = z.infer<typeof screenConversationResponseSchema>;
+export type ScreenProjectPageResponse = z.infer<typeof screenProjectPageResponseSchema>;
 export type ScreenActionLinkResponse = z.infer<typeof screenActionLinkResponseSchema>;
+export type PromptSessionVisibilityResponse = z.infer<typeof promptSessionVisibilityResponseSchema>;
 export type ScreenJsonResponse = z.infer<typeof screenJsonResponseSchema>;
 export type ScreenCheckpointRestoreResponse = z.infer<typeof screenCheckpointRestoreResponseSchema>;
 export type ScreenDeleteResponse = z.infer<typeof screenDeleteResponseSchema>;

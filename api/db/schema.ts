@@ -1,4 +1,6 @@
+import { sql } from 'drizzle-orm';
 import {
+  type AnyPgColumn,
   boolean,
   index,
   integer,
@@ -18,6 +20,7 @@ import type {
 import type {
   GeneratedScreen,
   PromptSessionMessage,
+  PromptSessionVisibility,
   ScreenJson,
 } from '../../shared/schemas/screen-history.schema';
 import type { AppUiSchema } from '../../shared/schemas/ui-schema.schema';
@@ -153,9 +156,36 @@ export const promptSessions = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     activeScreenJsonId: uuid('active_screen_json_id'),
+    visibility: text('visibility').$type<PromptSessionVisibility>().notNull().default('private'),
+    publishedAt: timestamp('published_at'),
+    projectId: uuid('project_id').references((): AnyPgColumn => uiProjects.id, {
+      onDelete: 'cascade',
+    }),
+    pagePath: text('page_path'),
   },
   (table) => ({
     createdByIdx: index('prompt_sessions_created_by_idx').on(table.createdBy),
+    projectIdx: index('prompt_sessions_project_idx').on(table.projectId),
+    projectPageUniqueIdx: uniqueIndex('prompt_sessions_project_page_uidx')
+      .on(table.projectId, table.pagePath)
+      .where(sql`${table.projectId} is not null and ${table.pagePath} is not null`),
+  })
+);
+
+export const uiProjects = pgTable(
+  'ui_projects',
+  {
+    ...commonColumns,
+    title: text('title').notNull(),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    rootSessionId: uuid('root_session_id').references((): AnyPgColumn => promptSessions.id, {
+      onDelete: 'set null',
+    }),
+  },
+  (table) => ({
+    createdByIdx: index('ui_projects_created_by_idx').on(table.createdBy),
   })
 );
 
@@ -271,6 +301,24 @@ export const screenJsons = pgTable(
       table.sessionId,
       table.version
     ),
+  })
+);
+
+export const publishedPromptPages = pgTable(
+  'published_prompt_pages',
+  {
+    ...commonColumns,
+    sessionId: uuid('session_id')
+      .notNull()
+      .references(() => promptSessions.id, { onDelete: 'cascade' }),
+    screenJsonId: uuid('screen_json_id')
+      .notNull()
+      .references(() => screenJsons.id, { onDelete: 'cascade' }),
+    html: text('html').notNull(),
+  },
+  (table) => ({
+    screenJsonIdx: index('published_prompt_pages_screen_json_idx').on(table.screenJsonId),
+    sessionUniqueIdx: uniqueIndex('published_prompt_pages_session_uidx').on(table.sessionId),
   })
 );
 

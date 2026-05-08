@@ -19,6 +19,7 @@ import { Route as PromptScreenIdRouteImport } from './routes/prompt.$screenId'
 import { Route as OauthCallbackRouteImport } from './routes/oauth.callback'
 import { Route as PromptSessionSessionIdRouteImport } from './routes/prompt.session.$sessionId'
 import { Route as DbdesignDraftsDatabaseSchemaJsonIdRouteImport } from './routes/dbdesign.drafts.$databaseSchemaJsonId'
+import { Route as PromptProjectProjectIdSplatRouteImport } from './routes/prompt.project.$projectId.$'
 
 const PromptRoute = PromptRouteImport.update({
   id: '/prompt',
@@ -71,6 +72,12 @@ const DbdesignDraftsDatabaseSchemaJsonIdRoute =
     path: '/drafts/$databaseSchemaJsonId',
     getParentRoute: () => DbdesignRoute,
   } as any)
+const PromptProjectProjectIdSplatRoute =
+  PromptProjectProjectIdSplatRouteImport.update({
+    id: '/project/$projectId/$',
+    path: '/project/$projectId/$',
+    getParentRoute: () => PromptRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -83,6 +90,7 @@ export interface FileRoutesByFullPath {
   '/prompt/$screenId': typeof PromptScreenIdRoute
   '/dbdesign/drafts/$databaseSchemaJsonId': typeof DbdesignDraftsDatabaseSchemaJsonIdRoute
   '/prompt/session/$sessionId': typeof PromptSessionSessionIdRoute
+  '/prompt/project/$projectId/$': typeof PromptProjectProjectIdSplatRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -95,6 +103,7 @@ export interface FileRoutesByTo {
   '/prompt/$screenId': typeof PromptScreenIdRoute
   '/dbdesign/drafts/$databaseSchemaJsonId': typeof DbdesignDraftsDatabaseSchemaJsonIdRoute
   '/prompt/session/$sessionId': typeof PromptSessionSessionIdRoute
+  '/prompt/project/$projectId/$': typeof PromptProjectProjectIdSplatRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -108,6 +117,7 @@ export interface FileRoutesById {
   '/prompt/$screenId': typeof PromptScreenIdRoute
   '/dbdesign/drafts/$databaseSchemaJsonId': typeof DbdesignDraftsDatabaseSchemaJsonIdRoute
   '/prompt/session/$sessionId': typeof PromptSessionSessionIdRoute
+  '/prompt/project/$projectId/$': typeof PromptProjectProjectIdSplatRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -122,6 +132,7 @@ export interface FileRouteTypes {
     | '/prompt/$screenId'
     | '/dbdesign/drafts/$databaseSchemaJsonId'
     | '/prompt/session/$sessionId'
+    | '/prompt/project/$projectId/$'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -134,6 +145,7 @@ export interface FileRouteTypes {
     | '/prompt/$screenId'
     | '/dbdesign/drafts/$databaseSchemaJsonId'
     | '/prompt/session/$sessionId'
+    | '/prompt/project/$projectId/$'
   id:
     | '__root__'
     | '/'
@@ -146,6 +158,7 @@ export interface FileRouteTypes {
     | '/prompt/$screenId'
     | '/dbdesign/drafts/$databaseSchemaJsonId'
     | '/prompt/session/$sessionId'
+    | '/prompt/project/$projectId/$'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -230,6 +243,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DbdesignDraftsDatabaseSchemaJsonIdRouteImport
       parentRoute: typeof DbdesignRoute
     }
+    '/prompt/project/$projectId/$': {
+      id: '/prompt/project/$projectId/$'
+      path: '/project/$projectId/$'
+      fullPath: '/prompt/project/$projectId/$'
+      preLoaderRoute: typeof PromptProjectProjectIdSplatRouteImport
+      parentRoute: typeof PromptRoute
+    }
   }
 }
 
@@ -249,11 +269,13 @@ const DbdesignRouteWithChildren = DbdesignRoute._addFileChildren(
 interface PromptRouteChildren {
   PromptScreenIdRoute: typeof PromptScreenIdRoute
   PromptSessionSessionIdRoute: typeof PromptSessionSessionIdRoute
+  PromptProjectProjectIdSplatRoute: typeof PromptProjectProjectIdSplatRoute
 }
 
 const PromptRouteChildren: PromptRouteChildren = {
   PromptScreenIdRoute: PromptScreenIdRoute,
   PromptSessionSessionIdRoute: PromptSessionSessionIdRoute,
+  PromptProjectProjectIdSplatRoute: PromptProjectProjectIdSplatRoute,
 }
 
 const PromptRouteWithChildren =

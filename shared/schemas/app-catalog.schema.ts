@@ -438,6 +438,17 @@ export const componentPropsSchemas = {
       visualIntent: visualIntentSchema.optional(),
     })
     .strict(),
+  MainSearchNavigationSection: z
+    .object({
+      title: z.string().min(1).optional(),
+      searchPlaceholder: z.string().min(1),
+      searchButtonLabel: z.string().min(1).default('検索'),
+      categories: z.array(optionSchema).default([]),
+      links: z.array(actionLinkSchema).min(1).max(12),
+      actions: renderActionsSchema,
+      visualIntent: visualIntentSchema.optional(),
+    })
+    .strict(),
   EmptyState: z
     .object({
       title: z.string().min(1),
@@ -459,7 +470,7 @@ export const componentPropsSchemas = {
 
 export type AppComponentName = keyof typeof componentPropsSchemas;
 
-export const appCatalogVersion = 'app-catalog-v4';
+export const appCatalogVersion = 'app-catalog-v5';
 
 export const componentDefinitions = componentDefinitionSchema.array().parse([
   {
@@ -657,7 +668,7 @@ export const componentDefinitions = componentDefinitionSchema.array().parse([
     allowedSources: ['postgres', 'api'],
     placement: 'section',
     propsSchema: componentPropsSchemas.DataTableSection,
-    promptProps: 'title, description?, columns[key,label], rows?',
+    promptProps: 'title, description?, columns[key,label], rows? with scalar cell values only',
   },
   {
     name: 'NavigationPanel',
@@ -667,6 +678,19 @@ export const componentDefinitions = componentDefinitionSchema.array().parse([
     propsSchema: componentPropsSchemas.NavigationPanel,
     promptProps: 'title, links[label,href]',
     promptGuidance: 'for compact local tab navigation only',
+  },
+  {
+    name: 'MainSearchNavigationSection',
+    description:
+      'A marketplace-style main search bar with category controls and tab navigation directly below it.',
+    allowedSources: ['navigation', 'app'],
+    placement: 'section',
+    propsSchema: componentPropsSchemas.MainSearchNavigationSection,
+    promptProps:
+      'title?, searchPlaceholder, searchButtonLabel?, categories[label,value]?, links[label,href]',
+    promptGuidance:
+      'use for Amazon-style catalog headers with a prominent search bar and tabs directly underneath',
+    variants: ['marketplace-search-tabs'],
   },
   {
     name: 'EmptyState',

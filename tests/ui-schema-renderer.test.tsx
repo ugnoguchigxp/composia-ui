@@ -232,6 +232,50 @@ describe('ui schema renderer', () => {
     expect(html).not.toContain('Static product');
   });
 
+  it('suppresses database system columns in rendered data tables', () => {
+    const schema = appUiSchemaSchema.parse({
+      page: 'System columns',
+      intent: 'Hide database bookkeeping fields from table UI',
+      layout: 'dashboard',
+      sections: [
+        {
+          component: 'DataTableSection',
+          source: 'postgres',
+          props: {
+            title: 'Products',
+            columns: [
+              { key: 'id', label: 'ID' },
+              { key: 'name', label: 'Name' },
+              { key: 'created_at', label: 'Created at' },
+              { key: 'updated_at', label: 'Updated at' },
+              { key: 'is_active', label: 'Active' },
+            ],
+            rows: [
+              {
+                id: 'system-row-id',
+                name: 'Visible product',
+                created_at: 'SYSTEM_CREATED_VALUE',
+                updated_at: 'SYSTEM_UPDATED_VALUE',
+                is_active: 'SYSTEM_ACTIVE_VALUE',
+              },
+            ],
+          },
+        },
+      ],
+    });
+    const html = renderToStaticMarkup(<JsonRenderRenderer schema={schema} />);
+
+    expect(html).toContain('Name');
+    expect(html).toContain('Visible product');
+    expect(html).not.toContain('Created at');
+    expect(html).not.toContain('Updated at');
+    expect(html).not.toContain('Active');
+    expect(html).not.toContain('SYSTEM_CREATED_VALUE');
+    expect(html).not.toContain('SYSTEM_UPDATED_VALUE');
+    expect(html).not.toContain('SYSTEM_ACTIVE_VALUE');
+    expect(html).not.toContain('system-row-id');
+  });
+
   it('keeps static rows while binding rows are unavailable', () => {
     const schema = appUiSchemaSchema.parse({
       page: 'Static fallback',
@@ -449,6 +493,45 @@ describe('ui schema renderer', () => {
     expect(html).not.toContain('href="/cart"');
   });
 
+  it('renders marketplace search navigation with tabs under the search bar', () => {
+    const html = renderToStaticMarkup(
+      <JsonRenderRenderer
+        schema={{
+          page: 'Marketplace',
+          intent: 'Amazon-style searchable catalog header',
+          layout: 'screen',
+          sections: [
+            {
+              component: 'MainSearchNavigationSection',
+              source: 'navigation',
+              props: {
+                title: 'Shop',
+                searchPlaceholder: '商品を検索',
+                searchButtonLabel: '検索',
+                categories: [
+                  { label: 'すべて', value: 'all' },
+                  { label: '家電', value: 'electronics' },
+                ],
+                links: [
+                  { label: 'タイムセール', href: '/deals' },
+                  { label: 'ランキング', href: '/ranking' },
+                  { label: 'カート', href: '/cart' },
+                ],
+              },
+            },
+          ],
+        }}
+      />
+    );
+
+    expect(html).toContain('商品を検索');
+    expect(html).toContain('タイムセール');
+    expect(html).toContain('ランキング');
+    expect(html).toContain('カート');
+    expect(html.indexOf('商品を検索')).toBeLessThan(html.indexOf('タイムセール'));
+    expect(html).toContain('border-b-2');
+  });
+
   it('renders card grid metadata objects from AI output', () => {
     const html = renderToStaticMarkup(
       <JsonRenderRenderer
@@ -481,6 +564,73 @@ describe('ui schema renderer', () => {
 
     expect(html).toContain('Price: ¥4,800');
     expect(html).toContain('stock: In stock / delivery: Tomorrow');
+  });
+
+  it('renders card grid item hrefs as whole-card links', () => {
+    const html = renderToStaticMarkup(
+      <JsonRenderRenderer
+        schema={{
+          page: 'Product catalog',
+          intent: 'Browse products with linked cards',
+          layout: 'screen',
+          sections: [
+            {
+              component: 'CardGridSection',
+              source: 'app',
+              props: {
+                title: 'Featured products',
+                items: [
+                  {
+                    title: 'Seasonal bouquet',
+                    description: 'Fresh flowers for the week',
+                    href: '/products/seasonal-bouquet',
+                  },
+                ],
+              },
+            },
+          ],
+        }}
+      />
+    );
+
+    expect(html).toContain('href="/products/seasonal-bouquet"');
+    expect(html).toContain('group block h-full w-full overflow-hidden rounded-md border');
+    expect(html).toContain('Seasonal bouquet</span>');
+    expect(html).not.toContain('inline-flex h-8 items-center rounded-md border');
+  });
+
+  it('renders card grid item actions as whole-card compose targets', () => {
+    const schema = appUiSchemaSchema.parse({
+      page: 'Product catalog',
+      intent: 'Browse products with linked cards',
+      layout: 'screen',
+      sections: [
+        {
+          component: 'CardGridSection',
+          source: 'app',
+          props: {
+            title: 'Featured products',
+            items: [{ title: 'Seasonal bouquet', href: '/products/seasonal-bouquet' }],
+          },
+        },
+      ],
+    });
+    const cardAction = collectRenderableActions(schema).find(
+      (action) => action.target === '/products/seasonal-bouquet'
+    );
+    const html = renderToStaticMarkup(
+      <JsonRenderRenderer
+        onAction={() => undefined}
+        schema={schema}
+        selectedActionId={cardAction?.id}
+      />
+    );
+
+    expect(cardAction?.label).toBe('Seasonal bouquet');
+    expect(html).toContain('<button');
+    expect(html).toContain(`data-action-id="${cardAction?.id}"`);
+    expect(html).toContain('data-selected="true"');
+    expect(html).not.toContain('href="/products/seasonal-bouquet"');
   });
 
   it('renders broad work app sections from the catalog', () => {

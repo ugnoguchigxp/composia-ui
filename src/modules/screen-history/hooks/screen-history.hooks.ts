@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
+  PromptSessionVisibilityUpdateRequest,
   ScreenActionGenerateRequest,
   ScreenActionLinkUpsertRequest,
   ScreenEditRequest,
@@ -18,6 +19,8 @@ export const screenHistoryQueryKeys = {
   detail: (screenId: string) => [...screenHistoryQueryKeys.all, screenId] as const,
   lists: () => [...screenHistoryQueryKeys.all, 'list'] as const,
   list: (query: ScreenListQuery) => [...screenHistoryQueryKeys.lists(), query] as const,
+  projectPage: (projectId: string, pagePath: string) =>
+    [...screenHistoryQueryKeys.all, 'project', projectId, pagePath] as const,
   screenJson: (screenJsonId: string) => ['screen-json', screenJsonId] as const,
 };
 
@@ -50,6 +53,18 @@ export function useScreenConversation(sessionId: string | null, enabled = true) 
     enabled: enabled && Boolean(sessionId),
     queryKey: screenHistoryQueryKeys.conversation(sessionId ?? ''),
     queryFn: () => screenHistoryRepository.conversation(sessionId ?? ''),
+  });
+}
+
+export function useProjectPageSession(
+  projectId: string | null,
+  pagePath: string | null,
+  enabled = true
+) {
+  return useQuery({
+    enabled: enabled && Boolean(projectId && pagePath),
+    queryKey: screenHistoryQueryKeys.projectPage(projectId ?? '', pagePath ?? ''),
+    queryFn: () => screenHistoryRepository.projectPage(projectId ?? '', pagePath ?? ''),
   });
 }
 
@@ -155,6 +170,20 @@ export function useSaveSessionScreenJson(sessionId: string | null) {
         queryClient.invalidateQueries({ queryKey: screenHistoryQueryKeys.conversation(sessionId) });
       }
       queryClient.setQueryData(screenHistoryQueryKeys.detail(data.screen.id), data);
+    },
+  });
+}
+
+export function useUpdatePromptSessionVisibility(sessionId: string | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: PromptSessionVisibilityUpdateRequest) =>
+      screenHistoryRepository.updateSessionVisibility(sessionId ?? '', input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: screenHistoryQueryKeys.lists() });
+      if (sessionId) {
+        queryClient.invalidateQueries({ queryKey: screenHistoryQueryKeys.conversation(sessionId) });
+      }
     },
   });
 }

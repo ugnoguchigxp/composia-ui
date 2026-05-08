@@ -1,5 +1,6 @@
 import type { BaseComponentProps } from '@json-render/react';
 import type { z } from 'zod';
+import { isDatabaseSystemColumnName } from '../../../../../shared/schemas/database-design.schema';
 import type { componentPropsSchemas } from '../../services/catalog.service';
 import { visualIntentClassName } from '../../services/visual-intent.service';
 import { AppActionList } from '../AppActionControl';
@@ -8,6 +9,7 @@ type DataTableProps = z.infer<(typeof componentPropsSchemas)['DataTableSection']
 
 export function DataTableSection({ props }: BaseComponentProps<DataTableProps>) {
   const rows = props.rows ?? [];
+  const columns = props.columns.filter((column) => !isDatabaseSystemColumnName(column.key));
 
   return (
     <section
@@ -26,7 +28,7 @@ export function DataTableSection({ props }: BaseComponentProps<DataTableProps>) 
         <table className="w-full min-w-[560px] border-collapse text-left text-sm">
           <thead className="bg-muted text-muted-foreground">
             <tr>
-              {props.columns.map((column) => (
+              {columns.map((column) => (
                 <th className="px-ui py-ui font-medium" key={column.key}>
                   {column.label}
                 </th>
@@ -36,7 +38,7 @@ export function DataTableSection({ props }: BaseComponentProps<DataTableProps>) 
           <tbody>
             {rows.map((row, rowIndex) => (
               <tr className="border-t border-border" key={String(row.id ?? rowIndex)}>
-                {props.columns.map((column) => (
+                {columns.map((column) => (
                   <td className="px-ui py-ui text-foreground" key={column.key}>
                     {String(row[column.key] ?? '')}
                   </td>

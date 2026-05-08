@@ -420,11 +420,16 @@ export function createSandboxQueryService(repo: DatabaseDesignRepository) {
     ): Promise<SandboxRowResponse> => {
       const { schema, tableSchema } = await assertManagedTable(table);
       const parsed = createRuntimeUpdateSchema(schema.schema, table).parse(value);
-      const assignments = Object.keys(parsed)
-        .filter((key) => key !== 'id')
-        .map((key) => `${quoteIdent(key)} = ${sqlValue(tableSchema, key, parsed[key])}`)
-        .join(', ');
-      if (!assignments) throw new ValidationError('Row payload is empty');
+      const userFields = Object.keys(parsed).filter((key) => key !== 'id' && key !== 'updated_at');
+      if (userFields.length === 0) throw new ValidationError('Row payload is empty');
+      const assignments = [
+        ...userFields.map(
+          (key) => `${quoteIdent(key)} = ${sqlValue(tableSchema, key, parsed[key])}`
+        ),
+        ...(tableSchema.columns.some((column) => column.name === 'updated_at')
+          ? [`${quoteIdent('updated_at')} = now()`]
+          : []),
+      ].join(', ');
       const rows = await getSandboxSql().unsafe(
         `UPDATE ${quoteIdent(table)} SET ${assignments} WHERE id = ${quoteLiteral(id)} RETURNING *`
       );

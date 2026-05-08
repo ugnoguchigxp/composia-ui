@@ -6,8 +6,11 @@ import { logger } from '../../lib/logger';
 
 export const aiJsonMaxOutputTokens = 8000;
 
+const excludedLayoutProviderSectionComponents = new Set(['InsightPanel']);
 const sectionComponentDefinitions = componentDefinitions.filter(
-  (definition) => definition.placement === 'section'
+  (definition) =>
+    definition.placement === 'section' &&
+    !excludedLayoutProviderSectionComponents.has(definition.name)
 );
 const formSectionDefinition = sectionComponentDefinitions.find(
   (definition) => definition.name === 'FormSection'
@@ -142,38 +145,10 @@ export const appUiSchemaJsonSchema = {
     intent: { type: 'string' },
     layout: {
       type: 'string',
-      enum: [
-        'dashboard',
-        'entity-list',
-        'entity-detail',
-        'form',
-        'article-feed',
-        'screen',
-        'sidebar',
-      ],
+      enum: ['dashboard', 'entity-list', 'entity-detail', 'form', 'article-feed', 'screen'],
     },
     density: { type: 'string', enum: ['compact', 'normal', 'spacious'] },
     tone: { type: 'string', enum: ['neutral', 'primary', 'success', 'warning', 'danger'] },
-    navigation: {
-      type: 'object',
-      additionalProperties: false,
-      properties: {
-        items: {
-          type: 'array',
-          maxItems: 8,
-          items: {
-            type: 'object',
-            additionalProperties: false,
-            required: ['label', 'href'],
-            properties: {
-              label: { type: 'string', minLength: 1 },
-              href: appRelativeHrefJsonSchema,
-              description: { type: 'string' },
-            },
-          },
-        },
-      },
-    },
     sections: {
       type: 'array',
       minItems: 1,
@@ -214,26 +189,38 @@ export const appUiSchemaJsonSchema = {
 const componentInstructions = sectionComponentDefinitions
   .map((definition) => {
     const guidance = definition.promptGuidance ? `; guidance=${definition.promptGuidance}` : '';
-    return `- ${definition.name}: sources=${definition.allowedSources.join('|')}; props=${definition.promptProps}${guidance}`;
+    const variants = definition.variants?.length
+      ? `; variants=${definition.variants.join('|')}`
+      : '';
+    return `- ${definition.name}: sources=${definition.allowedSources.join('|')}; props=${definition.promptProps}${variants}${guidance}`;
   })
   .join('\n');
 
-export const layoutSystemContextVersion = 'layout-system-context-v8';
+export const layoutSystemContextVersion = 'layout-system-context-v10';
 
 export const layoutSystemContext = `
 Return App UI Schema as strict JSON only. No Markdown or prose.
+Do not output null values. Omit optional fields instead of setting them to null.
 All labels are visible product copy. Never mention generate/create/infer/build screen/page/UI in visible labels.
 Do not write labels like "画面を生成", "ページを生成", "注文管理画面を生成", "Generate screen", or "Create page".
 Action/navigation labels must name the destination or intent, e.g. "注文管理", "障害対応", "花の商品を見る", "詳細を見る".
 Keep generation mechanics only in action.kind and intentHint, never in label fields.
 For FormSection select fields, options must always be objects like {"label":"高","value":"high"}; never return string arrays like ["高","中","低"].
+For DataTableSection rows, each cell value must be a string, number, boolean, or null. Never put nested objects or arrays inside row cells.
 Keep page titles compact and workmanlike. Do not use oversized landing-page H1 or billboard headline patterns.
 The page and intent fields are internal metadata. Do not turn the user's prompt or inferred intent into visible title, description, intro, summary, or sidebar copy.
 Do not create sections that merely restate the request, such as "ホーム" plus a sentence describing the requested EC site. Put only real product content, navigation, search, listings, forms, or workflow UI in sections.
-Do not create standalone menu sections made of button lists, such as "ショップメニュー" or "Shop menu". Put primary navigation in layout:"sidebar" with navigation.items, or use NavigationPanel only as compact local tab navigation.
+Do not create generic overview, summary, introduction, current state, or insight panels. Start with the actual primary content or control surface the user asked for.
+InsightPanel is not available for new generated screens. Use concrete components such as MainSearchNavigationSection, CardGridSection, FilterBarSection, DataTableSection, MasterDetailSection, ChatPanelSection, FormSection, KanbanSection, CalendarSection, or SplitHeroSection.
+Use KpiSummarySection only when the prompt clearly needs concrete metrics with meaningful labels and values; never use it as an overview substitute.
+Do not create page-level side menus, persistent sidebar navigation, or standalone menu sections made of button lists, such as "ショップメニュー" or "Shop menu".
+Do not use layout:"sidebar" or top-level navigation.items for new generated screens. SidebarPage is a legacy renderer compatibility path, not a default generation pattern.
+Use MainSearchNavigationSection for Amazon-style marketplace pages that need a prominent main search bar with category tabs directly underneath.
+Use NavigationPanel only as compact local tab navigation when the user explicitly asks for tabs or local category switching without a main search bar.
+If a prompt needs a hierarchy, tree, archive, or related-post list, render it as real content inside an appropriate section instead of adding a generic side menu.
 Do not add newsletter, email signup, メルマガ, or ニュースレター registration as a default landing-page filler pattern.
 Choose varied layouts. Use dashboards only for analytics-heavy prompts.
-Use sidebar + navigation.items for multi-area apps. Use hero/carousel/card-grid for product or browsing flows. Use master-detail/inbox, kanban, calendar, chat, editor-preview, comparison, form, stepper, or action footer when they fit the user request.
+Use screen for ordinary generated pages. Use main-search navigation, hero/carousel/card-grid for product or browsing flows. Use master-detail/inbox, kanban, calendar, chat, editor-preview, comparison, form, stepper, article-feed, or action footer when they fit the user request.
 `.trim();
 
 const layoutInstructions = `
@@ -241,7 +228,7 @@ ${layoutSystemContext}
 
 Use catalog components only. Allowed components:
 ${componentInstructions}
-Links are app-relative paths like "/history". Images use https://picsum.photos/seed/<topic>/1200/720 only.
+Links are project-local app paths like "/", "/cart", "/basket", "/products". Use "/" for home/index links. Do not output "/prompt/project/..." routes; the backend canonicalizes generated page links. Images use https://picsum.photos/seed/<topic>/1200/720 only.
 For inferred next screens, add actions[{ kind:"generate-screen", id, label, target, intentHint }].
 Prefer 2-5 well-chosen sections with concise static sample data.
 `.trim();

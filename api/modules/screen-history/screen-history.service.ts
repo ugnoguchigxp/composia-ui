@@ -10,6 +10,8 @@ import type {
   PromptSession,
   PromptSessionMessage,
   PromptSessionSummary,
+  PromptSessionVisibilityResponse,
+  PromptSessionVisibilityUpdateRequest,
   ScreenActionGenerateRequest,
   ScreenActionLink,
   ScreenActionLinkDeleteResponse,
@@ -24,6 +26,7 @@ import type {
   ScreenJsonResponse,
   ScreenJsonSaveRequest,
   ScreenListQuery,
+  ScreenProjectPageResponse,
   ScreenRegenerateRequest,
   ScreenResponse,
 } from '../../../shared/schemas/screen-history.schema';
@@ -49,13 +52,14 @@ import {
   type ScreenJsonWithSessionRecord,
   screenHistoryRepository,
 } from './screen-history.repository';
+import { renderPublishedScreenHtml } from './screen-static-publisher';
 
 const componentRegistryVersion = `component-registry-v2:${layoutSystemContextVersion}`;
 const checkpointLabel = 'このバージョンへ戻る';
 const editPromptTokenLimit = 24_000;
 
-function sessionRoutePath(sessionId: string) {
-  return `/prompt/session/${sessionId}`;
+function projectRoutePath(projectId: string, pagePath: string, pageSessionId: string) {
+  return `/prompt/project/${projectId}/${pagePath}?id=${pageSessionId}`;
 }
 
 type ScreenHistoryAiService = {
@@ -105,21 +109,108 @@ function titleFromPrompt(prompt: string) {
   return `${compact.slice(0, 77)}...`;
 }
 
+function canonicalPathForSession(row: Pick<PromptSessionRecord, 'id' | 'pagePath' | 'projectId'>) {
+  if (!row.projectId || !row.pagePath) return null;
+  return projectRoutePath(row.projectId, row.pagePath, row.id);
+}
+
+function slugifyPagePath(value: string) {
+  const slug = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80);
+  return slug || 'page';
+}
+
+function parseProjectRoutePath(
+  value: string
+): { pagePath: string; projectId: string; sessionId: string | null } | null {
+  const trimmed = value.trim();
+  const [pathname, search = ''] = trimmed.split('?');
+  const match = pathname.match(/^\/prompt\/project\/([^/]+)\/(.+)$/);
+  if (!match?.[1] || !match[2]) return null;
+  const id = new URLSearchParams(search).get('id');
+  return {
+    projectId: match[1],
+    pagePath: normalizeProjectPagePath(`/${match[2]}`),
+    sessionId: id,
+  };
+}
+
+function normalizeProjectPagePath(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === '/') return 'index';
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) || trimmed.startsWith('//')) {
+    throw new ValidationError('External links cannot be used as UIDesign project pages');
+  }
+  if (trimmed.includes('\\')) {
+    throw new ValidationError('UIDesign project page paths cannot contain backslashes');
+  }
+  if (trimmed.startsWith('/prompt/project/')) {
+    const parsed = parseProjectRoutePath(trimmed);
+    if (!parsed) throw new ValidationError('Invalid UIDesign project route');
+    return parsed.pagePath;
+  }
+  if (trimmed.startsWith('/prompt/session/')) {
+    throw new ValidationError('Prompt session routes are already concrete routes');
+  }
+
+  const withoutQuery = trimmed.split(/[?#]/)[0] ?? '';
+  const withoutLeadingSlash = withoutQuery.replace(/^\/+/, '').replace(/\/+$/, '');
+  if (!withoutLeadingSlash) return 'index';
+  if (withoutLeadingSlash.includes('//')) {
+    throw new ValidationError('UIDesign project page paths cannot contain empty segments');
+  }
+  const canonicalName = withoutLeadingSlash.toLowerCase();
+  if (canonicalName === 'home' || canonicalName === 'index' || canonicalName === 'index.html') {
+    return 'index';
+  }
+  return withoutLeadingSlash;
+}
+
+function pagePathForAction(action: AppAction) {
+  if (action.target) {
+    try {
+      return normalizeProjectPagePath(action.target);
+    } catch (error) {
+      if (!(error instanceof ValidationError)) throw error;
+    }
+  }
+  return slugifyPagePath(action.label ?? action.intentHint ?? action.id);
+}
+
+function projectLocalPathForPage(pagePath: string) {
+  return pagePath === 'index' ? '/' : `/${pagePath}`;
+}
+
 function mapSession(row: PromptSessionRecord): PromptSession {
   return {
     id: row.id,
     title: row.title,
     createdBy: row.createdBy,
     activeScreenJsonId: row.activeScreenJsonId ?? null,
+    visibility: row.visibility ?? 'private',
+    publishedAt: row.publishedAt ? dateIso(row.publishedAt) : null,
+    projectId: row.projectId ?? null,
+    pagePath: row.pagePath ?? null,
+    canonicalPath: canonicalPathForSession(row),
     createdAt: dateIso(row.createdAt),
     updatedAt: dateIso(row.updatedAt),
   };
 }
 
-function mapLegacyScreen(row: GeneratedScreenRecord): GeneratedScreen {
+function mapLegacyScreen(
+  row: GeneratedScreenRecord,
+  session?: PromptSessionRecord
+): GeneratedScreen {
   return {
     id: row.id,
     sessionId: row.sessionId,
+    projectId: session?.projectId ?? null,
+    pagePath: session?.pagePath ?? null,
+    canonicalPath: session ? canonicalPathForSession(session) : null,
     parentScreenId: row.parentScreenId,
     version: 1,
     trigger: row.trigger as GeneratedScreen['trigger'],
@@ -138,11 +229,15 @@ function mapLegacyScreen(row: GeneratedScreenRecord): GeneratedScreen {
 
 function mapScreenJson(
   row: ScreenJsonRecord,
-  options: { includeContextSnapshot?: boolean } = {}
+  options: { includeContextSnapshot?: boolean } = {},
+  session?: PromptSessionRecord
 ): ScreenJson {
   return {
     id: row.id,
     sessionId: row.sessionId,
+    projectId: session?.projectId ?? null,
+    pagePath: session?.pagePath ?? null,
+    canonicalPath: session ? canonicalPathForSession(session) : null,
     version: row.version,
     trigger: row.trigger as ScreenJson['trigger'],
     prompt: row.prompt,
@@ -162,6 +257,12 @@ function mapScreenCheckpoint(row: ScreenJsonCheckpointRecord): ScreenCheckpoint 
   return {
     id: row.id,
     sessionId: row.sessionId,
+    projectId: row.projectId ?? null,
+    pagePath: row.pagePath ?? null,
+    canonicalPath:
+      row.projectId && row.pagePath
+        ? projectRoutePath(row.projectId, row.pagePath, row.sessionId)
+        : null,
     version: row.version,
     trigger: row.trigger as ScreenCheckpoint['trigger'],
     prompt: row.prompt,
@@ -175,8 +276,11 @@ function mapScreenCheckpoint(row: ScreenJsonCheckpointRecord): ScreenCheckpoint 
   };
 }
 
-function screenJsonAsGeneratedScreen(row: ScreenJsonRecord): GeneratedScreen {
-  const screenJson = mapScreenJson(row);
+function screenJsonAsGeneratedScreen(
+  row: ScreenJsonRecord,
+  session?: PromptSessionRecord
+): GeneratedScreen {
+  const screenJson = mapScreenJson(row, {}, session);
   return {
     ...screenJson,
     parentScreenId: null,
@@ -219,10 +323,13 @@ function checkpointMetadata(screenJson: ScreenJsonRecord): PromptSessionMessage[
 }
 
 function mapScreenJsonSummary(row: ScreenJsonWithSessionRecord): GeneratedScreenSummary {
-  const screenJson = mapScreenJson(row.screenJson);
+  const screenJson = mapScreenJson(row.screenJson, {}, row.session);
   return {
     id: screenJson.id,
     sessionId: screenJson.sessionId,
+    projectId: screenJson.projectId,
+    pagePath: screenJson.pagePath,
+    canonicalPath: screenJson.canonicalPath,
     parentScreenId: null,
     version: screenJson.version,
     trigger: screenJson.trigger,
@@ -239,10 +346,13 @@ function mapScreenJsonSummary(row: ScreenJsonWithSessionRecord): GeneratedScreen
 }
 
 function mapLegacySummary(row: GeneratedScreenWithSessionRecord): GeneratedScreenSummary {
-  const screen = mapLegacyScreen(row.screen);
+  const screen = mapLegacyScreen(row.screen, row.session);
   return {
     id: screen.id,
     sessionId: screen.sessionId,
+    projectId: screen.projectId,
+    pagePath: screen.pagePath,
+    canonicalPath: screen.canonicalPath,
     parentScreenId: screen.parentScreenId,
     version: screen.version,
     trigger: screen.trigger,
@@ -276,7 +386,7 @@ function summarizeSessions(
         sorted.find((row) => row.screenJson.id === session.activeScreenJsonId) ??
         sorted.at(-1) ??
         null;
-      const activeScreenJson = active ? mapScreenJson(active.screenJson) : null;
+      const activeScreenJson = active ? mapScreenJson(active.screenJson, {}, active.session) : null;
       const latestUpdatedAt = sorted.reduce(
         (latest, row) => (row.screenJson.updatedAt > latest ? row.screenJson.updatedAt : latest),
         session.updatedAt
@@ -288,6 +398,11 @@ function summarizeSessions(
         title: session.title,
         activeScreenJsonId: activeScreenJson?.id ?? null,
         activeVersion: activeScreenJson?.version ?? null,
+        visibility: session.visibility ?? 'private',
+        publishedAt: session.publishedAt ? dateIso(session.publishedAt) : null,
+        projectId: session.projectId ?? null,
+        pagePath: session.pagePath ?? null,
+        canonicalPath: canonicalPathForSession(session),
         page: activeScreenJson?.schema.page ?? null,
         prompt: activeScreenJson?.prompt ?? null,
         inferredIntent: activeScreenJson?.inferredIntent ?? null,
@@ -306,6 +421,13 @@ function findAction(schema: AppUiSchema, actionId: string): AppAction {
   const found = collectRenderableActions(schema).find((action) => action.id === actionId);
   if (found) return found;
   throw new NotFoundError('Screen action not found');
+}
+
+function actionForGeneration(storedAction: AppAction, requestedAction?: AppAction) {
+  if (requestedAction?.id === storedAction.id && requestedAction.target) {
+    return { ...storedAction, target: requestedAction.target };
+  }
+  return storedAction;
 }
 
 function promptForAction(
@@ -448,7 +570,7 @@ export function createScreenHistoryService(
 
     const checkpoints = checkpointRows.map(mapScreenCheckpoint);
     const active = activeRow
-      ? mapScreenJson(activeRow.screenJson, { includeContextSnapshot: false })
+      ? mapScreenJson(activeRow.screenJson, { includeContextSnapshot: false }, activeRow.session)
       : null;
     const storedMessages = storedMessageRows.map(mapMessage);
 
@@ -469,6 +591,7 @@ export function createScreenHistoryService(
     assistantContent,
     layoutPrompt,
     providerContext,
+    session,
     sessionId,
     snapshot,
     storedPrompt,
@@ -480,6 +603,7 @@ export function createScreenHistoryService(
     assistantContent: (screenJson: ScreenJsonRecord) => string;
     layoutPrompt: string;
     providerContext?: AiSourceContext;
+    session?: PromptSessionRecord;
     sessionId: string;
     snapshot: Awaited<ReturnType<typeof contextSnapshot>>['snapshot'];
     storedPrompt: string;
@@ -522,7 +646,7 @@ export function createScreenHistoryService(
     ]);
 
     return {
-      screen: screenJsonAsGeneratedScreen(screenJson),
+      screen: screenJsonAsGeneratedScreen(screenJson, session),
       activities: generated.activities,
     };
   };
@@ -532,6 +656,7 @@ export function createScreenHistoryService(
     current,
     prompt,
     schema,
+    session,
     sessionId,
     userContent,
     userId,
@@ -540,6 +665,7 @@ export function createScreenHistoryService(
     current: ScreenJson;
     prompt: string;
     schema: AppUiSchema;
+    session?: PromptSessionRecord;
     sessionId: string;
     userContent: string;
     userId: string;
@@ -582,7 +708,7 @@ export function createScreenHistoryService(
     ]);
 
     return {
-      screen: screenJsonAsGeneratedScreen(screenJson),
+      screen: screenJsonAsGeneratedScreen(screenJson, session),
       activities: [],
     };
   };
@@ -590,7 +716,25 @@ export function createScreenHistoryService(
   const activeScreenJsonForSession = async (userId: string, sessionId: string) => {
     const active = await repo.findActiveSessionScreenJson(userId, sessionId);
     if (!active) throw new NotFoundError('Active ScreenJSON not found');
-    return mapScreenJson(active.screenJson);
+    return mapScreenJson(active.screenJson, {}, active.session);
+  };
+
+  const ensureProjectForSession = async (
+    userId: string,
+    session: PromptSessionRecord,
+    fallbackPagePath = 'index'
+  ) => {
+    if (session.projectId && session.pagePath) return session;
+    const project = await repo.createProject({
+      createdBy: userId,
+      rootSessionId: session.id,
+      title: session.title,
+    });
+    return repo.updateSessionProjectPage(
+      session.id,
+      project.id,
+      session.pagePath ?? fallbackPagePath
+    );
   };
 
   const assertSessionAction = async (userId: string, sessionId: string, actionId: string) => {
@@ -611,13 +755,43 @@ export function createScreenHistoryService(
     return Math.max(0, ...rows.map((row) => row.screenJson.version)) + 1;
   };
 
+  const targetSessionForActionPage = async (
+    userId: string,
+    sourceSession: PromptSessionRecord,
+    action: AppAction
+  ) => {
+    const projectSession = await ensureProjectForSession(userId, sourceSession);
+    if (!projectSession.projectId) {
+      throw new ValidationError('UIDesign project could not be resolved');
+    }
+    const pagePath = pagePathForAction(action);
+    const targetSession =
+      (await repo.findProjectPageSession(userId, projectSession.projectId, pagePath)) ??
+      (await repo.createSession({
+        activeScreenJsonId: null,
+        createdBy: userId,
+        pagePath,
+        projectId: projectSession.projectId,
+        title: titleFromPrompt(action.label),
+      }));
+
+    return {
+      canonicalPath: projectRoutePath(projectSession.projectId, pagePath, targetSession.id),
+      pagePath,
+      projectId: projectSession.projectId,
+      sourceSession: projectSession,
+      targetSession,
+      version: await nextVersionAfter(userId, targetSession.id),
+    };
+  };
+
   const getScreenJsonOrLegacy = async (userId: string, screenId: string) => {
     const screenJsonRow = await repo.findScreenJsonById(userId, screenId);
     if (screenJsonRow) {
       return {
         kind: 'screen-json' as const,
         row: screenJsonRow,
-        screen: screenJsonAsGeneratedScreen(screenJsonRow.screenJson),
+        screen: screenJsonAsGeneratedScreen(screenJsonRow.screenJson, screenJsonRow.session),
       };
     }
 
@@ -626,7 +800,7 @@ export function createScreenHistoryService(
     return {
       kind: 'legacy' as const,
       row: legacyRow,
-      screen: mapLegacyScreen(legacyRow.screen),
+      screen: mapLegacyScreen(legacyRow.screen, legacyRow.session),
     };
   };
 
@@ -665,6 +839,8 @@ export function createScreenHistoryService(
       sessionId: string,
       input: ScreenEditRequest
     ): Promise<ScreenResponse> => {
+      const session = await repo.findSessionById(userId, sessionId);
+      if (!session) throw new NotFoundError('Prompt session not found');
       const current = await activeScreenJsonForSession(userId, sessionId);
       const editPrompt = buildEditPrompt(current.schema, input.prompt);
       const version = await nextVersionAfter(userId, sessionId, current.version);
@@ -673,6 +849,7 @@ export function createScreenHistoryService(
         assistantContent: (screenJson) =>
           `${appUiSchemaSchema.parse(screenJson.schema).page} を更新しました。`,
         layoutPrompt: editPrompt,
+        session,
         sessionId,
         snapshot: { previousScreen: current.schema },
         storedPrompt: input.prompt,
@@ -686,6 +863,8 @@ export function createScreenHistoryService(
       sessionId: string,
       input: ScreenJsonSaveRequest
     ): Promise<ScreenResponse> => {
+      const session = await repo.findSessionById(userId, sessionId);
+      if (!session) throw new NotFoundError('Prompt session not found');
       const current = await activeScreenJsonForSession(userId, sessionId);
       return saveSchemaScreenJson({
         assistantContent: (screenJson) =>
@@ -693,6 +872,7 @@ export function createScreenHistoryService(
         current,
         prompt: input.prompt ?? 'ScreenJSON manual save',
         schema: input.schema,
+        session,
         sessionId,
         userContent: input.prompt ?? 'ScreenJSON を保存',
         userId,
@@ -704,6 +884,12 @@ export function createScreenHistoryService(
         createdBy: userId,
         title: input.title ?? titleFromPrompt(input.prompt),
       });
+      const project = await repo.createProject({
+        createdBy: userId,
+        rootSessionId: session.id,
+        title: session.title,
+      });
+      const projectSession = await repo.updateSessionProjectPage(session.id, project.id, 'index');
       const context = await contextSnapshot(contextReader);
       return saveScreenJson({
         assistantContent: (screenJson) =>
@@ -712,7 +898,8 @@ export function createScreenHistoryService(
           } sections`,
         layoutPrompt: input.prompt,
         providerContext: context.providerContext,
-        sessionId: session.id,
+        session: projectSession,
+        sessionId: projectSession.id,
         snapshot: context.snapshot,
         storedPrompt: input.prompt,
         trigger: 'initial-prompt',
@@ -727,44 +914,39 @@ export function createScreenHistoryService(
       input: ScreenActionGenerateRequest
     ): Promise<ScreenResponse> => {
       const current = await getScreenJsonOrLegacy(userId, screenId);
-      const action = findAction(current.screen.schema, actionId);
-      if (action.kind !== 'generate-screen') {
-        throw new ValidationError('Action does not generate a screen');
+      const action = actionForGeneration(findAction(current.screen.schema, actionId), input.action);
+      if (action.kind === 'submit') {
+        throw new ValidationError('Submit actions cannot generate a page');
       }
 
       const context = await contextSnapshot(contextReader, current.screen.schema);
-      const targetSession = await repo.createSession({
-        activeScreenJsonId: null,
-        createdBy: userId,
-        title: titleFromPrompt(action.label),
-      });
+      const target = await targetSessionForActionPage(userId, current.row.session, action);
       const result = await saveScreenJson({
         action,
         assistantContent: (screenJson) =>
           `${appUiSchemaSchema.parse(screenJson.schema).page} を生成しました。`,
         layoutPrompt: promptForAction(current.screen, action, input.prompt),
         providerContext: context.providerContext,
-        sessionId: targetSession.id,
+        session: target.targetSession,
+        sessionId: target.targetSession.id,
         snapshot: context.snapshot,
         storedPrompt: input.prompt ?? action.label,
         trigger: 'action-click',
         userContent: action.label,
-        version: 1,
+        version: target.version,
       });
       if (current.kind === 'screen-json') {
-        const source = mapScreenJson(current.row.screenJson);
-        const linked = updateRenderableActionTarget(
-          source.schema,
-          actionId,
-          sessionRoutePath(result.screen.sessionId)
-        );
+        const source = mapScreenJson(current.row.screenJson, {}, target.sourceSession);
+        const targetPath = projectLocalPathForPage(target.pagePath);
+        const linked = updateRenderableActionTarget(source.schema, actionId, targetPath);
         if (linked) {
           await saveSchemaScreenJson({
             assistantContent: (screenJson) =>
               `${appUiSchemaSchema.parse(screenJson.schema).page} の遷移先を更新しました。`,
             current: source,
-            prompt: `${action.label} -> ${sessionRoutePath(result.screen.sessionId)}`,
+            prompt: `${action.label} -> ${targetPath}`,
             schema: linked.schema,
+            session: target.sourceSession,
             sessionId: source.sessionId,
             userContent: `${action.label} の遷移先を ${result.screen.schema.page} に設定`,
             userId,
@@ -779,43 +961,40 @@ export function createScreenHistoryService(
       actionId: string,
       input: ScreenActionGenerateRequest
     ): Promise<ScreenResponse> => {
+      const sourceSession = await repo.findSessionById(userId, sessionId);
+      if (!sourceSession) throw new NotFoundError('Prompt session not found');
       const current = await activeScreenJsonForSession(userId, sessionId);
-      const action = findAction(current.schema, actionId);
-      if (action.kind !== 'generate-screen') {
-        throw new ValidationError('Action does not generate a screen');
+      const action = actionForGeneration(findAction(current.schema, actionId), input.action);
+      if (action.kind === 'submit') {
+        throw new ValidationError('Submit actions cannot generate a page');
       }
 
       const context = await contextSnapshot(contextReader, current.schema);
-      const targetSession = await repo.createSession({
-        activeScreenJsonId: null,
-        createdBy: userId,
-        title: titleFromPrompt(action.label),
-      });
+      const target = await targetSessionForActionPage(userId, sourceSession, action);
       const result = await saveScreenJson({
         action,
         assistantContent: (screenJson) =>
           `${appUiSchemaSchema.parse(screenJson.schema).page} を生成しました。`,
         layoutPrompt: promptForAction(current, action, input.prompt),
         providerContext: context.providerContext,
-        sessionId: targetSession.id,
+        session: target.targetSession,
+        sessionId: target.targetSession.id,
         snapshot: context.snapshot,
         storedPrompt: input.prompt ?? action.label,
         trigger: 'action-click',
         userContent: action.label,
-        version: 1,
+        version: target.version,
       });
-      const linked = updateRenderableActionTarget(
-        current.schema,
-        actionId,
-        sessionRoutePath(result.screen.sessionId)
-      );
+      const targetPath = projectLocalPathForPage(target.pagePath);
+      const linked = updateRenderableActionTarget(current.schema, actionId, targetPath);
       if (linked) {
         await saveSchemaScreenJson({
           assistantContent: (screenJson) =>
             `${appUiSchemaSchema.parse(screenJson.schema).page} の遷移先を更新しました。`,
           current,
-          prompt: `${action.label} -> ${sessionRoutePath(result.screen.sessionId)}`,
+          prompt: `${action.label} -> ${targetPath}`,
           schema: linked.schema,
+          session: target.sourceSession,
           sessionId,
           userContent: `${action.label} の遷移先を ${result.screen.schema.page} に設定`,
           userId,
@@ -826,6 +1005,24 @@ export function createScreenHistoryService(
     get: async (userId: string, screenId: string): Promise<ScreenResponse> => {
       const current = await getScreenJsonOrLegacy(userId, screenId);
       return { screen: current.screen, activities: [] as AiActivity[] };
+    },
+    projectPage: async (
+      userId: string,
+      projectId: string,
+      pagePath: string
+    ): Promise<ScreenProjectPageResponse> => {
+      const normalizedPagePath = normalizeProjectPagePath(`/${pagePath}`);
+      const project = await repo.findProjectById(userId, projectId);
+      if (!project) throw new NotFoundError('UIDesign project not found');
+      const session = await repo.findProjectPageSession(userId, projectId, normalizedPagePath);
+      if (!session) throw new NotFoundError('UIDesign project page not found');
+      return {
+        canonicalPath: projectRoutePath(projectId, normalizedPagePath, session.id),
+        pagePath: normalizedPagePath,
+        projectId,
+        session: mapSession(session),
+        sessionId: session.id,
+      };
     },
     list: async (userId: string, _query?: ScreenListQuery) => {
       const screenJsonRows = await repo.listScreenJsons(userId);
@@ -913,6 +1110,7 @@ export function createScreenHistoryService(
           `${appUiSchemaSchema.parse(screenJson.schema).page} を再生成しました。`,
         layoutPrompt: input.prompt ?? current.screen.prompt,
         providerContext: context.providerContext,
+        session: current.row.session,
         sessionId: current.screen.sessionId,
         snapshot: context.snapshot,
         storedPrompt: input.prompt ?? current.screen.prompt,
@@ -926,6 +1124,8 @@ export function createScreenHistoryService(
       sessionId: string,
       input: ScreenRegenerateRequest
     ): Promise<ScreenResponse> => {
+      const session = await repo.findSessionById(userId, sessionId);
+      if (!session) throw new NotFoundError('Prompt session not found');
       const current = await activeScreenJsonForSession(userId, sessionId);
       const context = await contextSnapshot(contextReader, current.schema);
       const version = await nextVersionAfter(userId, sessionId, current.version);
@@ -935,6 +1135,7 @@ export function createScreenHistoryService(
           `${appUiSchemaSchema.parse(screenJson.schema).page} を再生成しました。`,
         layoutPrompt: input.prompt ?? current.prompt,
         providerContext: context.providerContext,
+        session,
         sessionId,
         snapshot: context.snapshot,
         storedPrompt: input.prompt ?? current.prompt,
@@ -955,18 +1156,37 @@ export function createScreenHistoryService(
 
       await repo.updateSessionActiveScreenJson(sessionId, screenJsonId);
       return {
-        screen: screenJsonAsGeneratedScreen(found.screenJson),
+        screen: screenJsonAsGeneratedScreen(found.screenJson, found.session),
         conversation: await sessionConversation(userId, sessionId),
       };
     },
     screenJson: async (userId: string, screenJsonId: string): Promise<ScreenJsonResponse> => {
       const found = await repo.findScreenJsonById(userId, screenJsonId);
       if (!found) throw new NotFoundError('ScreenJSON not found');
-      const screenJson = mapScreenJson(found.screenJson);
+      const screenJson = mapScreenJson(found.screenJson, {}, found.session);
       return {
         screenJson,
         schemaJson: JSON.stringify(screenJson.schema),
       };
+    },
+    updateSessionVisibility: async (
+      userId: string,
+      sessionId: string,
+      input: PromptSessionVisibilityUpdateRequest
+    ): Promise<PromptSessionVisibilityResponse> => {
+      if (input.visibility === 'private') {
+        const session = await repo.updateSessionVisibility(userId, sessionId, 'private');
+        return { session: mapSession(session) };
+      }
+
+      const active = await repo.findActiveSessionScreenJson(userId, sessionId);
+      if (!active) throw new NotFoundError('Active ScreenJSON not found');
+      const html = renderPublishedScreenHtml(appUiSchemaSchema.parse(active.screenJson.schema));
+      const session = await repo.updateSessionVisibility(userId, sessionId, 'public', {
+        html,
+        screenJsonId: active.screenJson.id,
+      });
+      return { session: mapSession(session) };
     },
   };
 }

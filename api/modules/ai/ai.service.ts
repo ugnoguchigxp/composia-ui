@@ -164,6 +164,70 @@ function normalizeOptionLikeValue(option: unknown) {
   return option;
 }
 
+function stripProviderNullObjectProperties(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(stripProviderNullObjectProperties);
+  }
+
+  if (typeof value !== 'object' || value === null) return value;
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([, child]) => child !== null)
+      .map(([key, child]) => [key, stripProviderNullObjectProperties(child)])
+  );
+}
+
+function safeParseProviderSchema(value: unknown) {
+  return appUiSchemaSchema.safeParse(stripProviderNullObjectProperties(value));
+}
+
+function normalizeTableCellValue(value: unknown): string | number | boolean | null {
+  if (
+    typeof value === 'string' ||
+    typeof value === 'number' ||
+    typeof value === 'boolean' ||
+    value === null
+  ) {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .map(normalizeTableCellValue)
+      .filter((item) => item !== null)
+      .join(', ');
+  }
+
+  if (typeof value === 'object' && value !== null) {
+    for (const key of ['name', 'title', 'label', 'value', 'id']) {
+      const candidate = (value as Record<string, unknown>)[key];
+      if (
+        typeof candidate === 'string' ||
+        typeof candidate === 'number' ||
+        typeof candidate === 'boolean'
+      ) {
+        return String(candidate);
+      }
+    }
+
+    return JSON.stringify(value);
+  }
+
+  return String(value);
+}
+
+function normalizeTableRows(rows: unknown) {
+  if (!Array.isArray(rows)) return rows;
+
+  return rows.map((row) => {
+    if (typeof row !== 'object' || row === null || Array.isArray(row)) return row;
+    return Object.fromEntries(
+      Object.entries(row).map(([key, value]) => [key, normalizeTableCellValue(value)])
+    );
+  });
+}
+
 function normalizeProviderSchema(schema: AppUiSchema): AppUiSchema {
   return {
     ...schema,
@@ -197,6 +261,16 @@ function normalizeProviderSchema(schema: AppUiSchema): AppUiSchema {
           props: {
             ...section.props,
             filters: section.props.filters.map(normalizeOptionLikeValue),
+          },
+        };
+      }
+
+      if (section.component === 'DataTableSection') {
+        return {
+          ...section,
+          props: {
+            ...section.props,
+            rows: normalizeTableRows(section.props.rows),
           },
         };
       }
@@ -240,7 +314,7 @@ export function createAiService(
       const cacheKey = cacheKeyForPrompt(prompt, context);
       if (cache) {
         const cached = await cache.get(cacheNamespace, cacheKey);
-        const parsedCached = cached.entry ? appUiSchemaSchema.safeParse(cached.entry.value) : null;
+        const parsedCached = cached.entry ? safeParseProviderSchema(cached.entry.value) : null;
         if (parsedCached?.success) {
           const cachedSchema = normalizeProviderSchema(parsedCached.data);
           try {
@@ -276,9 +350,12 @@ export function createAiService(
       const startedAt = Date.now();
       const generated = await provider.generateLayout(promptWithContext(prompt, context));
       const providerElapsedMs = Date.now() - startedAt;
-      const parsed = appUiSchemaSchema.safeParse(generated);
+      const parsed = safeParseProviderSchema(generated);
       if (!parsed.success) {
-        throw new ValidationError('AI returned an invalid UI schema', parsed.error.flatten());
+        throw new ValidationError('AI returned an invalid UI schema', {
+          ...parsed.error.flatten(),
+          issues: parsed.error.issues,
+        });
       }
       const schema = normalizeProviderSchema(parsed.data);
 

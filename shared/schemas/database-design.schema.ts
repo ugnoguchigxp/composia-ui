@@ -26,6 +26,23 @@ export const databaseScalarTypeSchema = z.enum([
   'enum',
 ]);
 
+export const databaseTimestampColumnNames = ['created_at', 'updated_at'] as const;
+export const databaseActiveFlagColumnName = 'is_active' as const;
+export const databaseAuditColumnNames = [
+  ...databaseTimestampColumnNames,
+  databaseActiveFlagColumnName,
+] as const;
+export const databaseSystemColumnNames = ['id', ...databaseAuditColumnNames] as const;
+
+export type DatabaseAuditColumnName = (typeof databaseAuditColumnNames)[number];
+export type DatabaseSystemColumnName = (typeof databaseSystemColumnNames)[number];
+
+const databaseSystemColumnNameSet = new Set<string>(databaseSystemColumnNames);
+
+export function isDatabaseSystemColumnName(value: string): value is DatabaseSystemColumnName {
+  return databaseSystemColumnNameSet.has(value);
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -248,18 +265,90 @@ function defaultPrimaryKeyColumn() {
   });
 }
 
-function normalizeColumnsForTable(value: unknown) {
-  const columns = Array.isArray(value)
+function hiddenSystemColumnUi() {
+  return {
+    filterable: false,
+    formVisible: false,
+    listVisible: false,
+    sortable: false,
+  };
+}
+
+function auditColumnDefinition(name: DatabaseAuditColumnName) {
+  if (name === 'is_active') {
+    return {
+      name,
+      label: 'アクティブ',
+      type: 'boolean' as const,
+      nullable: false,
+      primaryKey: false,
+      unique: false,
+      default: { kind: 'literal' as const, value: true },
+      validation: { required: true },
+      ui: hiddenSystemColumnUi(),
+    };
+  }
+
+  return {
+    name,
+    label: name === 'created_at' ? '作成日時' : '最終更新日時',
+    type: 'timestamp' as const,
+    nullable: false,
+    primaryKey: false,
+    unique: false,
+    default: { kind: 'now' as const },
+    validation: { required: true },
+    ui: hiddenSystemColumnUi(),
+  };
+}
+
+function canonicalAuditColumn(
+  column: Record<string, unknown> | undefined,
+  name: DatabaseAuditColumnName
+) {
+  const definition = auditColumnDefinition(name);
+  return {
+    ...column,
+    ...definition,
+  };
+}
+
+function normalizeColumnsForTable(value: unknown, options: { includeActiveFlag?: boolean } = {}) {
+  const columns: Record<string, unknown>[] = Array.isArray(value)
     ? value.map((column) => normalizeColumn(column)).filter(isRecord)
     : [];
   const idIndex = columns.findIndex((column) => column.name === 'id');
   const firstPrimaryKeyIndex = columns.findIndex((column) => column.primaryKey === true);
   const primaryKeyIndex = idIndex >= 0 ? idIndex : firstPrimaryKeyIndex;
-  if (primaryKeyIndex < 0) return [defaultPrimaryKeyColumn(), ...columns];
-
-  return columns.map((column, index) =>
-    index === primaryKeyIndex ? primaryKeyColumn(column) : { ...column, primaryKey: false }
+  const columnsWithPrimaryKey: Record<string, unknown>[] =
+    primaryKeyIndex < 0
+      ? [defaultPrimaryKeyColumn(), ...columns]
+      : columns.map((column, index) =>
+          index === primaryKeyIndex ? primaryKeyColumn(column) : { ...column, primaryKey: false }
+        );
+  const columnsByName = new Map(columnsWithPrimaryKey.map((column) => [column.name, column]));
+  const auditColumnNames =
+    options.includeActiveFlag === false ? databaseTimestampColumnNames : databaseAuditColumnNames;
+  const auditColumns = auditColumnNames.map((name) =>
+    canonicalAuditColumn(columnsByName.get(name), name)
   );
+  const withoutAuditColumns = columnsWithPrimaryKey.filter(
+    (column) =>
+      typeof column.name !== 'string' ||
+      !databaseAuditColumnNames.includes(column.name as DatabaseAuditColumnName)
+  );
+  const result: Record<string, unknown>[] = [];
+  let auditColumnsInserted = false;
+
+  for (const column of withoutAuditColumns) {
+    result.push(column);
+    if (column.primaryKey === true && !auditColumnsInserted) {
+      result.push(...auditColumns);
+      auditColumnsInserted = true;
+    }
+  }
+
+  return auditColumnsInserted ? result : [...auditColumns, ...result];
 }
 
 export const databaseColumnSchema = z.preprocess(
@@ -379,6 +468,7 @@ function normalizeIndexes(value: unknown, tableName: unknown) {
 function normalizeTable(value: unknown) {
   if (!isRecord(value)) return value;
   const name = normalizeIdentifierText(value.name, 'table');
+  const includeActiveFlag = value.__includeActiveFlag !== false;
   const ui = isRecord(value.ui)
     ? {
         displayField: normalizeColumnIdentifier(value.ui.displayField, name) || undefined,
@@ -390,7 +480,7 @@ function normalizeTable(value: unknown) {
     name,
     label: value.label ?? titleFromIdentifier(name, 'Table'),
     description: value.description,
-    columns: normalizeColumnsForTable(value.columns),
+    columns: normalizeColumnsForTable(value.columns, { includeActiveFlag }),
     indexes: normalizeIndexes(value.indexes, name),
     ui,
   };
@@ -445,6 +535,24 @@ export const databaseRelationSchema = z.discriminatedUnion('kind', [
     .strict(),
 ]);
 
+function manyToManyJoinTableNames(value: unknown) {
+  const names = new Set<string>();
+  if (!Array.isArray(value)) return names;
+
+  for (const relation of value) {
+    if (!isRecord(relation)) continue;
+    const kind =
+      typeof relation.kind === 'string'
+        ? relation.kind.trim().toLowerCase().replace(/_/g, '-')
+        : '';
+    if (kind !== 'many-to-many') continue;
+    const joinTable = normalizeIdentifierText(relation.joinTable ?? relation.join_table);
+    if (joinTable) names.add(joinTable);
+  }
+
+  return names;
+}
+
 function normalizeDatabaseSchemaJson(value: unknown) {
   if (Array.isArray(value)) {
     const firstTable = value.find(isRecord);
@@ -460,7 +568,15 @@ function normalizeDatabaseSchemaJson(value: unknown) {
     };
   }
   if (!isRecord(value)) return value;
-  const tables = Array.isArray(value.tables) ? value.tables : [];
+  const rawRelations = value.relations;
+  const joinTableNames = manyToManyJoinTableNames(rawRelations);
+  const tables = Array.isArray(value.tables)
+    ? value.tables.map((table) => {
+        if (!isRecord(table)) return table;
+        const tableName = normalizeIdentifierText(table.name, 'table');
+        return joinTableNames.has(tableName) ? { ...table, __includeActiveFlag: false } : table;
+      })
+    : [];
   const firstTable = tables.find(isRecord);
   const firstTableName = normalizeIdentifierText(firstTable?.name);
   const fallbackName = firstTableName ? `${firstTableName}_schema` : 'app_schema';
@@ -473,7 +589,7 @@ function normalizeDatabaseSchemaJson(value: unknown) {
     label: value.label ?? titleFromIdentifier(name, 'Database Schema'),
     purpose: value.purpose ?? value.description ?? value.label ?? titleFromIdentifier(name),
     tables,
-    relations: value.relations,
+    relations: rawRelations,
     uiHints: value.uiHints ?? value.ui_hints,
   };
 }

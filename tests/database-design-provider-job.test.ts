@@ -87,6 +87,21 @@ describe('database design provider job conversion', () => {
         expect.objectContaining({ columns: ['post_id', 'tag_id'], unique: true }),
       ])
     );
+    expect(
+      draft.databaseSchema.tables
+        .find((table) => table.name === 'posts')
+        ?.columns.map((column) => column.name)
+    ).toEqual(expect.arrayContaining(['created_at', 'updated_at', 'is_active']));
+    expect(
+      draft.databaseSchema.tables
+        .find((table) => table.name === 'post_tags')
+        ?.columns.map((column) => column.name)
+    ).toEqual(['id', 'created_at', 'updated_at', 'post_id', 'tag_id']);
+    expect(
+      draft.databaseSchema.tables
+        .find((table) => table.name === 'post_tags')
+        ?.columns.some((column) => column.name === 'is_active')
+    ).toBe(false);
     expect(draft.databaseSchema.relations.map((relation) => relation.kind)).toEqual([
       'one-to-many',
       'many-to-many',

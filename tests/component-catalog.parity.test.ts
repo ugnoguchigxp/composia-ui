@@ -46,4 +46,10 @@ describe('Component Catalog Parity', () => {
     expect(sectionNames).not.toContain('DashboardPage');
     expect(sectionNames).toContain('InsightPanel');
   });
+
+  it('exposes marketplace search tabs as a catalog variant', () => {
+    expect(
+      componentDefinitions.find((definition) => definition.name === 'MainSearchNavigationSection')
+    ).toEqual(expect.objectContaining({ variants: ['marketplace-search-tabs'] }));
+  });
 });

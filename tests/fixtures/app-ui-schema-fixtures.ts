@@ -217,6 +217,23 @@ export const sectionComponentFixtures = {
       links: [{ label: 'History', href: '/history' }],
     },
   },
+  MainSearchNavigationSection: {
+    expectedText: 'Fixture search',
+    source: 'navigation',
+    props: {
+      title: 'Fixture market',
+      searchPlaceholder: 'Fixture search',
+      searchButtonLabel: 'Search',
+      categories: [
+        { label: 'All', value: 'all' },
+        { label: 'Books', value: 'books' },
+      ],
+      links: [
+        { label: 'Deals', href: '/deals' },
+        { label: 'Cart', href: '/cart' },
+      ],
+    },
+  },
   EmptyState: {
     expectedText: 'Fixture empty',
     source: 'app',

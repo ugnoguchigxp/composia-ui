@@ -47,6 +47,9 @@ export function ScreenHistoryList({
           const checkpoints = screens
             .filter((screen) => screen.sessionId === session.id)
             .sort((a, b) => a.version - b.version);
+          const linkProps = session.canonicalPath
+            ? { to: session.canonicalPath as never }
+            : { params: { sessionId: session.id }, to: '/prompt/session/$sessionId' as never };
 
           return (
             <article
@@ -58,9 +61,9 @@ export function ScreenHistoryList({
             >
               <div className="flex items-start gap-3">
                 <Link
+                  // biome-ignore lint/suspicious/noExplicitAny: route target can be a canonical URL string
+                  {...(linkProps as any)}
                   className="min-w-0 flex-1 hover:opacity-80"
-                  params={{ sessionId: session.id }}
-                  to="/prompt/session/$sessionId"
                 >
                   <h2 className="truncate font-semibold">{session.page ?? session.title}</h2>
                   <p className="mt-1 line-clamp-2 text-muted-foreground text-sm">
@@ -130,62 +133,68 @@ export function ScreenHistoryList({
 
   return (
     <div className="grid gap-3">
-      {screens.map((screen) => (
-        <article
-          className={cn(
-            'rounded-lg border bg-card p-4 transition-colors',
-            activeScreenId === screen.id ? 'border-primary' : 'border-border'
-          )}
-          key={screen.id}
-        >
-          <div className="flex items-start gap-3">
-            <Link
-              className="min-w-0 flex-1 hover:opacity-80"
-              params={{ screenId: screen.id }}
-              to="/prompt/$screenId"
-            >
-              <h2 className="truncate font-semibold">{screen.page}</h2>
-              <p className="mt-1 line-clamp-2 text-muted-foreground text-sm">
-                {screen.inferredIntent}
-              </p>
-            </Link>
-            {onDelete ? (
-              <button
-                aria-label={`Delete ${screen.page}`}
-                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md hover:bg-secondary disabled:opacity-50"
-                disabled={isDeleting}
-                onClick={() => {
-                  if (window.confirm(`Delete "${screen.page}"?`)) {
-                    onDelete({
-                      id: screen.id,
-                      title: screen.page,
-                      type: 'screen',
-                      versionCount: 1,
-                    });
-                  }
-                }}
-                type="button"
+      {screens.map((screen) => {
+        const linkProps = screen.canonicalPath
+          ? { to: screen.canonicalPath as never }
+          : { params: { screenId: screen.id }, to: '/prompt/$screenId' as never };
+
+        return (
+          <article
+            className={cn(
+              'rounded-lg border bg-card p-4 transition-colors',
+              activeScreenId === screen.id ? 'border-primary' : 'border-border'
+            )}
+            key={screen.id}
+          >
+            <div className="flex items-start gap-3">
+              <Link
+                // biome-ignore lint/suspicious/noExplicitAny: route target can be a canonical URL string
+                {...(linkProps as any)}
+                className="min-w-0 flex-1 hover:opacity-80"
               >
-                <Trash2 className="h-4 w-4" />
-              </button>
-            ) : null}
-          </div>
-          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-muted-foreground text-xs">
-            <span className="inline-flex items-center gap-1">
-              <Clock className="h-3.5 w-3.5" />
-              {formatDate(screen.createdAt)}
-            </span>
-            <span>{screen.sections} sections</span>
-            {screen.parentScreenId ? (
+                <h2 className="truncate font-semibold">{screen.page}</h2>
+                <p className="mt-1 line-clamp-2 text-muted-foreground text-sm">
+                  {screen.inferredIntent}
+                </p>
+              </Link>
+              {onDelete ? (
+                <button
+                  aria-label={`Delete ${screen.page}`}
+                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md hover:bg-secondary disabled:opacity-50"
+                  disabled={isDeleting}
+                  onClick={() => {
+                    if (window.confirm(`Delete "${screen.page}"?`)) {
+                      onDelete({
+                        id: screen.id,
+                        title: screen.page,
+                        type: 'screen',
+                        versionCount: 1,
+                      });
+                    }
+                  }}
+                  type="button"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              ) : null}
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-muted-foreground text-xs">
               <span className="inline-flex items-center gap-1">
-                <GitBranch className="h-3.5 w-3.5" />
-                child
+                <Clock className="h-3.5 w-3.5" />
+                {formatDate(screen.createdAt)}
               </span>
-            ) : null}
-            <span>{screen.trigger}</span>
-          </div>
-        </article>
-      ))}
+              <span>{screen.sections} sections</span>
+              {screen.parentScreenId ? (
+                <span className="inline-flex items-center gap-1">
+                  <GitBranch className="h-3.5 w-3.5" />
+                  child
+                </span>
+              ) : null}
+              <span>{screen.trigger}</span>
+            </div>
+          </article>
+        );
+      })}
     </div>
   );
 }

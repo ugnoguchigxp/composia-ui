@@ -63,6 +63,77 @@ describe('AI provider response fixtures', () => {
     );
   });
 
+  it('omits optional null fields from provider output before schema validation', async () => {
+    const service = createFixtureService(aiProviderResponses.schemaWithOptionalNullFields);
+
+    const result = await service.generateLayout({ prompt: 'Make product recommendations' });
+
+    expect(result.schema).toEqual(
+      expect.objectContaining({
+        layout: 'screen',
+        sections: [
+          expect.objectContaining({
+            component: 'CardGridSection',
+            actions: [
+              {
+                id: 'open-gift',
+                label: 'Gift set',
+                kind: 'generate-screen',
+                carry: {
+                  navigation: true,
+                  sourceContext: true,
+                  visualIntent: true,
+                },
+              },
+            ],
+            props: {
+              title: 'Recommendations',
+              items: [
+                {
+                  title: 'Gift set',
+                  href: '/products/gift-set',
+                },
+              ],
+            },
+          }),
+        ],
+      })
+    );
+    expect(result.schema).not.toHaveProperty('density');
+    expect(result.schema).not.toHaveProperty('navigation');
+    expect(result.schema.sections[0]).not.toHaveProperty('visualIntent');
+  });
+
+  it('normalizes object-like data table cells from provider output', async () => {
+    const service = createFixtureService(aiProviderResponses.dataTableWithObjectCells);
+
+    await expect(service.generateLayout({ prompt: 'Make product rankings' })).resolves.toEqual(
+      expect.objectContaining({
+        schema: expect.objectContaining({
+          sections: [
+            expect.objectContaining({
+              component: 'DataTableSection',
+              props: expect.objectContaining({
+                rows: [
+                  {
+                    rank: 1,
+                    product: 'Wireless earbuds',
+                    tags: 'Audio, Gift',
+                  },
+                  {
+                    rank: 2,
+                    product: 'Desk light',
+                    tags: 'Lighting, Work',
+                  },
+                ],
+              }),
+            }),
+          ],
+        }),
+      })
+    );
+  });
+
   it('rejects unsafe action links from provider output', async () => {
     const service = createFixtureService(aiProviderResponses.unsafeExternalActionHref);
 

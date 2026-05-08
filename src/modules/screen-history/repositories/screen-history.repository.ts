@@ -1,4 +1,6 @@
 import type {
+  PromptSessionVisibilityResponse,
+  PromptSessionVisibilityUpdateRequest,
   ScreenActionGenerateRequest,
   ScreenActionLinkDeleteResponse,
   ScreenActionLinkResponse,
@@ -13,10 +15,12 @@ import type {
   ScreenJsonSaveRequest,
   ScreenListQuery,
   ScreenListResponse,
+  ScreenProjectPageResponse,
   ScreenRegenerateRequest,
   ScreenResponse,
 } from '../../../../shared/schemas/screen-history.schema';
 import {
+  promptSessionVisibilityResponseSchema,
   screenActionLinkDeleteResponseSchema,
   screenActionLinkResponseSchema,
   screenCheckpointRestoreResponseSchema,
@@ -25,6 +29,7 @@ import {
   screenDeleteResponseSchema,
   screenJsonResponseSchema,
   screenListResponseSchema,
+  screenProjectPageResponseSchema,
   screenResponseSchema,
 } from '../../../../shared/schemas/screen-history.schema';
 import { client } from '../../../lib/api';
@@ -59,6 +64,17 @@ export const screenHistoryRepository = {
     const response = await client.sessions[':sessionId'].$delete({ param: { sessionId } });
     if (!response.ok) throw new Error(await readErrorMessage(response));
     return screenDeleteResponseSchema.parse(await response.json());
+  },
+  updateSessionVisibility: async (
+    sessionId: string,
+    input: PromptSessionVisibilityUpdateRequest
+  ): Promise<PromptSessionVisibilityResponse> => {
+    const response = await client.sessions[':sessionId'].visibility.$put({
+      json: input,
+      param: { sessionId },
+    });
+    if (!response.ok) throw new Error(await readErrorMessage(response));
+    return promptSessionVisibilityResponseSchema.parse(await response.json());
   },
   edit: async (sessionId: string, input: ScreenEditRequest): Promise<ScreenResponse> => {
     const response = await client.sessions[':sessionId'].edit.$post({
@@ -146,6 +162,16 @@ export const screenHistoryRepository = {
     const response = await client.screens.$get({ query });
     if (!response.ok) throw new Error(await readErrorMessage(response));
     return screenListResponseSchema.parse(await response.json());
+  },
+  projectPage: async (projectId: string, pagePath: string): Promise<ScreenProjectPageResponse> => {
+    const response = await fetch(
+      `/api/projects/${encodeURIComponent(projectId)}/pages/${pagePath
+        .split('/')
+        .map((part) => encodeURIComponent(part))
+        .join('/')}`
+    );
+    if (!response.ok) throw new Error(await readErrorMessage(response));
+    return screenProjectPageResponseSchema.parse(await response.json());
   },
   regenerate: async (screenId: string, input: ScreenRegenerateRequest): Promise<ScreenResponse> => {
     const response = await client.screens[':screenId'].regenerate.$post({

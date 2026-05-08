@@ -436,7 +436,7 @@ ErrorState
 
 AI に `Button`、`Card`、`Input`、`Grid` のような低レベル部品を主な語彙として渡さない。低レベル UI は registry component の内部実装に閉じる。`@json-render/shadcn` は試作の参照候補に留め、初期実装では `@json-render/core` と `@json-render/react` を使い、app-local registry component で品質を制御する。
 
-レイアウトの単調化を避けるため、AI layout planner は分析系 prompt 以外で KPI / table へ寄せすぎない。多領域アプリや設定・カタログ・管理系には `layout: "sidebar"` と `navigation.items`、EC / product / venue / portfolio には `SplitHeroSection`、商品・記事・ギャラリー・推薦には `CarouselSection`、オンボーディング・注文・障害対応・サポートには `ProcessStepperSection` を優先候補にする。さらに、検索・絞り込みには `FilterBarSection`、カード一覧には `CardGridSection`、作成・編集・設定には `FormSection`、チケット・メール・CRM には `MasterDetailSection`、タスク・案件管理には `KanbanSection`、予定・予約には `CalendarSection`、会話 UI には `ChatPanelSection`、エディタ系には `EditorPreviewSection`、比較・差分には `ComparisonSection`、確認・次アクションには `ActionFooterSection` を使う。
+レイアウトの単調化を避けるため、AI layout planner は分析系 prompt 以外で KPI / table へ寄せすぎない。新規生成では汎用サイドメニューを既定パターンにせず、`layout: "sidebar"` と top-level `navigation.items` は legacy renderer 互換用に留める。タブ的な局所ナビゲーションが明示的に必要な場合のみ `NavigationPanel` を使い、階層メニュー、記事アーカイブ、関連ポスト一覧のような用途は専用 content section として扱う。EC / product / venue / portfolio には `SplitHeroSection`、商品・記事・ギャラリー・推薦には `CarouselSection`、オンボーディング・注文・障害対応・サポートには `ProcessStepperSection` を優先候補にする。さらに、検索・絞り込みには `FilterBarSection`、カード一覧には `CardGridSection`、作成・編集・設定には `FormSection`、チケット・メール・CRM には `MasterDetailSection`、タスク・案件管理には `KanbanSection`、予定・予約には `CalendarSection`、会話 UI には `ChatPanelSection`、エディタ系には `EditorPreviewSection`、比較・差分には `ComparisonSection`、確認・次アクションには `ActionFooterSection` を使う。
 
 ### 6.3 Normalized Entity
 

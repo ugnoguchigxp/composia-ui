@@ -11,24 +11,41 @@ describe('ai provider system context', () => {
   it('keeps generation mechanics out of visible UI labels', () => {
     expect(layoutSystemContext).toContain('strict JSON only');
     expect(layoutSystemContext).toContain('No Markdown or prose');
+    expect(layoutSystemContext).toContain('Do not output null values');
     expect(layoutSystemContext).toContain('visible product copy');
     expect(layoutSystemContext).toContain('Never mention generate/create/infer/build');
     expect(layoutSystemContext).toContain(
       'Keep generation mechanics only in action.kind and intentHint'
     );
     expect(layoutSystemContext).toContain('Do not write labels like');
-    expect(layoutSystemContext).toContain('Use sidebar + navigation.items');
+    expect(layoutSystemContext).toContain('Do not use layout:"sidebar"');
+    expect(layoutSystemContext).toContain('top-level navigation.items');
+    expect(layoutSystemContext).toContain('SidebarPage is a legacy renderer compatibility path');
     expect(layoutSystemContext).toContain('Keep page titles compact');
     expect(layoutSystemContext).toContain('The page and intent fields are internal metadata');
     expect(layoutSystemContext).toContain('Do not create sections that merely restate the request');
-    expect(layoutSystemContext).toContain('Do not create standalone menu sections');
+    expect(layoutSystemContext).toContain('Do not create generic overview');
+    expect(layoutSystemContext).toContain('InsightPanel is not available');
+    expect(layoutSystemContext).toContain('Use KpiSummarySection only when');
+    expect(layoutSystemContext).toContain('Do not create page-level side menus');
+    expect(layoutSystemContext).toContain('Use MainSearchNavigationSection for Amazon-style');
     expect(layoutSystemContext).toContain('NavigationPanel only as compact local tab navigation');
+    expect(layoutSystemContext).toContain('hierarchy, tree, archive, or related-post list');
     expect(layoutSystemContext).toContain('Do not add newsletter');
     expect(layoutSystemContext).toContain('ニュースレター registration');
+    expect(layoutSystemContext).toContain('main-search navigation');
     expect(layoutSystemContext).toContain('hero/carousel/card-grid');
     expect(layoutSystemContext).toContain('master-detail/inbox');
     expect(layoutSystemContext).toContain('options must always be objects');
     expect(layoutSystemContext).toContain('never return string arrays');
+    expect(layoutSystemContext).toContain('DataTableSection rows');
+    expect(layoutSystemContext).toContain('Never put nested objects or arrays inside row cells');
+  });
+
+  it('keeps legacy sidebar navigation out of new provider-generated screens', () => {
+    expect(appUiSchemaJsonSchema.properties.layout.enum).not.toContain('sidebar');
+    expect(appUiSchemaJsonSchema.properties).not.toHaveProperty('navigation');
+    expect(layoutSystemContext).not.toContain('Use sidebar + navigation.items');
   });
 
   it('allows larger structured UI responses before provider truncation', () => {
@@ -68,13 +85,16 @@ describe('ai provider system context', () => {
       (nonFormSection?.properties.component as { enum?: string[] }).enum ?? [];
     const catalogSectionNames = componentDefinitions
       .filter(
-        (definition) => definition.placement === 'section' && definition.name !== 'FormSection'
+        (definition) =>
+          definition.placement === 'section' &&
+          definition.name !== 'FormSection' &&
+          definition.name !== 'InsightPanel'
       )
       .map((definition) => definition.name)
       .sort();
 
     expect([...providerSectionNames].sort()).toEqual(catalogSectionNames);
-    expect(providerSectionNames).toContain('InsightPanel');
+    expect(providerSectionNames).not.toContain('InsightPanel');
     expect(providerSectionNames).not.toContain('DashboardPage');
     expect(layoutSystemContext).not.toContain('Allowed components:');
   });

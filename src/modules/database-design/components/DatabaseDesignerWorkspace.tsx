@@ -23,6 +23,7 @@ import type {
   SandboxStateResponse,
   SandboxTableState,
 } from '../../../../shared/schemas/database-design.schema';
+import { isDatabaseSystemColumnName } from '../../../../shared/schemas/database-design.schema';
 import {
   Accordion,
   AccordionContent,
@@ -112,6 +113,10 @@ function cellValueLabel(value: unknown) {
   if (value instanceof Date) return value.toISOString();
   if (typeof value === 'object') return JSON.stringify(value);
   return String(value);
+}
+
+function visibleDatabaseColumns<T extends { name: string }>(columns: T[]) {
+  return columns.filter((column) => !isDatabaseSystemColumnName(column.name));
 }
 
 function confirmDraftDelete(title: string) {
@@ -581,7 +586,7 @@ function SandboxTableAccordion({
                     {table.managed ? 'managed' : 'unmanaged'}
                   </Badge>
                   <Badge>{table.rowCount} rows</Badge>
-                  <Badge>{table.columns.length} columns</Badge>
+                  <Badge>{visibleDatabaseColumns(table.columns).length} columns</Badge>
                 </div>
               </div>
             </AccordionTrigger>
@@ -663,10 +668,13 @@ function SandboxRowsDialog({
   const rowsQuery = useSandboxTableContents(table?.name ?? null, Boolean(table));
   const rows = rowsQuery.data?.rows ?? [];
   const columns = useMemo(() => {
-    const tableColumns = table?.columns.map((column) => column.name) ?? [];
+    const tableColumns =
+      table?.columns
+        .map((column) => column.name)
+        .filter((column) => !isDatabaseSystemColumnName(column)) ?? [];
     const extras = rows
       .flatMap((row) => Object.keys(row))
-      .filter((key) => !tableColumns.includes(key));
+      .filter((key) => !isDatabaseSystemColumnName(key) && !tableColumns.includes(key));
     return [...tableColumns, ...Array.from(new Set(extras))];
   }, [rows, table?.columns]);
 
@@ -747,6 +755,8 @@ function SandboxRowsDialog({
 }
 
 function SandboxColumnTable({ columns }: { columns: SandboxTableState['columns'] }) {
+  const visibleColumns = visibleDatabaseColumns(columns);
+
   return (
     <div>
       <div className="mb-1 text-muted-foreground">columns</div>
@@ -762,7 +772,7 @@ function SandboxColumnTable({ columns }: { columns: SandboxTableState['columns']
             </tr>
           </thead>
           <tbody>
-            {columns.map((column) => (
+            {visibleColumns.map((column) => (
               <tr className="border-t border-border" key={column.name}>
                 <td className="px-3 py-2 font-mono">{column.name}</td>
                 <td className="px-3 py-2 font-mono">{column.scalarType}</td>
@@ -942,7 +952,7 @@ function DraftTableList({ tables }: { tables: DatabaseTable[] }) {
                   <span className="truncate font-semibold">{table.name}</span>
                 </div>
                 <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
-                  <Badge>{table.columns.length} columns</Badge>
+                  <Badge>{visibleDatabaseColumns(table.columns).length} columns</Badge>
                   <Badge>{table.indexes.length} indexes</Badge>
                 </div>
               </div>
@@ -983,6 +993,8 @@ function DraftTableList({ tables }: { tables: DatabaseTable[] }) {
 }
 
 function DraftColumnTable({ columns }: { columns: DatabaseTable['columns'] }) {
+  const visibleColumns = visibleDatabaseColumns(columns);
+
   return (
     <div>
       <div className="mb-1 text-muted-foreground">columns</div>
@@ -999,7 +1011,7 @@ function DraftColumnTable({ columns }: { columns: DatabaseTable['columns'] }) {
             </tr>
           </thead>
           <tbody>
-            {columns.map((column) => (
+            {visibleColumns.map((column) => (
               <tr className="border-t border-border" key={column.name}>
                 <td className="px-3 py-2 font-mono">{column.name}</td>
                 <td className="px-3 py-2">{column.label}</td>

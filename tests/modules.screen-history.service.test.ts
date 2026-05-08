@@ -9,6 +9,7 @@ import type {
   ScreenJsonCheckpointRecord,
   ScreenJsonRecord,
   ScreenJsonWithSessionRecord,
+  UiProjectRecord,
 } from '../api/modules/screen-history/screen-history.repository';
 import { createScreenHistoryService } from '../api/modules/screen-history/screen-history.service';
 import { screenResponseSchema } from '../shared/schemas/screen-history.schema';
@@ -21,6 +22,7 @@ const screenId = '33333333-3333-4333-8333-333333333333';
 const childScreenId = '44444444-4444-4444-8444-444444444444';
 const childSessionId = '44444444-4444-4444-9444-444444444444';
 const editScreenId = '55555555-5555-4555-8555-555555555555';
+const projectId = '99999999-9999-4999-8999-999999999999';
 const now = new Date('2026-05-07T00:00:00.000Z');
 
 function schema(input: Partial<AppUiSchema> = {}): AppUiSchema {
@@ -55,6 +57,10 @@ function sessionRecord(input: Partial<PromptSessionRecord> = {}): PromptSessionR
     title: input.title ?? 'ECサイトのトップ画面',
     createdBy: input.createdBy ?? userId,
     activeScreenJsonId: input.activeScreenJsonId ?? screenId,
+    visibility: input.visibility ?? 'private',
+    publishedAt: input.publishedAt ?? null,
+    projectId: input.projectId ?? null,
+    pagePath: input.pagePath ?? null,
     createdAt: input.createdAt ?? now,
     updatedAt: input.updatedAt ?? now,
   };
@@ -134,7 +140,9 @@ function createFakeRepository({
     activeScreenJsonId: initialScreenJsons.at(-1)?.id ?? screenId,
   });
   const sessions = new Map<string, PromptSessionRecord>([[session.id, session]]);
+  const projects = new Map<string, UiProjectRecord>();
   let createSessionCount = 0;
+  let createProjectCount = 0;
   const screenJsons = [...initialScreenJsons];
   const legacyScreens = [...initialLegacyScreens];
   const messages: PromptSessionMessageRecord[] = [...initialMessages];
@@ -144,26 +152,45 @@ function createFakeRepository({
     screenJson,
     session: sessions.get(screenJson.sessionId) ?? sessionRecord({ id: screenJson.sessionId }),
   });
-  const checkpoint = (screenJson: ScreenJsonRecord): ScreenJsonCheckpointRecord => ({
-    id: screenJson.id,
-    sessionId: screenJson.sessionId,
-    version: screenJson.version,
-    trigger: screenJson.trigger,
-    prompt: screenJson.prompt,
-    inferredIntent: screenJson.inferredIntent,
-    action: screenJson.action,
-    page: screenJson.schema.page,
-    databaseSchemaJsonId: screenJson.databaseSchemaJsonId,
-    dataBindings: screenJson.dataBindings,
-    createdAt: screenJson.createdAt,
-    updatedAt: screenJson.updatedAt,
-  });
+  const checkpoint = (screenJson: ScreenJsonRecord): ScreenJsonCheckpointRecord => {
+    const checkpointSession =
+      sessions.get(screenJson.sessionId) ?? sessionRecord({ id: screenJson.sessionId });
+    return {
+      id: screenJson.id,
+      sessionId: screenJson.sessionId,
+      projectId: checkpointSession.projectId,
+      pagePath: checkpointSession.pagePath,
+      version: screenJson.version,
+      trigger: screenJson.trigger,
+      prompt: screenJson.prompt,
+      inferredIntent: screenJson.inferredIntent,
+      action: screenJson.action,
+      page: screenJson.schema.page,
+      databaseSchemaJsonId: screenJson.databaseSchemaJsonId,
+      dataBindings: screenJson.dataBindings,
+      createdAt: screenJson.createdAt,
+      updatedAt: screenJson.updatedAt,
+    };
+  };
   const legacyWithSession = (screen: GeneratedScreenRecord): GeneratedScreenWithSessionRecord => ({
     screen,
     session: sessions.get(screen.sessionId) ?? sessionRecord({ id: screen.sessionId }),
   });
 
   const repo: ScreenHistoryRepository = {
+    createProject: vi.fn(async (input) => {
+      createProjectCount += 1;
+      const project: UiProjectRecord = {
+        id: input.id ?? (createProjectCount === 1 ? projectId : childSessionId),
+        title: input.title,
+        createdBy: input.createdBy,
+        rootSessionId: input.rootSessionId ?? null,
+        createdAt: now,
+        updatedAt: now,
+      };
+      projects.set(project.id, project);
+      return project;
+    }),
     createMessages: vi.fn(async (input) => {
       const created = input.map((message, index) =>
         messageRecord({
@@ -276,6 +303,14 @@ function createFakeRepository({
       return active ? withSession(active) : null;
     }),
     findSessionById: vi.fn(async (_userId, id) => sessions.get(id) ?? null),
+    findProjectById: vi.fn(async (_userId, id) => projects.get(id) ?? null),
+    findProjectPageSession: vi.fn(async (_userId, id, pagePath) => {
+      return (
+        Array.from(sessions.values()).find(
+          (item) => item.projectId === id && item.pagePath === pagePath
+        ) ?? null
+      );
+    }),
     listLegacyChildren: vi.fn(async (_userId, parentId) =>
       legacyScreens
         .filter((screen) => screen.parentScreenId === parentId)
@@ -317,6 +352,22 @@ function createFakeRepository({
     updateSessionActiveScreenJson: vi.fn(async (id, screenJsonId) => {
       const current = sessions.get(id) ?? sessionRecord({ id });
       session = sessionRecord({ ...current, activeScreenJsonId: screenJsonId });
+      sessions.set(id, session);
+      return session;
+    }),
+    updateSessionProjectPage: vi.fn(async (id, nextProjectId, pagePath) => {
+      const current = sessions.get(id) ?? sessionRecord({ id });
+      session = sessionRecord({ ...current, pagePath, projectId: nextProjectId });
+      sessions.set(id, session);
+      return session;
+    }),
+    updateSessionVisibility: vi.fn(async (_userId, id, visibility, _publishedPage) => {
+      const current = sessions.get(id) ?? sessionRecord({ id });
+      session = sessionRecord({
+        ...current,
+        publishedAt: visibility === 'public' ? now : null,
+        visibility,
+      });
       sessions.set(id, session);
       return session;
     }),
@@ -433,7 +484,7 @@ describe('screen history service', () => {
     expect(linkedSource?.schema.sections[0]?.actions?.[0]).toEqual(
       expect.objectContaining({
         id: 'flower-detail',
-        target: `/prompt/session/${result.screen.sessionId}`,
+        target: '/flower-details',
       })
     );
     expect(layoutService.generateLayout).toHaveBeenCalledWith(
@@ -548,7 +599,7 @@ describe('screen history service', () => {
       | undefined;
     expect(firstLink?.[0]).toEqual(
       expect.objectContaining({
-        href: `/prompt/session/${result.screen.sessionId}`,
+        href: '/cart',
         label: 'Cart',
       })
     );
@@ -759,6 +810,34 @@ describe('screen history service', () => {
         targetSessionId: null,
       }),
     ]);
+  });
+
+  it('updates prompt session visibility without generating a new ScreenJSON version', async () => {
+    const current = screenJsonRecord({ id: screenId, version: 1 });
+    const { repo, screenJsons } = createFakeRepository({ initialScreenJsons: [current] });
+    const layoutService = {
+      generateLayout: vi.fn(async () => ({ schema: schema(), activities: [] })),
+    };
+    const service = createScreenHistoryService(repo, layoutService);
+
+    const result = await service.updateSessionVisibility(userId, sessionId, {
+      visibility: 'public',
+    });
+
+    expect(result.session.visibility).toBe('public');
+    expect(result.session.publishedAt).toBe(now.toISOString());
+    expect(repo.updateSessionVisibility).toHaveBeenCalledWith(
+      userId,
+      sessionId,
+      'public',
+      expect.objectContaining({
+        html: expect.stringContaining('data-composia-static-screen="true"'),
+        screenJsonId: current.id,
+      })
+    );
+    expect(screenJsons).toEqual([current]);
+    expect(repo.createScreenJson).not.toHaveBeenCalled();
+    expect(layoutService.generateLayout).not.toHaveBeenCalled();
   });
 
   it('saves a provided ScreenJSON schema as a new version without calling the layout service', async () => {

@@ -107,6 +107,50 @@ describe('database schema validator', () => {
     expect(validateDatabaseSchemaJson(validSchema()).relations[0].kind).toBe('one-to-many');
   });
 
+  it('omits active flags from many-to-many join tables while keeping timestamps', () => {
+    const draft = databaseDesignDraftResponseSchema.parse({
+      databaseSchema: {
+        name: 'forum_schema',
+        purpose: 'Manage posts and tags',
+        tables: [
+          { name: 'posts', columns: [{ name: 'title', type: 'string', not_null: true }] },
+          { name: 'tags', columns: [{ name: 'name', type: 'string', not_null: true }] },
+          {
+            name: 'post_tags',
+            columns: [
+              { name: 'post_id', type: 'foreign_key', not_null: true },
+              { name: 'tag_id', type: 'foreign_key', not_null: true },
+            ],
+            indexes: [{ columns: ['post_id', 'tag_id'], unique: true }],
+          },
+        ],
+        relations: [
+          {
+            kind: 'many-to-many',
+            name: 'posts_tags',
+            leftTable: 'posts',
+            rightTable: 'tags',
+            joinTable: 'post_tags',
+            leftForeignKeyColumn: 'post_id',
+            rightForeignKeyColumn: 'tag_id',
+          },
+        ],
+      },
+      dataBindings: [],
+      rationale: 'forum tables are proposed',
+    });
+
+    expect(draft.databaseSchema.tables.find((table) => table.name === 'posts')?.columns).toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: 'is_active' })])
+    );
+    expect(
+      draft.databaseSchema.tables
+        .find((table) => table.name === 'post_tags')
+        ?.columns.map((column) => column.name)
+    ).toEqual(['id', 'created_at', 'updated_at', 'post_id', 'tag_id']);
+    expect(() => validateDatabaseSchemaJson(draft.databaseSchema)).not.toThrow();
+  });
+
   it('rejects broken relation references', () => {
     const schema = validSchema();
     schema.relations = [
@@ -259,10 +303,30 @@ describe('database schema validator', () => {
 
     const product = draft.databaseSchema.tables[0];
     expect(product.label).toBe('Products');
-    expect(product.columns[1]?.label).toBe('Name');
-    expect(product.columns[1]?.type).toBe('text');
-    expect(product.columns[2]?.default).toEqual({ kind: 'literal', value: 0 });
-    expect(product.columns[3]?.type).toBe('boolean');
+    expect(product.columns.slice(0, 4).map((column) => column.name)).toEqual([
+      'id',
+      'created_at',
+      'updated_at',
+      'is_active',
+    ]);
+    expect(product.columns.find((column) => column.name === 'created_at')?.ui).toMatchObject({
+      formVisible: false,
+      listVisible: false,
+    });
+    expect(product.columns.find((column) => column.name === 'updated_at')?.default).toEqual({
+      kind: 'now',
+    });
+    expect(product.columns.find((column) => column.name === 'is_active')?.default).toEqual({
+      kind: 'literal',
+      value: true,
+    });
+    expect(product.columns.find((column) => column.name === 'name')?.label).toBe('Name');
+    expect(product.columns.find((column) => column.name === 'name')?.type).toBe('text');
+    expect(product.columns.find((column) => column.name === 'price')?.default).toEqual({
+      kind: 'literal',
+      value: 0,
+    });
+    expect(product.columns.find((column) => column.name === 'active')?.type).toBe('boolean');
     expect(draft.dataBindings).toEqual([
       {
         id: 'products_list',
@@ -321,6 +385,9 @@ describe('database schema validator', () => {
     expect(validateDatabaseSchemaJson(draft.databaseSchema).tables).toHaveLength(2);
     expect(draft.databaseSchema.tables[0]?.columns.map((column) => column.name)).toEqual([
       'id',
+      'created_at',
+      'updated_at',
+      'is_active',
       'name',
       'sort_order',
     ]);

@@ -11,7 +11,10 @@ import type {
   DatabaseTable,
   SandboxStateResponse,
 } from '../../../shared/schemas/database-design.schema';
-import { databaseDesignDraftResponseSchema } from '../../../shared/schemas/database-design.schema';
+import {
+  databaseDesignDraftResponseSchema,
+  isDatabaseSystemColumnName,
+} from '../../../shared/schemas/database-design.schema';
 import type { AppUiSchema, AppUiSchemaSection } from '../../../shared/schemas/ui-schema.schema';
 import { config } from '../../config';
 import { AppError, ValidationError } from '../../lib/errors';
@@ -282,8 +285,8 @@ function textColumn(name: string, label: string, overrides: Partial<DatabaseColu
   };
 }
 
-function systemColumns(): DatabaseColumn[] {
-  return [
+function systemColumns(options: { includeActiveFlag?: boolean } = {}): DatabaseColumn[] {
+  const columns: DatabaseColumn[] = [
     {
       name: 'id',
       label: 'ID',
@@ -304,9 +307,34 @@ function systemColumns(): DatabaseColumn[] {
       unique: false,
       default: { kind: 'now' },
       validation: { required: true },
-      ui: { listVisible: true, formVisible: false, filterable: false, sortable: true },
+      ui: { listVisible: false, formVisible: false, filterable: false, sortable: false },
+    },
+    {
+      name: 'updated_at',
+      label: '最終更新日時',
+      type: 'timestamp',
+      nullable: false,
+      primaryKey: false,
+      unique: false,
+      default: { kind: 'now' },
+      validation: { required: true },
+      ui: { listVisible: false, formVisible: false, filterable: false, sortable: false },
     },
   ];
+  if (options.includeActiveFlag !== false) {
+    columns.push({
+      name: 'is_active',
+      label: 'アクティブ',
+      type: 'boolean',
+      nullable: false,
+      primaryKey: false,
+      unique: false,
+      default: { kind: 'literal', value: true },
+      validation: { required: true },
+      ui: { listVisible: false, formVisible: false, filterable: false, sortable: false },
+    });
+  }
+  return columns;
 }
 
 function columnTypeFromField(field: Record<string, unknown>) {
@@ -464,7 +492,7 @@ function displayFieldForTable(columns: DatabaseColumn[]) {
 
 function tableFromJobTable(table: DatabaseDesignJob['tables'][number]): DatabaseTable {
   const fieldColumns = table.fields
-    .filter((field) => field.name !== 'id' && field.name !== 'created_at')
+    .filter((field) => !isDatabaseSystemColumnName(field.name))
     .map((field) => columnFromJobField(field));
   const columns = [...systemColumns(), ...fieldColumns];
   const displayField = displayFieldForTable(columns);
@@ -600,7 +628,7 @@ function relationFromJob(
       right?.label ?? titleCase(relationship.rightTable)
     }`,
     description: `${relationship.leftTable} to ${relationship.rightTable}`,
-    columns: systemColumns(),
+    columns: systemColumns({ includeActiveFlag: false }),
     indexes: [],
     ui: { defaultSortField: 'created_at', defaultSortDirection: 'desc' as const },
   };
@@ -715,7 +743,7 @@ function deterministicDraft(input: DatabaseDesignProviderInput): DatabaseDesignD
   const tableName = 'records';
   const label = input.currentScreen?.page ?? 'Records';
   const columns = columnsFromScreen(input.currentScreen, tableName);
-  const displayField = columns.find((column) => column.name === 'name')?.name ?? columns[2]?.name;
+  const displayField = displayFieldForTable(columns);
   const databaseSchema = {
     name: 'app_schema',
     label,
@@ -783,7 +811,7 @@ function buildLlmInput(input: DatabaseDesignProviderInput) {
     'Table shape: { "name": snake_case_identifier, "label": string, "description"?: string, "fields": Field[] }.',
     'Field shape: { "name": snake_case_identifier, "label": string, "type": "uuid"|"text"|"varchar"|"integer"|"bigint"|"numeric"|"boolean"|"date"|"timestamp"|"jsonb"|"enum", "required"?: boolean, "unique"?: boolean, "enumName"?: snake_case_identifier, "enumValues"?: string[] }.',
     'Relationship shapes: { "kind": "one_to_many", "parentTable": string, "childTable": string, "foreignKeyColumn"?: string, "required"?: boolean, "onDelete"?: "cascade"|"restrict"|"set-null" } or { "kind": "many_to_many", "leftTable": string, "rightTable": string, "joinTable": string, "onDelete"?: "cascade"|"restrict" }.',
-    'Do not return databaseSchema, dataBindings, screen, SQL, indexes, id columns, created_at columns, or join table fields. The application derives them.',
+    'Do not return databaseSchema, dataBindings, screen, SQL, indexes, id columns, created_at columns, updated_at columns, is_active columns, or join table fields. The application derives system columns, omits is_active on many-to-many join tables, and hides system columns from UI tables/forms.',
     'Return compact minified JSON directly. Do not include Markdown, comments, prose, or reasoning.',
     '',
     json,

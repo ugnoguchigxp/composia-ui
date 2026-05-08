@@ -40,6 +40,73 @@ export const aiProviderResponses = {
       },
     ],
   },
+  schemaWithOptionalNullFields: {
+    page: 'Product catalog',
+    intent: 'Browse product recommendations',
+    layout: 'screen',
+    density: null,
+    navigation: null,
+    sections: [
+      {
+        component: 'CardGridSection',
+        source: 'app',
+        visualIntent: null,
+        actions: [
+          {
+            id: 'open-gift',
+            label: 'Gift set',
+            kind: 'generate-screen',
+            target: null,
+            intentHint: null,
+          },
+        ],
+        props: {
+          title: 'Recommendations',
+          description: null,
+          items: [
+            {
+              title: 'Gift set',
+              description: null,
+              badge: null,
+              href: '/products/gift-set',
+              image: null,
+            },
+          ],
+        },
+      },
+    ],
+  },
+  dataTableWithObjectCells: {
+    page: 'Product ranking',
+    intent: 'Show product ranking rows',
+    layout: 'screen',
+    sections: [
+      {
+        component: 'DataTableSection',
+        source: 'api',
+        props: {
+          title: 'Ranking',
+          columns: [
+            { key: 'rank', label: 'Rank' },
+            { key: 'product', label: 'Product' },
+            { key: 'tags', label: 'Tags' },
+          ],
+          rows: [
+            {
+              rank: 1,
+              product: { id: 'p-1', name: 'Wireless earbuds', price: '¥12,800' },
+              tags: [{ label: 'Audio' }, { label: 'Gift' }],
+            },
+            {
+              rank: 2,
+              product: { title: 'Desk light', category: 'Home office' },
+              tags: ['Lighting', { label: 'Work' }],
+            },
+          ],
+        },
+      },
+    ],
+  },
   unsafeExternalActionHref: {
     page: 'Unsafe action',
     intent: 'Reject external action URLs',

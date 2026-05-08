@@ -21,6 +21,7 @@ import {
   mcpToolsRouter,
   screenHistoryRouter,
   screenJsonRouter,
+  screenProjectRouter,
   screenSessionRouter,
 } from './modules/screen-history/screen-history.routes';
 import { sourcesRouter } from './modules/sources/sources.routes';
@@ -40,6 +41,7 @@ const apiRoutes = createOpenApiRouter()
   .route('/mcp', databaseDesignMcpRouter)
   .route('/sandbox-db', sandboxDatabaseRouter)
   .route('/screens', screenHistoryRouter)
+  .route('/projects', screenProjectRouter)
   .route('/screen-jsons', screenJsonRouter)
   .route('/sessions', screenSessionRouter)
   .route('/sources', sourcesRouter)

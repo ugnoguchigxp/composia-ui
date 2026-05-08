@@ -31,6 +31,7 @@ type HistoryEntry = {
   versionCount: number;
   activeVersion: number | null;
   activeScreenId: string | null;
+  canonicalPath: string | null;
 };
 
 export type ScreenHistoryDeleteTarget = {
@@ -95,6 +96,7 @@ export function ScreenHistoryTable({
             versionCount: s.screenCount,
             activeVersion: s.activeVersion,
             activeScreenId: s.activeScreenJsonId,
+            canonicalPath: s.canonicalPath,
           }));
         }
         return screens.map((s) => ({
@@ -108,6 +110,7 @@ export function ScreenHistoryTable({
           versionCount: 1,
           activeVersion: s.version,
           activeScreenId: s.id,
+          canonicalPath: s.canonicalPath,
         }));
       },
       (result) => ({
@@ -154,8 +157,9 @@ export function ScreenHistoryTable({
             },
             cell: ({ row }) => {
               const entry = row.original;
-              const linkProps =
-                entry.type === 'session'
+              const linkProps = entry.canonicalPath
+                ? { to: entry.canonicalPath as never }
+                : entry.type === 'session'
                   ? // biome-ignore lint/suspicious/noExplicitAny: route path type is generated dynamically.
                     { to: '/prompt/session/$sessionId' as any, params: { sessionId: entry.id } }
                   : // biome-ignore lint/suspicious/noExplicitAny: route path type is generated dynamically.

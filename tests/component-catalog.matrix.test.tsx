@@ -60,6 +60,19 @@ describe('component catalog matrix', () => {
     expect(html).not.toContain('rounded-lg border p-');
   });
 
+  it('renders MainSearchNavigationSection as search followed by tab navigation', () => {
+    const schema = appUiSchemaSchema.parse(createSchemaForSection('MainSearchNavigationSection'));
+    const html = renderToStaticMarkup(<JsonRenderRenderer schema={schema} />);
+
+    expect(html).toContain('Fixture search');
+    expect(html).toContain('検索カテゴリ');
+    expect(html).toContain('Deals');
+    expect(html).toContain('Cart');
+    expect(html.indexOf('Fixture search')).toBeLessThan(html.indexOf('Deals'));
+    expect(html).toContain('border-b-2');
+    expect(html).not.toContain('rounded-lg border p-');
+  });
+
   it.each(
     Object.keys(sectionComponentFixtures) as SectionComponentName[]
   )('validates and renders %s', (component) => {

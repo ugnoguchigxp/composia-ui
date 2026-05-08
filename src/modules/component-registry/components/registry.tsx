@@ -20,6 +20,7 @@ import { ImageSection } from './sections/ImageSection';
 import { InsightPanel } from './sections/InsightPanel';
 import { KanbanSection } from './sections/KanbanSection';
 import { KpiSummarySection } from './sections/KpiSummarySection';
+import { MainSearchNavigationSection } from './sections/MainSearchNavigationSection';
 import { MasterDetailSection } from './sections/MasterDetailSection';
 import { NavigationPanel } from './sections/NavigationPanel';
 import { ProcessStepperSection } from './sections/ProcessStepperSection';
@@ -52,6 +53,7 @@ export const appJsonRenderComponentMap = {
   ActionFooterSection,
   DataTableSection,
   NavigationPanel,
+  MainSearchNavigationSection,
   EmptyState,
   ErrorState,
   // biome-ignore lint/suspicious/noExplicitAny: json-render registry components each own distinct prop schemas.

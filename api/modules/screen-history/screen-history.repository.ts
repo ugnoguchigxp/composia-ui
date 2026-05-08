@@ -1,17 +1,22 @@
 import { and, asc, count, desc, eq, getTableColumns, gt, inArray, sql } from 'drizzle-orm';
+import type { PromptSessionVisibility } from '../../../shared/schemas/screen-history.schema';
 import { db } from '../../db/client';
 import {
   generatedScreens,
   promptSessionMessages,
   promptSessions,
+  publishedPromptPages,
   screenActionLinks,
   screenJsons,
+  uiProjects,
 } from '../../db/schema';
 
+export type UiProjectRecord = typeof uiProjects.$inferSelect;
 export type PromptSessionRecord = typeof promptSessions.$inferSelect;
 export type GeneratedScreenRecord = typeof generatedScreens.$inferSelect;
 export type ScreenJsonRecord = typeof screenJsons.$inferSelect;
 export type ScreenActionLinkRecord = typeof screenActionLinks.$inferSelect;
+export type PublishedPromptPageRecord = typeof publishedPromptPages.$inferSelect;
 export type PromptSessionMessageRecord = typeof promptSessionMessages.$inferSelect;
 export type ScreenJsonCheckpointRecord = Pick<
   ScreenJsonRecord,
@@ -28,6 +33,8 @@ export type ScreenJsonCheckpointRecord = Pick<
   | 'version'
 > & {
   page: string | null;
+  pagePath: string | null;
+  projectId: string | null;
 };
 export type PromptSessionMessageStatsRecord = {
   count: number;
@@ -49,6 +56,7 @@ export type ScreenHistoryRepository = {
   createMessages: (
     input: (typeof promptSessionMessages.$inferInsert)[]
   ) => Promise<PromptSessionMessageRecord[]>;
+  createProject: (input: typeof uiProjects.$inferInsert) => Promise<UiProjectRecord>;
   deleteActionLink: (sourceSessionId: string, actionId: string) => Promise<void>;
   createScreenJson: (input: typeof screenJsons.$inferInsert) => Promise<ScreenJsonRecord>;
   createSession: (input: typeof promptSessions.$inferInsert) => Promise<PromptSessionRecord>;
@@ -70,6 +78,12 @@ export type ScreenHistoryRepository = {
     sessionId: string
   ) => Promise<ScreenJsonWithSessionRecord | null>;
   findSessionById: (userId: string, sessionId: string) => Promise<PromptSessionRecord | null>;
+  findProjectById: (userId: string, projectId: string) => Promise<UiProjectRecord | null>;
+  findProjectPageSession: (
+    userId: string,
+    projectId: string,
+    pagePath: string
+  ) => Promise<PromptSessionRecord | null>;
   listLegacyChildren: (
     userId: string,
     parentScreenId: string
@@ -97,6 +111,17 @@ export type ScreenHistoryRepository = {
     sessionId: string,
     screenJsonId: string | null
   ) => Promise<PromptSessionRecord>;
+  updateSessionProjectPage: (
+    sessionId: string,
+    projectId: string,
+    pagePath: string
+  ) => Promise<PromptSessionRecord>;
+  updateSessionVisibility: (
+    userId: string,
+    sessionId: string,
+    visibility: PromptSessionVisibility,
+    publishedPage?: { html: string; screenJsonId: string }
+  ) => Promise<PromptSessionRecord>;
   upsertActionLink: (
     input: typeof screenActionLinks.$inferInsert
   ) => Promise<ScreenActionLinkRecord>;
@@ -114,6 +139,11 @@ export const screenHistoryRepository: ScreenHistoryRepository = {
   createMessages: async (input) => {
     if (input.length === 0) return [];
     return db.insert(promptSessionMessages).values(input).returning();
+  },
+  createProject: async (input) => {
+    const [project] = await db.insert(uiProjects).values(input).returning();
+    if (!project) throw new Error('UI project was not persisted');
+    return project;
   },
   deleteActionLink: async (sourceSessionId, actionId) => {
     await db
@@ -199,6 +229,28 @@ export const screenHistoryRepository: ScreenHistoryRepository = {
       .limit(1);
     return session ?? null;
   },
+  findProjectById: async (userId, projectId) => {
+    const [project] = await db
+      .select()
+      .from(uiProjects)
+      .where(and(eq(uiProjects.id, projectId), eq(uiProjects.createdBy, userId)))
+      .limit(1);
+    return project ?? null;
+  },
+  findProjectPageSession: async (userId, projectId, pagePath) => {
+    const [session] = await db
+      .select()
+      .from(promptSessions)
+      .where(
+        and(
+          eq(promptSessions.createdBy, userId),
+          eq(promptSessions.projectId, projectId),
+          eq(promptSessions.pagePath, pagePath)
+        )
+      )
+      .limit(1);
+    return session ?? null;
+  },
   listLegacyChildren: async (userId, parentScreenId) =>
     db
       .select({ screen: generatedScreens, session: promptSessions })
@@ -278,6 +330,8 @@ export const screenHistoryRepository: ScreenHistoryRepository = {
         inferredIntent: screenJsons.inferredIntent,
         action: screenJsons.action,
         page: sql<string | null>`${screenJsons.schema}->>'page'`,
+        pagePath: promptSessions.pagePath,
+        projectId: promptSessions.projectId,
         databaseSchemaJsonId: screenJsons.databaseSchemaJsonId,
         dataBindings: screenJsons.dataBindings,
         createdAt: screenJsons.createdAt,
@@ -302,6 +356,52 @@ export const screenHistoryRepository: ScreenHistoryRepository = {
       .returning();
     if (!session) throw new Error('Prompt session was not updated');
     return session;
+  },
+  updateSessionProjectPage: async (sessionId, projectId, pagePath) => {
+    const [session] = await db
+      .update(promptSessions)
+      .set({ pagePath, projectId })
+      .where(eq(promptSessions.id, sessionId))
+      .returning();
+    if (!session) throw new Error('Prompt session was not updated');
+    return session;
+  },
+  updateSessionVisibility: async (userId, sessionId, visibility, publishedPage) => {
+    return db.transaction(async (tx) => {
+      const now = new Date();
+      const [session] = await tx
+        .update(promptSessions)
+        .set({
+          publishedAt: visibility === 'public' ? now : null,
+          visibility,
+        })
+        .where(and(eq(promptSessions.id, sessionId), eq(promptSessions.createdBy, userId)))
+        .returning();
+      if (!session) throw new Error('Prompt session was not updated');
+
+      if (visibility === 'public') {
+        if (!publishedPage) throw new Error('Published page snapshot is required');
+        await tx
+          .insert(publishedPromptPages)
+          .values({
+            html: publishedPage.html,
+            screenJsonId: publishedPage.screenJsonId,
+            sessionId,
+          })
+          .onConflictDoUpdate({
+            target: publishedPromptPages.sessionId,
+            set: {
+              html: publishedPage.html,
+              screenJsonId: publishedPage.screenJsonId,
+              updatedAt: now,
+            },
+          });
+      } else {
+        await tx.delete(publishedPromptPages).where(eq(publishedPromptPages.sessionId, sessionId));
+      }
+
+      return session;
+    });
   },
   upsertActionLink: async (input) => {
     const [link] = await db

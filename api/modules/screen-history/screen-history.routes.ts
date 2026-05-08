@@ -1,6 +1,8 @@
 import { createRoute, z } from '@hono/zod-openapi';
 import type { Context } from 'hono';
 import {
+  promptSessionVisibilityResponseSchema,
+  promptSessionVisibilityUpdateRequestSchema,
   screenActionGenerateRequestSchema,
   screenActionLinkDeleteResponseSchema,
   screenActionLinkResponseSchema,
@@ -15,6 +17,7 @@ import {
   screenJsonSaveRequestSchema,
   screenListQuerySchema,
   screenListResponseSchema,
+  screenProjectPageResponseSchema,
   screenRegenerateRequestSchema,
   screenResponseSchema,
 } from '../../../shared/schemas/screen-history.schema';
@@ -25,6 +28,9 @@ import { screenHistoryService } from './screen-history.service';
 
 const screenParamSchema = z.object({ screenId: z.string().uuid() }).strict();
 const sessionParamSchema = z.object({ sessionId: z.string().uuid() }).strict();
+const projectPageParamSchema = z
+  .object({ pagePath: z.string().min(1), projectId: z.string().uuid() })
+  .strict();
 const screenJsonParamSchema = z.object({ screenJsonId: z.string().uuid() }).strict();
 const actionParamSchema = z
   .object({ screenId: z.string().uuid(), actionId: z.string().min(1) })
@@ -169,6 +175,39 @@ const sessionDeleteRoute = createRoute({
     200: {
       content: { 'application/json': { schema: screenDeleteResponseSchema } },
       description: 'Delete prompt session and all ScreenJSON versions',
+    },
+  },
+});
+
+const projectPageRoute = createRoute({
+  method: 'get',
+  path: '/:projectId/pages/:pagePath',
+  request: { params: projectPageParamSchema },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: screenProjectPageResponseSchema } },
+      description: 'Resolve a UIDesign project page path to a prompt session',
+    },
+  },
+});
+
+const sessionVisibilityRoute = createRoute({
+  method: 'put',
+  path: '/:sessionId/visibility',
+  request: {
+    params: sessionParamSchema,
+    body: {
+      content: {
+        'application/json': {
+          schema: promptSessionVisibilityUpdateRequestSchema,
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: promptSessionVisibilityResponseSchema } },
+      description: 'Update prompt session public/private visibility',
     },
   },
 });
@@ -337,11 +376,13 @@ const mcpGetScreenJsonRoute = createRoute({
 
 const protectedScreensRouter = createOpenApiRouter();
 const protectedSessionsRouter = createOpenApiRouter();
+const protectedProjectsRouter = createOpenApiRouter();
 const protectedScreenJsonsRouter = createOpenApiRouter();
 const protectedMcpRouter = createOpenApiRouter();
 
 protectedScreensRouter.use('*', authMiddleware());
 protectedSessionsRouter.use('*', authMiddleware());
+protectedProjectsRouter.use('*', authMiddleware());
 protectedScreenJsonsRouter.use('*', authMiddleware());
 protectedMcpRouter.use('*', authMiddleware());
 
@@ -396,6 +437,16 @@ export const screenSessionRouter = protectedSessionsRouter
   )
   .openapi(sessionDeleteRoute, async (c) =>
     c.json(await screenHistoryService.deleteSession(userId(c), c.req.valid('param').sessionId), 200)
+  )
+  .openapi(sessionVisibilityRoute, async (c) =>
+    c.json(
+      await screenHistoryService.updateSessionVisibility(
+        userId(c),
+        c.req.valid('param').sessionId,
+        c.req.valid('json')
+      ),
+      200
+    )
   )
   .openapi(editRoute, async (c) =>
     c.json(
@@ -456,6 +507,17 @@ export const screenSessionRouter = protectedSessionsRouter
       await screenHistoryService.restoreCheckpoint(userId(c), sessionId, screenJsonId),
       200
     );
+  });
+
+export const screenProjectRouter = protectedProjectsRouter
+  .openapi(projectPageRoute, async (c) => {
+    const { pagePath, projectId } = c.req.valid('param');
+    return c.json(await screenHistoryService.projectPage(userId(c), projectId, pagePath), 200);
+  })
+  .get('/:projectId/pages/*', async (c) => {
+    const projectId = z.string().uuid().parse(c.req.param('projectId'));
+    const pagePath = z.string().min(1).parse(c.req.param('*'));
+    return c.json(await screenHistoryService.projectPage(userId(c), projectId, pagePath), 200);
   });
 
 export const screenJsonRouter = protectedScreenJsonsRouter.openapi(screenJsonRoute, async (c) =>

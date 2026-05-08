@@ -17,10 +17,12 @@ const screenHistoryServiceMocks = vi.hoisted(() => ({
   generateFromSessionAction: vi.fn(),
   get: vi.fn(),
   list: vi.fn(),
+  projectPage: vi.fn(),
   regenerate: vi.fn(),
   regenerateSession: vi.fn(),
   restoreCheckpoint: vi.fn(),
   screenJson: vi.fn(),
+  updateSessionVisibility: vi.fn(),
 }));
 
 vi.mock('../api/middleware/auth', () => ({
@@ -39,6 +41,7 @@ import {
   mcpToolsRouter,
   screenHistoryRouter,
   screenJsonRouter,
+  screenProjectRouter,
   screenSessionRouter,
 } from '../api/modules/screen-history/screen-history.routes';
 
@@ -47,6 +50,9 @@ function screenResponse() {
     screen: {
       id: screenId,
       sessionId,
+      projectId: null,
+      pagePath: null,
+      canonicalPath: null,
       parentScreenId: null,
       version: 1,
       trigger: 'initial-prompt',
@@ -84,6 +90,11 @@ function conversationResponse() {
       title: 'ECサイトのトップ画面',
       createdBy: userId,
       activeScreenJsonId: screenId,
+      visibility: 'private',
+      publishedAt: null,
+      projectId: null,
+      pagePath: null,
+      canonicalPath: null,
       createdAt: '2026-05-07T00:00:00.000Z',
       updatedAt: '2026-05-07T00:00:00.000Z',
     },
@@ -94,6 +105,9 @@ function conversationResponse() {
       {
         id: screenJson.id,
         sessionId: screenJson.sessionId,
+        projectId: screenJson.projectId,
+        pagePath: screenJson.pagePath,
+        canonicalPath: screenJson.canonicalPath,
         version: screenJson.version,
         trigger: screenJson.trigger,
         prompt: screenJson.prompt,
@@ -147,6 +161,7 @@ describe('screen history routes', () => {
     app.route('/api/mcp', mcpToolsRouter);
     app.route('/api/screens', screenHistoryRouter);
     app.route('/api/screen-jsons', screenJsonRouter);
+    app.route('/api/projects', screenProjectRouter);
     app.route('/api/sessions', screenSessionRouter);
     return app;
   }
@@ -219,6 +234,28 @@ describe('screen history routes', () => {
     expect(screenHistoryServiceMocks.conversation).toHaveBeenCalledWith(userId, sessionId);
   });
 
+  it('resolves a project page to its prompt session', async () => {
+    const projectId = '55555555-5555-4555-8555-555555555555';
+    const canonicalPath = `/prompt/project/${projectId}/cart?id=${sessionId}`;
+    screenHistoryServiceMocks.projectPage.mockResolvedValue({
+      canonicalPath,
+      pagePath: 'cart',
+      projectId,
+      session: {
+        ...conversationResponse().session,
+        canonicalPath,
+        pagePath: 'cart',
+        projectId,
+      },
+      sessionId,
+    });
+
+    const res = await createApp().request(`/api/projects/${projectId}/pages/cart`);
+
+    expect(res.status).toBe(200);
+    expect(screenHistoryServiceMocks.projectPage).toHaveBeenCalledWith(userId, projectId, 'cart');
+  });
+
   it('edits the active session screen', async () => {
     screenHistoryServiceMocks.edit.mockResolvedValue(screenResponse());
 
@@ -232,6 +269,29 @@ describe('screen history routes', () => {
     expect(screenHistoryServiceMocks.edit).toHaveBeenCalledWith(userId, sessionId, {
       prompt: 'H1を小さくする',
     });
+  });
+
+  it('updates a prompt session visibility', async () => {
+    screenHistoryServiceMocks.updateSessionVisibility.mockResolvedValue({
+      session: {
+        ...conversationResponse().session,
+        publishedAt: '2026-05-07T00:00:00.000Z',
+        visibility: 'public',
+      },
+    });
+
+    const res = await createApp().request(`/api/sessions/${sessionId}/visibility`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ visibility: 'public' }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(screenHistoryServiceMocks.updateSessionVisibility).toHaveBeenCalledWith(
+      userId,
+      sessionId,
+      { visibility: 'public' }
+    );
   });
 
   it('restores a checkpoint without using the screen generation route', async () => {
