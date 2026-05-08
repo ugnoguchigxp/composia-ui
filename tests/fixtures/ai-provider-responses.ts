@@ -24,22 +24,6 @@ export const aiProviderResponses = {
       },
     ],
   },
-  filterBarWithStringFilters: {
-    page: 'Ticket search',
-    intent: 'Filter operational tickets',
-    layout: 'screen',
-    sections: [
-      {
-        component: 'FilterBarSection',
-        source: 'app',
-        props: {
-          title: 'Ticket filters',
-          searchPlaceholder: 'Search tickets',
-          filters: ['Open', 'High priority'],
-        },
-      },
-    ],
-  },
   schemaWithOptionalNullFields: {
     page: 'Product catalog',
     intent: 'Browse product recommendations',

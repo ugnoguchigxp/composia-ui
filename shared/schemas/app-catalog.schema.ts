@@ -5,7 +5,7 @@ import { visualIntentSchema } from './visual-intent.schema';
 
 const tableCellValueSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
 const allowedImageHostnames = new Set(['picsum.photos']);
-const renderActionsSchema = z.array(appActionSchema).default([]).optional();
+const renderActionsSchema = z.array(appActionSchema).optional();
 
 export const appRelativeHrefSchema = z
   .string()
@@ -184,7 +184,25 @@ const comparisonColumnSchema = z
   .object({
     title: z.string().min(1),
     description: z.string().optional(),
-    items: z.array(keyValueSchema).min(1),
+    items: z.array(keyValueSchema).default([]),
+  })
+  .strict();
+
+const chartDatumSchema = z
+  .object({
+    label: z.string().min(1),
+    value: z.number(),
+    secondaryValue: z.number().optional(),
+  })
+  .strict();
+
+const progressItemSchema = z
+  .object({
+    label: z.string().min(1),
+    value: z.number(),
+    max: z.number().positive().default(100),
+    description: z.string().optional(),
+    tone: visualIntentSchema.shape.tone.optional(),
   })
   .strict();
 
@@ -245,7 +263,30 @@ export const componentPropsSchemas = {
   KpiSummarySection: z
     .object({
       title: z.string().min(1).optional(),
-      items: z.array(metricSchema).min(1),
+      items: z.array(metricSchema).default([]),
+      actions: renderActionsSchema,
+      visualIntent: visualIntentSchema.optional(),
+    })
+    .strict(),
+  ChartSection: z
+    .object({
+      title: z.string().min(1),
+      description: z.string().optional(),
+      chartType: z.enum(['bar', 'line', 'area', 'pie', 'radar']).default('bar'),
+      valueLabel: z.string().min(1).default('Value'),
+      secondaryValueLabel: z.string().min(1).optional(),
+      data: z.array(chartDatumSchema).max(16).default([]),
+      showLegend: z.boolean().default(true),
+      height: z.enum(['sm', 'md', 'lg']).default('md'),
+      actions: renderActionsSchema,
+      visualIntent: visualIntentSchema.optional(),
+    })
+    .strict(),
+  ProgressListSection: z
+    .object({
+      title: z.string().min(1),
+      description: z.string().optional(),
+      items: z.array(progressItemSchema).max(12).default([]),
       actions: renderActionsSchema,
       visualIntent: visualIntentSchema.optional(),
     })
@@ -263,7 +304,7 @@ export const componentPropsSchemas = {
             })
             .strict()
         )
-        .min(1),
+        .default([]),
       actions: renderActionsSchema,
       visualIntent: visualIntentSchema.optional(),
     })
@@ -303,7 +344,7 @@ export const componentPropsSchemas = {
     .object({
       title: z.string().min(1),
       description: z.string().optional(),
-      items: z.array(carouselItemSchema).min(2).max(12),
+      items: z.array(carouselItemSchema).max(12).default([]),
       actions: renderActionsSchema,
       visualIntent: visualIntentSchema.optional(),
     })
@@ -312,7 +353,7 @@ export const componentPropsSchemas = {
     .object({
       title: z.string().min(1),
       description: z.string().optional(),
-      steps: z.array(processStepSchema).min(2).max(8),
+      steps: z.array(processStepSchema).max(8).default([]),
       actions: renderActionsSchema,
       visualIntent: visualIntentSchema.optional(),
     })
@@ -321,16 +362,7 @@ export const componentPropsSchemas = {
     .object({
       title: z.string().min(1),
       description: z.string().optional(),
-      items: z.array(cardGridItemSchema).min(1).max(16),
-      actions: renderActionsSchema,
-      visualIntent: visualIntentSchema.optional(),
-    })
-    .strict(),
-  FilterBarSection: z
-    .object({
-      title: z.string().optional(),
-      searchPlaceholder: z.string().optional(),
-      filters: z.array(optionSchema).default([]),
+      items: z.array(cardGridItemSchema).max(16).default([]),
       actions: renderActionsSchema,
       visualIntent: visualIntentSchema.optional(),
     })
@@ -339,7 +371,7 @@ export const componentPropsSchemas = {
     .object({
       title: z.string().min(1),
       description: z.string().optional(),
-      fields: z.array(formFieldSchema).min(1).max(16),
+      fields: z.array(formFieldSchema).max(16).default([]),
       submitLabel: z.string().optional(),
       secondaryAction: actionLinkSchema.optional(),
       actions: renderActionsSchema,
@@ -350,14 +382,15 @@ export const componentPropsSchemas = {
     .object({
       title: z.string().min(1),
       description: z.string().optional(),
-      items: z.array(masterDetailItemSchema).min(1).max(20),
+      items: z.array(masterDetailItemSchema).max(20).default([]),
       detail: z
         .object({
           title: z.string().min(1),
           description: z.string().optional(),
           fields: z.array(keyValueSchema).default([]),
         })
-        .strict(),
+        .strict()
+        .default({ title: '詳細', fields: [] }),
       actions: renderActionsSchema,
       visualIntent: visualIntentSchema.optional(),
     })
@@ -366,7 +399,7 @@ export const componentPropsSchemas = {
     .object({
       title: z.string().min(1),
       description: z.string().optional(),
-      columns: z.array(kanbanColumnSchema).min(2).max(6),
+      columns: z.array(kanbanColumnSchema).max(6).default([]),
       actions: renderActionsSchema,
       visualIntent: visualIntentSchema.optional(),
     })
@@ -375,7 +408,7 @@ export const componentPropsSchemas = {
     .object({
       title: z.string().min(1),
       description: z.string().optional(),
-      events: z.array(calendarEventSchema).min(1).max(20),
+      events: z.array(calendarEventSchema).max(20).default([]),
       actions: renderActionsSchema,
       visualIntent: visualIntentSchema.optional(),
     })
@@ -384,7 +417,7 @@ export const componentPropsSchemas = {
     .object({
       title: z.string().min(1),
       description: z.string().optional(),
-      messages: z.array(chatMessageSchema).min(1).max(12),
+      messages: z.array(chatMessageSchema).max(12).default([]),
       composerPlaceholder: z.string().optional(),
       actions: renderActionsSchema,
       visualIntent: visualIntentSchema.optional(),
@@ -405,17 +438,7 @@ export const componentPropsSchemas = {
     .object({
       title: z.string().min(1),
       description: z.string().optional(),
-      columns: z.array(comparisonColumnSchema).min(2).max(4),
-      actions: renderActionsSchema,
-      visualIntent: visualIntentSchema.optional(),
-    })
-    .strict(),
-  ActionFooterSection: z
-    .object({
-      title: z.string().optional(),
-      description: z.string().optional(),
-      primaryAction: actionLinkSchema.optional(),
-      secondaryAction: actionLinkSchema.optional(),
+      columns: z.array(comparisonColumnSchema).max(4).default([]),
       actions: renderActionsSchema,
       visualIntent: visualIntentSchema.optional(),
     })
@@ -424,7 +447,7 @@ export const componentPropsSchemas = {
     .object({
       title: z.string().min(1),
       description: z.string().optional(),
-      columns: z.array(tableColumnSchema).min(1),
+      columns: z.array(tableColumnSchema).default([]),
       rows: z.array(z.record(z.string(), tableCellValueSchema)).default([]),
       actions: renderActionsSchema,
       visualIntent: visualIntentSchema.optional(),
@@ -433,7 +456,7 @@ export const componentPropsSchemas = {
   NavigationPanel: z
     .object({
       title: z.string().min(1),
-      links: z.array(actionLinkSchema).min(1),
+      links: z.array(actionLinkSchema).default([]),
       actions: renderActionsSchema,
       visualIntent: visualIntentSchema.optional(),
     })
@@ -441,10 +464,18 @@ export const componentPropsSchemas = {
   MainSearchNavigationSection: z
     .object({
       title: z.string().min(1).optional(),
-      searchPlaceholder: z.string().min(1),
+      searchPlaceholder: z.string().min(1).default('商品を検索'),
       searchButtonLabel: z.string().min(1).default('検索'),
       categories: z.array(optionSchema).default([]),
-      links: z.array(actionLinkSchema).min(1).max(12),
+      links: z
+        .array(actionLinkSchema)
+        .max(12)
+        .default([
+          { label: 'おすすめ', href: '/' },
+          { label: 'セール', href: '/deals' },
+          { label: 'ランキング', href: '/ranking' },
+          { label: 'カート', href: '/cart' },
+        ]),
       actions: renderActionsSchema,
       visualIntent: visualIntentSchema.optional(),
     })
@@ -470,7 +501,7 @@ export const componentPropsSchemas = {
 
 export type AppComponentName = keyof typeof componentPropsSchemas;
 
-export const appCatalogVersion = 'app-catalog-v5';
+export const appCatalogVersion = 'app-catalog-v8';
 
 export const componentDefinitions = componentDefinitionSchema.array().parse([
   {
@@ -519,7 +550,7 @@ export const componentDefinitions = componentDefinitionSchema.array().parse([
     allowedSources: ['app'],
     placement: 'page',
     propsSchema: componentPropsSchemas.SidebarPage,
-    promptProps: 'navigation[label,href], visualIntent?',
+    promptProps: 'navigation[label,href]?, visualIntent?',
   },
   {
     name: 'KpiSummarySection',
@@ -527,7 +558,29 @@ export const componentDefinitions = componentDefinitionSchema.array().parse([
     allowedSources: ['summary', 'postgres', 'api'],
     placement: 'section',
     propsSchema: componentPropsSchemas.KpiSummarySection,
-    promptProps: 'title?, items[label,value,description?]',
+    promptProps: 'title?, items[label,value,description?]?',
+  },
+  {
+    name: 'ChartSection',
+    description: 'A Recharts-backed quantitative chart section for trends or distributions.',
+    allowedSources: ['summary', 'postgres', 'api', 'app'],
+    placement: 'section',
+    propsSchema: componentPropsSchemas.ChartSection,
+    promptProps:
+      'title, description?, chartType?, valueLabel?, secondaryValueLabel?, data[label,value,secondaryValue?]?, showLegend?, height?',
+    promptGuidance:
+      'use only for numeric comparisons, trends, shares, or radar scores; do not use as decorative filler',
+    variants: ['bar', 'line', 'area', 'pie', 'radar'],
+  },
+  {
+    name: 'ProgressListSection',
+    description: 'A progress and completion list for goals, setup status, quotas, or score bands.',
+    allowedSources: ['summary', 'postgres', 'api', 'app'],
+    placement: 'section',
+    propsSchema: componentPropsSchemas.ProgressListSection,
+    promptProps: 'title, description?, items[label,value,max?,description?,tone?]?',
+    promptGuidance:
+      'use for progress, completion, quota, health, or score lists; avoid for plain navigation',
   },
   {
     name: 'TimelineSection',
@@ -535,7 +588,7 @@ export const componentDefinitions = componentDefinitionSchema.array().parse([
     allowedSources: ['rss', 'api', 'markdown'],
     placement: 'section',
     propsSchema: componentPropsSchemas.TimelineSection,
-    promptProps: 'title, items[title,timestamp?,description?]',
+    promptProps: 'title, items[title,timestamp?,description?]?',
   },
   {
     name: 'InsightPanel',
@@ -567,7 +620,7 @@ export const componentDefinitions = componentDefinitionSchema.array().parse([
     allowedSources: ['app', 'api', 'markdown', 'rss'],
     placement: 'section',
     propsSchema: componentPropsSchemas.CarouselSection,
-    promptProps: 'title, description?, items[title,description?,badge?,href?,image?]',
+    promptProps: 'title, description?, items[title,description?,badge?,href?,image?]?',
   },
   {
     name: 'ProcessStepperSection',
@@ -576,7 +629,7 @@ export const componentDefinitions = componentDefinitionSchema.array().parse([
     allowedSources: ['summary', 'api', 'markdown'],
     placement: 'section',
     propsSchema: componentPropsSchemas.ProcessStepperSection,
-    promptProps: 'title, description?, steps[title,description?,status?]',
+    promptProps: 'title, description?, steps[title,description?,status?]?',
   },
   {
     name: 'CardGridSection',
@@ -584,15 +637,7 @@ export const componentDefinitions = componentDefinitionSchema.array().parse([
     allowedSources: ['app', 'api', 'markdown', 'rss', 'postgres'],
     placement: 'section',
     propsSchema: componentPropsSchemas.CardGridSection,
-    promptProps: 'title, description?, items[title,description?,badge?,href?,meta?,image?]',
-  },
-  {
-    name: 'FilterBarSection',
-    description: 'A compact search and filter bar for list, catalog, table, or board screens.',
-    allowedSources: ['app', 'api', 'postgres'],
-    placement: 'section',
-    propsSchema: componentPropsSchemas.FilterBarSection,
-    promptProps: 'title?, searchPlaceholder?, filters[label,value]',
+    promptProps: 'title, description?, items[title,description?,badge?,href?,meta?,image?]?',
   },
   {
     name: 'FormSection',
@@ -601,7 +646,7 @@ export const componentDefinitions = componentDefinitionSchema.array().parse([
     placement: 'section',
     propsSchema: componentPropsSchemas.FormSection,
     promptProps:
-      'title, description?, fields[name,label,type?,placeholder?,value?,required?,options?], submitLabel?, secondaryAction?',
+      'title, description?, fields[name,label,type?,placeholder?,value?,required?,options?]?, submitLabel?, secondaryAction?',
   },
   {
     name: 'MasterDetailSection',
@@ -610,7 +655,7 @@ export const componentDefinitions = componentDefinitionSchema.array().parse([
     placement: 'section',
     propsSchema: componentPropsSchemas.MasterDetailSection,
     promptProps:
-      'title, description?, items[id,title,description?,meta?,status?], detail[title,description?,fields?]',
+      'title, description?, items[id,title,description?,meta?,status?]?, detail[title,description?,fields?]?',
   },
   {
     name: 'KanbanSection',
@@ -619,7 +664,7 @@ export const componentDefinitions = componentDefinitionSchema.array().parse([
     placement: 'section',
     propsSchema: componentPropsSchemas.KanbanSection,
     promptProps:
-      'title, description?, columns[title,cards[title,description?,assignee?,meta?,tone?]]',
+      'title, description?, columns[title,cards[title,description?,assignee?,meta?,tone?]]?',
   },
   {
     name: 'CalendarSection',
@@ -627,7 +672,7 @@ export const componentDefinitions = componentDefinitionSchema.array().parse([
     allowedSources: ['app', 'api', 'postgres'],
     placement: 'section',
     propsSchema: componentPropsSchemas.CalendarSection,
-    promptProps: 'title, description?, events[title,date,time?,description?,tone?]',
+    promptProps: 'title, description?, events[title,date,time?,description?,tone?]?',
   },
   {
     name: 'ChatPanelSection',
@@ -636,7 +681,7 @@ export const componentDefinitions = componentDefinitionSchema.array().parse([
     placement: 'section',
     propsSchema: componentPropsSchemas.ChatPanelSection,
     promptProps:
-      'title, description?, messages[author,role?,content,timestamp?], composerPlaceholder?',
+      'title, description?, messages[author,role?,content,timestamp?]?, composerPlaceholder?',
   },
   {
     name: 'EditorPreviewSection',
@@ -652,15 +697,7 @@ export const componentDefinitions = componentDefinitionSchema.array().parse([
     allowedSources: ['app', 'api', 'postgres', 'markdown'],
     placement: 'section',
     propsSchema: componentPropsSchemas.ComparisonSection,
-    promptProps: 'title, description?, columns[title,description?,items[label,value,tone?]]',
-  },
-  {
-    name: 'ActionFooterSection',
-    description: 'A bottom decision or action area for confirmation, submit, and next steps.',
-    allowedSources: ['app', 'summary', 'api'],
-    placement: 'section',
-    propsSchema: componentPropsSchemas.ActionFooterSection,
-    promptProps: 'title?, description?, primaryAction?, secondaryAction?',
+    promptProps: 'title, description?, columns[title,description?,items[label,value,tone?]?]?',
   },
   {
     name: 'DataTableSection',
@@ -668,7 +705,7 @@ export const componentDefinitions = componentDefinitionSchema.array().parse([
     allowedSources: ['postgres', 'api'],
     placement: 'section',
     propsSchema: componentPropsSchemas.DataTableSection,
-    promptProps: 'title, description?, columns[key,label], rows? with scalar cell values only',
+    promptProps: 'title, description?, columns[key,label]?, rows? with scalar cell values only',
   },
   {
     name: 'NavigationPanel',
@@ -676,7 +713,7 @@ export const componentDefinitions = componentDefinitionSchema.array().parse([
     allowedSources: ['navigation'],
     placement: 'section',
     propsSchema: componentPropsSchemas.NavigationPanel,
-    promptProps: 'title, links[label,href]',
+    promptProps: 'title, links[label,href]?',
     promptGuidance: 'for compact local tab navigation only',
   },
   {
@@ -687,7 +724,7 @@ export const componentDefinitions = componentDefinitionSchema.array().parse([
     placement: 'section',
     propsSchema: componentPropsSchemas.MainSearchNavigationSection,
     promptProps:
-      'title?, searchPlaceholder, searchButtonLabel?, categories[label,value]?, links[label,href]',
+      'title?, searchPlaceholder?, searchButtonLabel?, categories[label,value]?, links[label,href]?',
     promptGuidance:
       'use for Amazon-style catalog headers with a prominent search bar and tabs directly underneath',
     variants: ['marketplace-search-tabs'],
@@ -719,6 +756,20 @@ const componentDefinitionMap = new Map(
   componentDefinitions.map((definition) => [definition.name, definition])
 );
 
+function catalogIssuePath(basePath: string, issuePath: PropertyKey[]) {
+  return issuePath.length > 0 ? `${basePath}.${issuePath.map(String).join('.')}` : basePath;
+}
+
+type CatalogSectionInput = {
+  component: string;
+  source: string;
+  props?: Record<string, unknown>;
+};
+
+type CatalogSchemaInput = {
+  sections: CatalogSectionInput[];
+};
+
 export function listComponentDefinitions() {
   return componentDefinitions;
 }
@@ -729,6 +780,51 @@ export function getComponentDefinition(name: string) {
 
 export function isAppComponentName(name: string): name is AppComponentName {
   return componentDefinitionMap.has(name);
+}
+
+function collectCatalogSectionValidation(schema: CatalogSchemaInput) {
+  const issues: CatalogValidationIssue[] = [];
+  const sections = schema.sections.map((section, index) => {
+    const path = `sections.${index}`;
+    const definition = getComponentDefinition(section.component);
+    if (!definition) {
+      issues.push({
+        path: `${path}.component`,
+        message: `Unknown component: ${section.component}`,
+      });
+      return section;
+    }
+
+    const sourceAllowed =
+      definition.allowedSources.length === 0 ||
+      definition.allowedSources.includes('*') ||
+      definition.allowedSources.includes(section.source);
+
+    if (!sourceAllowed) {
+      issues.push({
+        path: `${path}.source`,
+        message: `${section.component} cannot read from source ${section.source}`,
+      });
+    }
+
+    const parsedProps = definition.propsSchema.safeParse(section.props ?? {});
+    if (!parsedProps.success) {
+      issues.push(
+        ...parsedProps.error.issues.map((issue) => ({
+          path: catalogIssuePath(`${path}.props`, issue.path),
+          message: issue.message,
+        }))
+      );
+      return section;
+    }
+
+    return {
+      ...section,
+      props: parsedProps.data as Record<string, unknown>,
+    };
+  });
+
+  return { issues, sections };
 }
 
 export function validateComponentProps(
@@ -745,7 +841,7 @@ export function validateComponentProps(
   if (result.success) return [];
 
   return result.error.issues.map((issue) => ({
-    path: `${path}.${issue.path.join('.')}`,
+    path: catalogIssuePath(path, issue.path),
     message: issue.message,
   }));
 }
@@ -753,32 +849,7 @@ export function validateComponentProps(
 export function validateAppUiSchemaCatalog(schema: {
   sections: Array<{ component: string; source: string; props?: Record<string, unknown> }>;
 }): CatalogValidationIssue[] {
-  return schema.sections.flatMap((section, index) => {
-    const path = `sections.${index}`;
-    const definition = getComponentDefinition(section.component);
-    if (!definition) {
-      return [{ path: `${path}.component`, message: `Unknown component: ${section.component}` }];
-    }
-
-    const sourceAllowed =
-      definition.allowedSources.length === 0 ||
-      definition.allowedSources.includes('*') ||
-      definition.allowedSources.includes(section.source);
-
-    const sourceIssues = sourceAllowed
-      ? []
-      : [
-          {
-            path: `${path}.source`,
-            message: `${section.component} cannot read from source ${section.source}`,
-          },
-        ];
-
-    return [
-      ...sourceIssues,
-      ...validateComponentProps(section.component, section.props ?? {}, `${path}.props`),
-    ];
-  });
+  return collectCatalogSectionValidation(schema).issues;
 }
 
 export function assertAppUiSchemaCatalog(schema: {
@@ -788,4 +859,16 @@ export function assertAppUiSchemaCatalog(schema: {
   if (issues.length > 0) {
     throw new Error(issues.map((issue) => `${issue.path}: ${issue.message}`).join('\n'));
   }
+}
+
+export function normalizeAppUiSchemaCatalog<T extends CatalogSchemaInput>(schema: T): T {
+  const { issues, sections } = collectCatalogSectionValidation(schema);
+  if (issues.length > 0) {
+    throw new Error(issues.map((issue) => `${issue.path}: ${issue.message}`).join('\n'));
+  }
+
+  return {
+    ...schema,
+    sections,
+  } as T;
 }

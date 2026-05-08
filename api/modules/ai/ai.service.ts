@@ -17,7 +17,7 @@ import {
 } from '../../../shared/schemas/ai.schema';
 import {
   appCatalogVersion,
-  assertAppUiSchemaCatalog,
+  normalizeAppUiSchemaCatalog,
 } from '../../../shared/schemas/app-catalog.schema';
 import type { SourceDefinition } from '../../../shared/schemas/sources.schema';
 import { type AppUiSchema, appUiSchemaSchema } from '../../../shared/schemas/ui-schema.schema';
@@ -255,16 +255,6 @@ function normalizeProviderSchema(schema: AppUiSchema): AppUiSchema {
         };
       }
 
-      if (section.component === 'FilterBarSection' && Array.isArray(section.props.filters)) {
-        return {
-          ...section,
-          props: {
-            ...section.props,
-            filters: section.props.filters.map(normalizeOptionLikeValue),
-          },
-        };
-      }
-
       if (section.component === 'DataTableSection') {
         return {
           ...section,
@@ -316,9 +306,10 @@ export function createAiService(
         const cached = await cache.get(cacheNamespace, cacheKey);
         const parsedCached = cached.entry ? safeParseProviderSchema(cached.entry.value) : null;
         if (parsedCached?.success) {
-          const cachedSchema = normalizeProviderSchema(parsedCached.data);
           try {
-            assertAppUiSchemaCatalog(cachedSchema);
+            const cachedSchema = normalizeAppUiSchemaCatalog(
+              normalizeProviderSchema(parsedCached.data)
+            );
             return {
               schema: cachedSchema,
               activities: [
@@ -357,10 +348,10 @@ export function createAiService(
           issues: parsed.error.issues,
         });
       }
-      const schema = normalizeProviderSchema(parsed.data);
+      let schema: AppUiSchema;
 
       try {
-        assertAppUiSchemaCatalog(schema);
+        schema = normalizeAppUiSchemaCatalog(normalizeProviderSchema(parsed.data));
       } catch (error) {
         throw new ValidationError('AI returned a schema outside the component catalog', {
           reason: error instanceof Error ? error.message : 'Unknown catalog validation error',

@@ -2,7 +2,7 @@ import type { Spec } from '@json-render/react';
 import { collectSectionRenderableActions } from '../../../../shared/schemas/ui-action-collector';
 import type { AppUiLayout, AppUiSchema } from '../../../../shared/schemas/ui-schema.schema';
 import { appUiSchemaSchema } from '../../../../shared/schemas/ui-schema.schema';
-import { assertAppUiSchemaCatalog } from '../../component-registry/services/registry.service';
+import { normalizeAppUiSchemaCatalog } from '../../component-registry/services/registry.service';
 
 export type AppUiSchemaToJsonRenderOptions = {
   bindingRows?: Record<string, Record<string, unknown>[]>;
@@ -51,8 +51,7 @@ export function appUiSchemaToJsonRenderSpec(
   input: AppUiSchema,
   options: AppUiSchemaToJsonRenderOptions = {}
 ): Spec {
-  const schema = appUiSchemaSchema.parse(input);
-  assertAppUiSchemaCatalog(schema);
+  const schema = normalizeAppUiSchemaCatalog(appUiSchemaSchema.parse(input));
 
   const root = elementKey('page', schema.page);
   const childKeys = schema.sections.map((section, index) =>

@@ -147,14 +147,6 @@ describe('ui schema renderer', () => {
       },
       sections: [
         {
-          component: 'FilterBarSection',
-          source: 'app',
-          props: {
-            searchPlaceholder: '商品を検索',
-            filters: [{ label: 'カテゴリ', value: 'category' }],
-          },
-        },
-        {
           component: 'CardGridSection',
           source: 'app',
           props: {
@@ -395,15 +387,6 @@ describe('ui schema renderer', () => {
                   kind: 'generate-screen',
                   target: '/orders/1',
                 },
-              ],
-            },
-            {
-              component: 'ActionFooterSection',
-              source: 'app',
-              props: {
-                title: 'Apply changes',
-              },
-              actions: [
                 {
                   id: 'apply',
                   label: 'Apply filters',
@@ -532,6 +515,31 @@ describe('ui schema renderer', () => {
     expect(html).toContain('border-b-2');
   });
 
+  it('renders default-safe marketplace search navigation when AI omits tab props', () => {
+    const html = renderToStaticMarkup(
+      <JsonRenderRenderer
+        schema={{
+          page: 'Marketplace',
+          intent: 'Render default marketplace navigation',
+          layout: 'screen',
+          sections: [
+            {
+              component: 'MainSearchNavigationSection',
+              source: 'app',
+              props: {},
+            },
+          ],
+        }}
+      />
+    );
+
+    expect(html).toContain('商品を検索');
+    expect(html).toContain('おすすめ');
+    expect(html).toContain('セール');
+    expect(html).toContain('ランキング');
+    expect(html.indexOf('商品を検索')).toBeLessThan(html.indexOf('おすすめ'));
+  });
+
   it('renders card grid metadata objects from AI output', () => {
     const html = renderToStaticMarkup(
       <JsonRenderRenderer
@@ -642,18 +650,6 @@ describe('ui schema renderer', () => {
           layout: 'screen',
           sections: [
             {
-              component: 'FilterBarSection',
-              source: 'app',
-              props: {
-                title: 'Find work',
-                searchPlaceholder: 'Search tickets',
-                filters: [
-                  { label: 'Open', value: 'open' },
-                  { label: 'High priority', value: 'high' },
-                ],
-              },
-            },
-            {
               component: 'MasterDetailSection',
               source: 'app',
               props: {
@@ -733,15 +729,6 @@ describe('ui schema renderer', () => {
                 submitLabel: 'Escalate',
               },
             },
-            {
-              component: 'ActionFooterSection',
-              source: 'app',
-              props: {
-                title: 'Ready to continue',
-                primaryAction: { label: 'Save changes', href: '/save' },
-                secondaryAction: { label: 'Cancel', href: '/history' },
-              },
-            },
           ],
         }}
       />
@@ -753,6 +740,5 @@ describe('ui schema renderer', () => {
     expect(html).toContain('Reply draft');
     expect(html).toContain('Response options');
     expect(html).toContain('Escalation form');
-    expect(html).toContain('Ready to continue');
   });
 });

@@ -9,6 +9,8 @@ import {
 describe('component registry service', () => {
   it('recognizes allowlisted high-level components', () => {
     expect(isAppComponentName('InsightPanel')).toBe(true);
+    expect(isAppComponentName('ChartSection')).toBe(true);
+    expect(isAppComponentName('ProgressListSection')).toBe(true);
     expect(isAppComponentName('CarouselSection')).toBe(true);
     expect(isAppComponentName('MasterDetailSection')).toBe(true);
     expect(isAppComponentName('EditorPreviewSection')).toBe(true);
@@ -16,7 +18,10 @@ describe('component registry service', () => {
   });
 
   it('validates props before rendering', () => {
-    const issues = validateComponentProps('KpiSummarySection', { title: 'Metrics' });
+    const issues = validateComponentProps('KpiSummarySection', {
+      title: 'Metrics',
+      items: 'not an array',
+    });
 
     expect(issues.some((issue) => issue.message.includes('expected array'))).toBe(true);
   });

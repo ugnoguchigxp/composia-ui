@@ -41,28 +41,6 @@ describe('AI provider response fixtures', () => {
     );
   });
 
-  it('normalizes string filter options from provider output', async () => {
-    const service = createFixtureService(aiProviderResponses.filterBarWithStringFilters);
-
-    await expect(service.generateLayout({ prompt: 'Make ticket filters' })).resolves.toEqual(
-      expect.objectContaining({
-        schema: expect.objectContaining({
-          sections: [
-            expect.objectContaining({
-              component: 'FilterBarSection',
-              props: expect.objectContaining({
-                filters: [
-                  { label: 'Open', value: 'Open' },
-                  { label: 'High priority', value: 'High priority' },
-                ],
-              }),
-            }),
-          ],
-        }),
-      })
-    );
-  });
-
   it('omits optional null fields from provider output before schema validation', async () => {
     const service = createFixtureService(aiProviderResponses.schemaWithOptionalNullFields);
 

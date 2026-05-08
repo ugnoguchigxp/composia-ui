@@ -99,22 +99,6 @@ describe('UI schema invariants', () => {
         message: 'Invalid input: expected object, received string',
       },
     ]);
-
-    expect(
-      validateComponentProps('FilterBarSection', {
-        title: 'Invalid filters',
-        filters: ['Open', 'Closed'],
-      })
-    ).toEqual([
-      {
-        path: 'FilterBarSection.filters.0',
-        message: 'Invalid input: expected object, received string',
-      },
-      {
-        path: 'FilterBarSection.filters.1',
-        message: 'Invalid input: expected object, received string',
-      },
-    ]);
   });
 
   it('keeps visible fixture labels free of generation mechanics', () => {

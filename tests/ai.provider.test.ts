@@ -27,6 +27,8 @@ describe('ai provider system context', () => {
     expect(layoutSystemContext).toContain('Do not create generic overview');
     expect(layoutSystemContext).toContain('InsightPanel is not available');
     expect(layoutSystemContext).toContain('Use KpiSummarySection only when');
+    expect(layoutSystemContext).toContain('Use ChartSection only for numeric');
+    expect(layoutSystemContext).toContain('Use ProgressListSection for completion');
     expect(layoutSystemContext).toContain('Do not create page-level side menus');
     expect(layoutSystemContext).toContain('Use MainSearchNavigationSection for Amazon-style');
     expect(layoutSystemContext).toContain('NavigationPanel only as compact local tab navigation');
@@ -74,6 +76,16 @@ describe('ai provider system context', () => {
     expect((formSection?.properties.source as { enum?: string[] }).enum).toEqual(
       formSectionDefinition?.allowedSources
     );
+  });
+
+  it('does not require FormSection fields in the provider JSON schema', () => {
+    const sectionItem = appUiSchemaJsonSchema.properties.sections.items;
+    const formSection = sectionItem.oneOf.find(
+      (item) => (item.properties.component as { const?: string }).const === 'FormSection'
+    );
+
+    expect(formSection?.properties.props.required).toEqual(['title']);
+    expect(formSection?.properties.props.properties.fields.minItems).toBeUndefined();
   });
 
   it('offers only section components to the layout provider sections array', () => {

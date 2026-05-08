@@ -6,15 +6,14 @@ import { PageShell } from './pages/PageShell';
 import { SidebarPage } from './pages/SidebarPage';
 import { EmptyState } from './primitives/EmptyState';
 import { ErrorState } from './primitives/ErrorState';
-import { ActionFooterSection } from './sections/ActionFooterSection';
 import { CalendarSection } from './sections/CalendarSection';
 import { CardGridSection } from './sections/CardGridSection';
 import { CarouselSection } from './sections/CarouselSection';
+import { ChartSection } from './sections/ChartSection';
 import { ChatPanelSection } from './sections/ChatPanelSection';
 import { ComparisonSection } from './sections/ComparisonSection';
 import { DataTableSection } from './sections/DataTableSection';
 import { EditorPreviewSection } from './sections/EditorPreviewSection';
-import { FilterBarSection } from './sections/FilterBarSection';
 import { FormSection } from './sections/FormSection';
 import { ImageSection } from './sections/ImageSection';
 import { InsightPanel } from './sections/InsightPanel';
@@ -24,6 +23,7 @@ import { MainSearchNavigationSection } from './sections/MainSearchNavigationSect
 import { MasterDetailSection } from './sections/MasterDetailSection';
 import { NavigationPanel } from './sections/NavigationPanel';
 import { ProcessStepperSection } from './sections/ProcessStepperSection';
+import { ProgressListSection } from './sections/ProgressListSection';
 import { SplitHeroSection } from './sections/SplitHeroSection';
 import { TimelineSection } from './sections/TimelineSection';
 
@@ -35,6 +35,8 @@ export const appJsonRenderComponentMap = {
   ArticleFeedPage: PageShell,
   SidebarPage,
   KpiSummarySection,
+  ChartSection,
+  ProgressListSection,
   TimelineSection,
   InsightPanel,
   ImageSection,
@@ -42,7 +44,6 @@ export const appJsonRenderComponentMap = {
   CarouselSection,
   ProcessStepperSection,
   CardGridSection,
-  FilterBarSection,
   FormSection,
   MasterDetailSection,
   KanbanSection,
@@ -50,7 +51,6 @@ export const appJsonRenderComponentMap = {
   ChatPanelSection,
   EditorPreviewSection,
   ComparisonSection,
-  ActionFooterSection,
   DataTableSection,
   NavigationPanel,
   MainSearchNavigationSection,

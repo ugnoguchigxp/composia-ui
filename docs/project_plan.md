@@ -19,7 +19,7 @@ AI が任意の HTML / React / SQL を生成するのではなく、アプリケ
 
 `admin` と `showcase` は実装検証用の仮画面として扱い、今後の product surface から外す。管理画面や固定 showcase をユーザー導線として維持せず、生成画面・履歴・再現・次画面生成を主導線にする。
 
-既存の `designSystem/` workspace、Storybook、Pencil 同期は今後の基盤として踏襲しない。一方で、既存の design token / theme 設定は root app 側へ移管し、json-render registry component が CSS variables / Tailwind v4 token を使って描画する。
+既存の `designSystem/` workspace と Pencil 同期は今後の基盤として踏襲しない。一方で、既存の design token / theme 設定は root app 側へ移管し、json-render registry component が CSS variables / Tailwind v4 token を使って描画する。Storybook は root app catalog の描画確認用として root app 側に置く。
 
 ## 2. 現在のコードベース
 
@@ -419,7 +419,7 @@ SplitHeroSection
 CarouselSection
 ProcessStepperSection
 CardGridSection
-FilterBarSection
+MainSearchNavigationSection
 FormSection
 MasterDetailSection
 KanbanSection
@@ -427,7 +427,6 @@ CalendarSection
 ChatPanelSection
 EditorPreviewSection
 ComparisonSection
-ActionFooterSection
 DataTableSection
 NavigationPanel
 EmptyState
@@ -436,7 +435,7 @@ ErrorState
 
 AI に `Button`、`Card`、`Input`、`Grid` のような低レベル部品を主な語彙として渡さない。低レベル UI は registry component の内部実装に閉じる。`@json-render/shadcn` は試作の参照候補に留め、初期実装では `@json-render/core` と `@json-render/react` を使い、app-local registry component で品質を制御する。
 
-レイアウトの単調化を避けるため、AI layout planner は分析系 prompt 以外で KPI / table へ寄せすぎない。新規生成では汎用サイドメニューを既定パターンにせず、`layout: "sidebar"` と top-level `navigation.items` は legacy renderer 互換用に留める。タブ的な局所ナビゲーションが明示的に必要な場合のみ `NavigationPanel` を使い、階層メニュー、記事アーカイブ、関連ポスト一覧のような用途は専用 content section として扱う。EC / product / venue / portfolio には `SplitHeroSection`、商品・記事・ギャラリー・推薦には `CarouselSection`、オンボーディング・注文・障害対応・サポートには `ProcessStepperSection` を優先候補にする。さらに、検索・絞り込みには `FilterBarSection`、カード一覧には `CardGridSection`、作成・編集・設定には `FormSection`、チケット・メール・CRM には `MasterDetailSection`、タスク・案件管理には `KanbanSection`、予定・予約には `CalendarSection`、会話 UI には `ChatPanelSection`、エディタ系には `EditorPreviewSection`、比較・差分には `ComparisonSection`、確認・次アクションには `ActionFooterSection` を使う。
+レイアウトの単調化を避けるため、AI layout planner は分析系 prompt 以外で KPI / table へ寄せすぎない。新規生成では汎用サイドメニューを既定パターンにせず、`layout: "sidebar"` と top-level `navigation.items` は legacy renderer 互換用に留める。タブ的な局所ナビゲーションが明示的に必要な場合のみ `NavigationPanel` を使い、階層メニュー、記事アーカイブ、関連ポスト一覧のような用途は専用 content section として扱う。EC / product / venue / portfolio には `SplitHeroSection`、商品・記事・ギャラリー・推薦には `CarouselSection`、マーケットプレイスの主検索とタブ導線には `MainSearchNavigationSection`、オンボーディング・注文・障害対応・サポートには `ProcessStepperSection` を優先候補にする。さらに、カード一覧には `CardGridSection`、作成・編集・設定には `FormSection`、チケット・メール・CRM には `MasterDetailSection`、タスク・案件管理には `KanbanSection`、予定・予約には `CalendarSection`、会話 UI には `ChatPanelSection`、エディタ系には `EditorPreviewSection`、比較・差分には `ComparisonSection` を使う。
 
 ### 6.3 Normalized Entity
 
@@ -900,9 +899,9 @@ userIntent
 
 | Phase | Status | Notes |
 | --- | --- | --- |
-| Phase 0: Architecture Baseline | Done | BBS sample は削除済み。`designSystem/` workspace / Storybook / Pencil は今後の基盤から外し、root app 側に名称・設定・依存を寄せた。 |
+| Phase 0: Architecture Baseline | Done | BBS sample は削除済み。`designSystem/` workspace / Pencil は今後の基盤から外し、root app 側に名称・設定・依存を寄せた。Storybook は root app catalog の確認用に限定する。 |
 | Phase 1: Shared Schema Foundation | Done for MVP | `ui-schema`、`component-registry`、`entities`、`sources`、`cache`、`visual-intent`、`ai` schema を追加済み。Sources / Entities / Cache の backend/frontend contract で利用中。 |
-| Phase 2: json-render Catalog + Renderer | Done | `@json-render/core` / `@json-render/react`、catalog / registry、App UI Schema 変換、root token/theme 移管、`SidebarPage` / `SplitHeroSection` / `CarouselSection` / `ProcessStepperSection` / `CardGridSection` / `FilterBarSection` / `FormSection` / `MasterDetailSection` / `KanbanSection` / `CalendarSection` / `ChatPanelSection` / `EditorPreviewSection` / `ComparisonSection` / `ActionFooterSection` / `ImageSection` を実装済み。fixed showcase route は削除済み。 |
+| Phase 2: json-render Catalog + Renderer | Done | `@json-render/core` / `@json-render/react`、catalog / registry、App UI Schema 変換、root token/theme 移管、`SidebarPage` / `SplitHeroSection` / `CarouselSection` / `ProcessStepperSection` / `ProgressListSection` / `CardGridSection` / `MainSearchNavigationSection` / `ChartSection` / `FormSection` / `MasterDetailSection` / `KanbanSection` / `CalendarSection` / `ChatPanelSection` / `EditorPreviewSection` / `ComparisonSection` / `ImageSection` を実装済み。fixed showcase route は削除済み。 |
 | Phase 3: Sources Domain | Done for MVP | RSS / API / Markdown / PostgreSQL adapters、source 登録、refresh、NormalizedEntity upsert、source item preview、service / route tests を実装済み。 |
 | Phase 4: Entity Metadata + Internal Data Surface | Done for MVP | EntityMetadata、readonly enforcement、generic list/detail/form surface、metadata refresh API、service / route tests を実装済み。ユーザー向け admin route は削除対象。 |
 | Phase 5: Cache Domain | Done for MVP | `cache_entries` table、`api/modules/cache`、`src/modules/cache`、status/invalidate/rebuild/get/set/delete、AI layout cache、route tests を実装済み。cache UI は Prompt/History から必要な範囲だけ見せる。 |
@@ -934,7 +933,8 @@ userIntent
 
 - `docs/project_plan.md` を現行構造に合わせる
 - サンプル BBS は削除済み前提にし、今後の domain だけを `api/modules/<domain>` / `src/modules/<domain>` に追加する
-- `designSystem/`、Storybook、Pencil は今後の基盤から外す
+- `designSystem/` と Pencil は今後の基盤から外す
+- Storybook は root app catalog の描画確認用に限定する
 - design token / theme CSS を root app に移管する方針を固定する
 - 新規 domain の skeleton rule を README または AGENT.md に必要最小限だけ反映する
 
@@ -1435,7 +1435,7 @@ tests/e2e/intent-navigation.spec.ts
 
 ## 13. Token / Theme Rule
 
-`designSystem/` workspace、Storybook、Pencil 同期は踏襲しない。UI 生成の基盤は json-render catalog / registry に寄せる。
+`designSystem/` workspace と Pencil 同期は踏襲しない。UI 生成の基盤は json-render catalog / registry に寄せる。Storybook は catalog の別定義ではなく、root app catalog の stories として運用する。
 
 ただし、既存の design token / theme 設定は採用し、root app の CSS と TypeScript helper に移す。
 
@@ -1494,7 +1494,7 @@ canonical URL
 Plugin Marketplace
 外部 CMS 連携
 複雑な multi-tenant 権限
-Storybook / Pencil 同期
+Pencil 同期
 独立 workspace としての designSystem
 汎用 UI component library の再構築
 AI による DB migration 生成

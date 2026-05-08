@@ -17,7 +17,7 @@ import { appUiSchemaSchema } from '../../../../shared/schemas/ui-schema.schema';
 import { logRenderPerf, measureRenderTask, renderPerfStart } from '../../../lib/render-performance';
 import { AppActionRenderProvider } from '../../component-registry/components/AppActionControl';
 import { appJsonRenderComponentMap } from '../../component-registry/components/registry';
-import { assertAppUiSchemaCatalog } from '../../component-registry/services/registry.service';
+import { normalizeAppUiSchemaCatalog } from '../../component-registry/services/registry.service';
 
 type JsonRenderRendererProps = {
   bindingRows?: Record<string, Record<string, unknown>[]>;
@@ -218,9 +218,9 @@ function JsonRenderRendererInner({
     }
 
     try {
-      assertAppUiSchemaCatalog(parsed.data);
+      const schema = normalizeAppUiSchemaCatalog(parsed.data);
       return {
-        schema: parsed.data,
+        schema,
         error: null,
       };
     } catch (error) {

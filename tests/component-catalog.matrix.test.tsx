@@ -64,13 +64,17 @@ describe('component catalog matrix', () => {
     const schema = appUiSchemaSchema.parse(createSchemaForSection('MainSearchNavigationSection'));
     const html = renderToStaticMarkup(<JsonRenderRenderer schema={schema} />);
 
-    expect(html).toContain('Fixture search');
+    expect(html).toContain('Search products, brands, or keywords');
     expect(html).toContain('検索カテゴリ');
     expect(html).toContain('Deals');
     expect(html).toContain('Cart');
-    expect(html.indexOf('Fixture search')).toBeLessThan(html.indexOf('Deals'));
+    expect(html.indexOf('Search products, brands, or keywords')).toBeLessThan(
+      html.indexOf('Deals')
+    );
     expect(html).toContain('border-b-2');
-    expect(html).not.toContain('rounded-lg border p-');
+    expect(html).toContain('rounded-lg');
+    expect(html).toContain('border-border');
+    expect(html).not.toContain('border-y');
   });
 
   it.each(

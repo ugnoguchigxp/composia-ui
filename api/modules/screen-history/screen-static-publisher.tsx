@@ -5,7 +5,7 @@ import type { AppUiLayout, AppUiSchema } from '../../../shared/schemas/ui-schema
 import { appUiSchemaSchema } from '../../../shared/schemas/ui-schema.schema';
 import { AppActionRenderProvider } from '../../../src/modules/component-registry/components/AppActionControl';
 import { appJsonRenderComponentMap } from '../../../src/modules/component-registry/components/registry';
-import { assertAppUiSchemaCatalog } from '../../../src/modules/component-registry/services/registry.service';
+import { normalizeAppUiSchemaCatalog } from '../../../src/modules/component-registry/services/registry.service';
 
 type DirectComponentProps = {
   children?: ReactNode;
@@ -77,8 +77,7 @@ function PublishedScreen({ schema }: { schema: AppUiSchema }) {
 }
 
 export function renderPublishedScreenHtml(input: AppUiSchema) {
-  const schema = appUiSchemaSchema.parse(input);
-  assertAppUiSchemaCatalog(schema);
+  const schema = normalizeAppUiSchemaCatalog(appUiSchemaSchema.parse(input));
   const body = renderToStaticMarkup(<PublishedScreen schema={schema} />);
   const title = escapeHtml(schema.page);
 

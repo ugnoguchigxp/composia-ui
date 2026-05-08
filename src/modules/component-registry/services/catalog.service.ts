@@ -45,6 +45,14 @@ export const appJsonRenderCatalog = defineCatalog(reactSchema, {
       props: componentPropsSchemas.KpiSummarySection,
       description: 'A section that summarizes key metrics.',
     },
+    ChartSection: {
+      props: componentPropsSchemas.ChartSection,
+      description: 'A Recharts-backed section for numeric charts and score comparisons.',
+    },
+    ProgressListSection: {
+      props: componentPropsSchemas.ProgressListSection,
+      description: 'A section that renders progress, quota, completion, or health rows.',
+    },
     TimelineSection: {
       props: componentPropsSchemas.TimelineSection,
       description: 'A section that renders chronological events.',
@@ -73,10 +81,6 @@ export const appJsonRenderCatalog = defineCatalog(reactSchema, {
       props: componentPropsSchemas.CardGridSection,
       description: 'A grid of products, projects, templates, files, or selectable cards.',
     },
-    FilterBarSection: {
-      props: componentPropsSchemas.FilterBarSection,
-      description: 'A search and filter bar for list, catalog, table, or board screens.',
-    },
     FormSection: {
       props: componentPropsSchemas.FormSection,
       description: 'A structured form for create, edit, settings, checkout, or applications.',
@@ -104,10 +108,6 @@ export const appJsonRenderCatalog = defineCatalog(reactSchema, {
     ComparisonSection: {
       props: componentPropsSchemas.ComparisonSection,
       description: 'A comparison view for plans, options, candidates, versions, or diffs.',
-    },
-    ActionFooterSection: {
-      props: componentPropsSchemas.ActionFooterSection,
-      description: 'A sticky decision area for confirmation and next-step actions.',
     },
     DataTableSection: {
       props: componentPropsSchemas.DataTableSection,

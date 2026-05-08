@@ -21,10 +21,10 @@ export function MainSearchNavigationSection({
     <section
       className={visualIntentClassName(
         props.visualIntent,
-        'border-border border-y bg-card text-card-foreground'
+        'overflow-hidden rounded-lg border border-border bg-card text-card-foreground'
       )}
     >
-      <div className="mx-auto grid max-w-7xl gap-3 px-3 py-3 md:px-5">
+      <div className="grid gap-3 p-4">
         <div className="flex flex-col gap-3 md:flex-row md:items-center">
           {props.title ? (
             <div className="shrink-0 font-semibold text-base leading-6">{props.title}</div>

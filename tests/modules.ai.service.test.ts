@@ -126,6 +126,49 @@ describe('ai service', () => {
     );
   });
 
+  it('fills default-safe catalog props before returning generated layouts', async () => {
+    const service = createAiService({
+      generateLayout: async () => ({
+        page: 'Marketplace',
+        intent: 'Build a marketplace screen',
+        layout: 'screen',
+        sections: [
+          {
+            component: 'MainSearchNavigationSection',
+            source: 'app',
+            props: {
+              title: 'Composia Market',
+            },
+          },
+        ],
+      }),
+    });
+
+    await expect(
+      service.generateLayout({ prompt: 'Amazon like search navigation' })
+    ).resolves.toEqual(
+      expect.objectContaining({
+        schema: expect.objectContaining({
+          sections: [
+            expect.objectContaining({
+              component: 'MainSearchNavigationSection',
+              props: expect.objectContaining({
+                searchPlaceholder: '商品を検索',
+                searchButtonLabel: '検索',
+                links: [
+                  { label: 'おすすめ', href: '/' },
+                  { label: 'セール', href: '/deals' },
+                  { label: 'ランキング', href: '/ranking' },
+                  { label: 'カート', href: '/cart' },
+                ],
+              }),
+            }),
+          ],
+        }),
+      })
+    );
+  });
+
   it('accepts empty page intent from edit requests that remove page-level copy', async () => {
     const service = createAiService({
       generateLayout: async () => ({

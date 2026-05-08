@@ -4,7 +4,7 @@
 
 Slack ライクなチャットアプリ UI を生成した際、現在の UIDesign では期待される 3 カラム構成にならず、左サイドバー / チャンネル一覧 / メッセージ本文の関係も曖昧になった。
 
-現状の生成結果は `SidebarPage`、`FilterBarSection`、`MasterDetailSection`、`ChatPanelSection` などを直列 section として組み合わせている。これにより、一見チャットアプリに近い要素は出るが、Slack / Teams / Discord 風のワークスペース UI としては以下が不足する。
+現状の生成結果は `SidebarPage`、`MasterDetailSection`、`ChatPanelSection` などを直列 section として組み合わせている。これにより、一見チャットアプリに近い要素は出るが、Slack / Teams / Discord 風のワークスペース UI としては以下が不足する。
 
 - ワークスペースナビ、会話リスト、会話本文を同一 viewport 内で固定配置できない。
 - 3 カラム幅、スクロール領域、composer の位置を schema 側で厳密に指定できない。

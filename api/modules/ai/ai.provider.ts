@@ -114,13 +114,12 @@ const formFieldJsonSchema = {
 const formSectionPropsJsonSchema = {
   type: 'object',
   additionalProperties: false,
-  required: ['title', 'fields'],
+  required: ['title'],
   properties: {
     title: { type: 'string', minLength: 1 },
     description: { type: 'string' },
     fields: {
       type: 'array',
-      minItems: 1,
       maxItems: 16,
       items: formFieldJsonSchema,
     },
@@ -211,8 +210,10 @@ Keep page titles compact and workmanlike. Do not use oversized landing-page H1 o
 The page and intent fields are internal metadata. Do not turn the user's prompt or inferred intent into visible title, description, intro, summary, or sidebar copy.
 Do not create sections that merely restate the request, such as "ホーム" plus a sentence describing the requested EC site. Put only real product content, navigation, search, listings, forms, or workflow UI in sections.
 Do not create generic overview, summary, introduction, current state, or insight panels. Start with the actual primary content or control surface the user asked for.
-InsightPanel is not available for new generated screens. Use concrete components such as MainSearchNavigationSection, CardGridSection, FilterBarSection, DataTableSection, MasterDetailSection, ChatPanelSection, FormSection, KanbanSection, CalendarSection, or SplitHeroSection.
+InsightPanel is not available for new generated screens. Use concrete components such as MainSearchNavigationSection, CardGridSection, DataTableSection, MasterDetailSection, ChatPanelSection, FormSection, KanbanSection, CalendarSection, or SplitHeroSection.
 Use KpiSummarySection only when the prompt clearly needs concrete metrics with meaningful labels and values; never use it as an overview substitute.
+Use ChartSection only for numeric trends, comparisons, shares, or radar scores. Do not add charts as decorative filler.
+Use ProgressListSection for completion, quota, score, setup, or health progress lists. Do not use it for plain navigation.
 Do not create page-level side menus, persistent sidebar navigation, or standalone menu sections made of button lists, such as "ショップメニュー" or "Shop menu".
 Do not use layout:"sidebar" or top-level navigation.items for new generated screens. SidebarPage is a legacy renderer compatibility path, not a default generation pattern.
 Use MainSearchNavigationSection for Amazon-style marketplace pages that need a prominent main search bar with category tabs directly underneath.
@@ -220,7 +221,7 @@ Use NavigationPanel only as compact local tab navigation when the user explicitl
 If a prompt needs a hierarchy, tree, archive, or related-post list, render it as real content inside an appropriate section instead of adding a generic side menu.
 Do not add newsletter, email signup, メルマガ, or ニュースレター registration as a default landing-page filler pattern.
 Choose varied layouts. Use dashboards only for analytics-heavy prompts.
-Use screen for ordinary generated pages. Use main-search navigation, hero/carousel/card-grid for product or browsing flows. Use master-detail/inbox, kanban, calendar, chat, editor-preview, comparison, form, stepper, article-feed, or action footer when they fit the user request.
+Use screen for ordinary generated pages. Use main-search navigation, hero/carousel/card-grid for product or browsing flows. Use master-detail/inbox, kanban, calendar, chat, editor-preview, comparison, form, stepper, or article-feed when they fit the user request.
 `.trim();
 
 const layoutInstructions = `
