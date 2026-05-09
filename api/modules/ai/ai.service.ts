@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import type { Logger } from 'pino';
 import type {
   AiClassificationRequest,
   AiClassificationResponse,
@@ -21,11 +22,16 @@ import {
 } from '../../../shared/schemas/app-catalog.schema';
 import type { SourceDefinition } from '../../../shared/schemas/sources.schema';
 import { type AppUiSchema, appUiSchemaSchema } from '../../../shared/schemas/ui-schema.schema';
+import { config } from '../../config';
 import { AppError, ValidationError } from '../../lib/errors';
 import { logger } from '../../lib/logger';
 import { cacheService } from '../cache/cache.service';
 import { entitiesRepository } from '../entities/entities.repository';
 import { entityMetadataList } from '../entities/entity-metadata';
+import {
+  readSourceRefreshRuntimeState,
+  resolveSourceRefreshStatus,
+} from '../sources/source-refresh-state';
 import {
   type NormalizedEntityRecord,
   type SourceRecord,
@@ -51,6 +57,17 @@ export type AiContextReader = {
   getLayoutContext: () => Promise<AiSourceContext>;
 };
 
+export type AiTraceContext = {
+  logger?: Logger;
+  requestId?: string;
+  userId?: string;
+};
+
+type ActiveProviderMeta = {
+  model?: string;
+  provider: 'anthropic' | 'azure-openai' | 'google-ai' | 'mock' | 'openai';
+};
+
 const cacheNamespace = 'ai-layout';
 const componentRegistryVersion = `component-registry-v2:${layoutSystemContextVersion}:${appCatalogVersion}`;
 
@@ -64,7 +81,15 @@ function dateIso(value: Date | null | undefined) {
   return value ? value.toISOString() : undefined;
 }
 
-function mapSource(source: SourceRecord): SourceDefinition {
+function mapSource(
+  source: SourceRecord,
+  options?: {
+    itemCount?: number;
+    lastError?: string;
+    lastRefreshedAt?: string;
+    lastStatus?: SourceDefinition['lastStatus'];
+  }
+): SourceDefinition {
   return {
     id: source.id,
     kind: source.kind as SourceDefinition['kind'],
@@ -73,6 +98,10 @@ function mapSource(source: SourceRecord): SourceDefinition {
     entityType: source.entityType,
     settings: source.settings as SourceDefinition['settings'],
     enabled: source.enabled,
+    itemCount: options?.itemCount,
+    lastError: options?.lastError,
+    lastRefreshedAt: options?.lastRefreshedAt,
+    lastStatus: options?.lastStatus,
     createdAt: source.createdAt.toISOString(),
     updatedAt: source.updatedAt.toISOString(),
   };
@@ -102,10 +131,22 @@ export function createDefaultAiLayoutContextReader(): AiContextReader {
       const [sources, entities] = await Promise.all([
         sourcesRepository.listSources().then((rows) =>
           Promise.all(
-            rows.slice(0, 8).map(async (source) => ({
-              source: mapSource(source),
-              items: (await sourcesRepository.listItems(source.id)).slice(0, 8).map(mapEntity),
-            }))
+            rows.slice(0, 8).map(async (source) => {
+              const [runtimeState, items] = await Promise.all([
+                readSourceRefreshRuntimeState(cacheService, source.id),
+                sourcesRepository.listItems(source.id),
+              ]);
+              const status = resolveSourceRefreshStatus(runtimeState);
+              return {
+                source: mapSource(source, {
+                  itemCount: items.length,
+                  lastError: runtimeState?.lastError,
+                  lastRefreshedAt: runtimeState?.lastRefreshedAt,
+                  lastStatus: status,
+                }),
+                items: status === 'failed' ? [] : items.slice(0, 8).map(mapEntity),
+              };
+            })
           )
         ),
         Promise.all(
@@ -131,7 +172,9 @@ function compactContext(context?: AiSourceContext) {
       label: source.source.label,
       kind: source.source.kind,
       entityType: source.source.entityType,
-      items: source.items.map((item) => ({
+      status: source.source.lastStatus ?? 'idle',
+      lastRefreshedAt: source.source.lastRefreshedAt ?? null,
+      items: (source.source.lastStatus === 'failed' ? [] : source.items).map((item) => ({
         title: item.title,
         summary: item.summary,
         url: item.url,
@@ -155,6 +198,53 @@ function promptWithContext(prompt: string, context?: AiSourceContext) {
 
 function providerUnavailable(task: string) {
   throw new AppError(503, 'AI_PROVIDER_NOT_CONFIGURED', `${task} provider is not configured`);
+}
+
+function activeProviderMeta(): ActiveProviderMeta {
+  if (
+    config.AZURE_OPENAI_API_KEY &&
+    config.AZURE_OPENAI_ENDPOINT &&
+    config.AZURE_OPENAI_DEPLOYMENT_NAME
+  ) {
+    return {
+      provider: 'azure-openai',
+      model: config.AZURE_OPENAI_DEPLOYMENT_NAME,
+    };
+  }
+
+  if (config.OPENAI_API_KEY) {
+    return {
+      provider: 'openai',
+      model: config.OPENAI_MODEL,
+    };
+  }
+
+  if (config.ANTHROPIC_API_KEY) {
+    return {
+      provider: 'anthropic',
+      model: config.ANTHROPIC_MODEL,
+    };
+  }
+
+  if (config.GOOGLE_AI_API_KEY) {
+    return {
+      provider: 'google-ai',
+      model: config.GOOGLE_AI_MODEL,
+    };
+  }
+
+  return { provider: 'mock' };
+}
+
+function traceFields(trace?: AiTraceContext) {
+  const fields: Record<string, string> = {};
+  if (trace?.requestId) fields.requestId = trace.requestId;
+  if (trace?.userId) fields.userId = trace.userId;
+  return fields;
+}
+
+function traceLogger(trace?: AiTraceContext) {
+  return trace?.logger ?? logger;
 }
 
 function completedActivity(id: string, label: string, detail?: string) {
@@ -537,41 +627,107 @@ export function createAiService(
   contextReader?: AiContextReader
 ) {
   return {
-    classify: async (input: AiClassificationRequest): Promise<AiClassificationResponse> => {
+    classify: async (
+      input: AiClassificationRequest,
+      trace?: AiTraceContext
+    ): Promise<AiClassificationResponse> => {
       if (!provider.classify) providerUnavailable('Classification');
+      const aiLogger = traceLogger(trace);
+      const providerMeta = activeProviderMeta();
       const startedAt = Date.now();
+      aiLogger.info(
+        {
+          ...traceFields(trace),
+          provider: providerMeta.provider,
+          model: providerMeta.model,
+          textChars: input.text.length,
+        },
+        'AI classify started'
+      );
       const parsed = aiClassificationResponseSchema.safeParse(await provider.classify?.(input));
+      const durationMs = Date.now() - startedAt;
       if (!parsed.success) {
+        aiLogger.warn(
+          {
+            ...traceFields(trace),
+            provider: providerMeta.provider,
+            model: providerMeta.model,
+            durationMs,
+            validationResult: 'failed',
+            issueCount: parsed.error.issues.length,
+          },
+          'AI classify validation failed'
+        );
         throw new ValidationError('AI returned an invalid classification', parsed.error.flatten());
       }
+      aiLogger.info(
+        {
+          ...traceFields(trace),
+          provider: providerMeta.provider,
+          model: providerMeta.model,
+          durationMs,
+          validationResult: 'valid',
+        },
+        'AI classify completed'
+      );
       return {
         ...parsed.data,
         activities: [
-          completedActivity(
-            'provider-response',
-            'AI provider response',
-            `${Date.now() - startedAt}ms`
-          ),
+          completedActivity('provider-response', 'AI provider response', `${durationMs}ms`),
           completedActivity('classification-validation', 'Classification validation'),
         ],
       };
     },
-    generateLayout: async ({
-      context: inputContext,
-      prompt,
-    }: AiLayoutRequest): Promise<AiLayoutResponse> => {
+    generateLayout: async (
+      { context: inputContext, prompt }: AiLayoutRequest,
+      trace?: AiTraceContext
+    ): Promise<AiLayoutResponse> => {
+      const aiLogger = traceLogger(trace);
+      const providerMeta = activeProviderMeta();
       const context =
         inputContext ?? (await contextReader?.getLayoutContext().catch(() => undefined));
+      aiLogger.info(
+        {
+          ...traceFields(trace),
+          provider: providerMeta.provider,
+          model: providerMeta.model,
+          contextEntityCount: context?.entities.length ?? 0,
+          contextSourceCount: context?.sources.length ?? 0,
+          promptChars: prompt.length,
+        },
+        'AI layout generation started'
+      );
       const cacheKey = cacheKeyForPrompt(prompt, context);
       if (cache) {
         const cached = await cache.get(cacheNamespace, cacheKey);
+        const schemaValidationStartedAt = Date.now();
         const parsedCached = cached.entry ? safeParseProviderSchema(cached.entry.value) : null;
+        const schemaValidationMs = Date.now() - schemaValidationStartedAt;
         if (parsedCached?.success) {
           try {
-            const cachedSchema = normalizeAppUiSchemaCatalog(
-              normalizeProviderSchema(parsedCached.data)
+            const renderPreparationStartedAt = Date.now();
+            const normalizedSchema = normalizeProviderSchema(parsedCached.data);
+            const renderPreparationMs = Date.now() - renderPreparationStartedAt;
+            const catalogValidationStartedAt = Date.now();
+            const cachedSchema = normalizeAppUiSchemaCatalog(normalizedSchema);
+            const catalogValidationMs = Date.now() - catalogValidationStartedAt;
+            const totalDurationMs = schemaValidationMs + renderPreparationMs + catalogValidationMs;
+            aiLogger.info(
+              {
+                ...traceFields(trace),
+                cache: 'hit',
+                cacheKey,
+                catalogValidationMs,
+                durationMs: totalDurationMs,
+                model: providerMeta.model,
+                provider: providerMeta.provider,
+                renderPreparationMs,
+                schemaSectionCount: cachedSchema.sections.length,
+                schemaValidationMs,
+                validationResult: 'valid',
+              },
+              'AI layout completed from cache'
             );
-            logger.info({ cacheKey, prompt: prompt.slice(0, 100) }, 'AI layout cache hit');
             return {
               schema: cachedSchema,
               activities: [
@@ -585,46 +741,96 @@ export function createAiService(
                   id: 'schema-validation',
                   label: 'App UI Schema validation',
                   status: 'completed',
-                  detail: `${cachedSchema.sections.length} sections`,
+                  detail: `${cachedSchema.sections.length} sections / ${schemaValidationMs}ms`,
                 },
                 {
                   id: 'catalog-validation',
                   label: 'Component catalog validation',
                   status: 'completed',
+                  detail: `${catalogValidationMs}ms`,
+                },
+                {
+                  id: 'render-preparation',
+                  label: 'Render preparation',
+                  status: 'completed',
+                  detail: `${renderPreparationMs}ms`,
                 },
               ],
             };
           } catch {
             // Invalid stale cache entry; regenerate below.
-            logger.warn({ cacheKey }, 'AI layout cache entry invalid, regenerating');
+            aiLogger.warn(
+              {
+                ...traceFields(trace),
+                cacheKey,
+                provider: providerMeta.provider,
+                model: providerMeta.model,
+              },
+              'AI layout cache entry invalid, regenerating'
+            );
           }
         }
       }
 
-      logger.info({ prompt: prompt.slice(0, 100) }, 'AI layout cache miss, generating...');
       const startedAt = Date.now();
-      const generated = await provider.generateLayout(promptWithContext(prompt, context));
-      const providerElapsedMs = Date.now() - startedAt;
-      logger.info(
-        { providerElapsedMs, prompt: prompt.slice(0, 100) },
-        'AI provider layout generated'
+      aiLogger.info(
+        {
+          ...traceFields(trace),
+          cache: cache ? 'miss' : 'disabled',
+          cacheKey,
+          model: providerMeta.model,
+          provider: providerMeta.provider,
+        },
+        'AI layout cache miss, generating'
       );
+      const providerStartedAt = Date.now();
+      const generated = await provider.generateLayout(promptWithContext(prompt, context));
+      const providerElapsedMs = Date.now() - providerStartedAt;
+      const schemaValidationStartedAt = Date.now();
       const parsed = safeParseProviderSchema(generated);
+      const schemaValidationMs = Date.now() - schemaValidationStartedAt;
       if (!parsed.success) {
+        aiLogger.warn(
+          {
+            ...traceFields(trace),
+            durationMs: Date.now() - startedAt,
+            model: providerMeta.model,
+            provider: providerMeta.provider,
+            schemaValidationMs,
+            validationResult: 'failed',
+          },
+          'AI layout schema validation failed'
+        );
         throw new ValidationError('AI returned an invalid UI schema', {
           ...parsed.error.flatten(),
           issues: parsed.error.issues,
         });
       }
       let schema: AppUiSchema;
+      const renderPreparationStartedAt = Date.now();
+      const normalizedProvider = normalizeProviderSchema(parsed.data);
+      const renderPreparationMs = Date.now() - renderPreparationStartedAt;
+      const catalogValidationStartedAt = Date.now();
 
       try {
-        schema = normalizeAppUiSchemaCatalog(normalizeProviderSchema(parsed.data));
+        schema = normalizeAppUiSchemaCatalog(normalizedProvider);
       } catch (error) {
+        aiLogger.warn(
+          {
+            ...traceFields(trace),
+            durationMs: Date.now() - startedAt,
+            model: providerMeta.model,
+            provider: providerMeta.provider,
+            renderPreparationMs,
+            validationResult: 'failed',
+          },
+          'AI layout catalog validation failed'
+        );
         throw new ValidationError('AI returned a schema outside the component catalog', {
           reason: error instanceof Error ? error.message : 'Unknown catalog validation error',
         });
       }
+      const catalogValidationMs = Date.now() - catalogValidationStartedAt;
 
       await cache?.set({
         namespace: cacheNamespace,
@@ -632,6 +838,22 @@ export function createAiService(
         value: schema,
         expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
       });
+      const durationMs = Date.now() - startedAt;
+      aiLogger.info(
+        {
+          ...traceFields(trace),
+          catalogValidationMs,
+          durationMs,
+          model: providerMeta.model,
+          provider: providerMeta.provider,
+          providerDurationMs: providerElapsedMs,
+          renderPreparationMs,
+          schemaSectionCount: schema.sections.length,
+          schemaValidationMs,
+          validationResult: 'valid',
+        },
+        'AI layout generation completed'
+      );
 
       return {
         schema,
@@ -659,27 +881,72 @@ export function createAiService(
             id: 'schema-validation',
             label: 'App UI Schema validation',
             status: 'completed',
-            detail: `${schema.sections.length} sections`,
+            detail: `${schema.sections.length} sections / ${schemaValidationMs}ms`,
           },
           {
             id: 'catalog-validation',
             label: 'Component catalog validation',
             status: 'completed',
+            detail: `${catalogValidationMs}ms`,
+          },
+          {
+            id: 'render-preparation',
+            label: 'Render preparation',
+            status: 'completed',
+            detail: `${renderPreparationMs}ms`,
           },
         ],
       };
     },
-    generateNavigation: async (input: AiNavigationRequest): Promise<AiNavigationResponse> => {
+    generateNavigation: async (
+      input: AiNavigationRequest,
+      trace?: AiTraceContext
+    ): Promise<AiNavigationResponse> => {
       if (!provider.generateNavigation) providerUnavailable('Navigation');
+      const aiLogger = traceLogger(trace);
+      const providerMeta = activeProviderMeta();
       const context =
         input.context ?? (await contextReader?.getLayoutContext().catch(() => undefined));
       const startedAt = Date.now();
+      aiLogger.info(
+        {
+          ...traceFields(trace),
+          contextEntityCount: context?.entities.length ?? 0,
+          contextSourceCount: context?.sources.length ?? 0,
+          model: providerMeta.model,
+          promptChars: input.prompt.length,
+          provider: providerMeta.provider,
+        },
+        'AI navigation generation started'
+      );
       const parsed = aiNavigationResponseSchema.safeParse(
         await provider.generateNavigation?.(promptWithContext(input.prompt, context))
       );
+      const durationMs = Date.now() - startedAt;
       if (!parsed.success) {
+        aiLogger.warn(
+          {
+            ...traceFields(trace),
+            durationMs,
+            model: providerMeta.model,
+            provider: providerMeta.provider,
+            validationResult: 'failed',
+          },
+          'AI navigation validation failed'
+        );
         throw new ValidationError('AI returned invalid navigation', parsed.error.flatten());
       }
+      aiLogger.info(
+        {
+          ...traceFields(trace),
+          durationMs,
+          linkCount: parsed.data.links.length,
+          model: providerMeta.model,
+          provider: providerMeta.provider,
+          validationResult: 'valid',
+        },
+        'AI navigation generation completed'
+      );
       return {
         ...parsed.data,
         activities: [
@@ -688,30 +955,55 @@ export function createAiService(
             'Source context',
             context ? 'included' : 'not available'
           ),
-          completedActivity(
-            'provider-response',
-            'AI provider response',
-            `${Date.now() - startedAt}ms`
-          ),
+          completedActivity('provider-response', 'AI provider response', `${durationMs}ms`),
           completedActivity('navigation-validation', 'Navigation validation'),
         ],
       };
     },
-    summarize: async (input: AiTextRequest): Promise<AiSummaryResponse> => {
+    summarize: async (input: AiTextRequest, trace?: AiTraceContext): Promise<AiSummaryResponse> => {
       if (!provider.summarize) providerUnavailable('Summary');
+      const aiLogger = traceLogger(trace);
+      const providerMeta = activeProviderMeta();
       const startedAt = Date.now();
+      aiLogger.info(
+        {
+          ...traceFields(trace),
+          model: providerMeta.model,
+          provider: providerMeta.provider,
+          textChars: input.text.length,
+        },
+        'AI summary started'
+      );
       const parsed = aiSummaryResponseSchema.safeParse(await provider.summarize?.(input));
+      const durationMs = Date.now() - startedAt;
       if (!parsed.success) {
+        aiLogger.warn(
+          {
+            ...traceFields(trace),
+            durationMs,
+            model: providerMeta.model,
+            provider: providerMeta.provider,
+            validationResult: 'failed',
+          },
+          'AI summary validation failed'
+        );
         throw new ValidationError('AI returned an invalid summary', parsed.error.flatten());
       }
+      aiLogger.info(
+        {
+          ...traceFields(trace),
+          durationMs,
+          model: providerMeta.model,
+          provider: providerMeta.provider,
+          summaryChars: parsed.data.summary.length,
+          validationResult: 'valid',
+        },
+        'AI summary completed'
+      );
       return {
         ...parsed.data,
         activities: [
-          completedActivity(
-            'provider-response',
-            'AI provider response',
-            `${Date.now() - startedAt}ms`
-          ),
+          completedActivity('provider-response', 'AI provider response', `${durationMs}ms`),
           completedActivity('summary-validation', 'Summary validation'),
         ],
       };

@@ -80,10 +80,27 @@ function createFakeRepository(initialSources: SourceRecord[] = []) {
   return repo;
 }
 
+function createFakeCache() {
+  const entries = new Map<string, unknown>();
+  return {
+    get: async (namespace: string, key: string) => ({
+      entry: entries.has(`${namespace}:${key}`)
+        ? { value: entries.get(`${namespace}:${key}`) }
+        : null,
+    }),
+    set: async (input: { namespace: string; key: string; value: unknown }) => {
+      entries.set(`${input.namespace}:${input.key}`, input.value);
+      return { entry: { value: input.value } };
+    },
+  };
+}
+
 describe('sources service', () => {
   it('rejects duplicate source labels before creating a source', async () => {
     const source = sourceRecord({ label: 'Product feed' });
-    const service = createSourcesService(createFakeRepository([source]));
+    const service = createSourcesService(createFakeRepository([source]), {
+      cache: createFakeCache(),
+    });
 
     await expect(
       service.createRssSource({
@@ -112,6 +129,7 @@ describe('sources service', () => {
       },
     ]);
     const service = createSourcesService(createFakeRepository([source]), {
+      cache: createFakeCache(),
       fetchers: { rss: fetchItems },
     });
 
@@ -123,6 +141,8 @@ describe('sources service', () => {
       kind: 'rss',
       label: 'Product feed',
       entityType: 'article',
+      itemCount: 1,
+      lastStatus: 'success',
     });
     expect(result.items).toEqual([
       expect.objectContaining({
@@ -149,6 +169,7 @@ describe('sources service', () => {
       settings: { entity: 'normalized-entities' },
     });
     const service = createSourcesService(createFakeRepository([source]), {
+      cache: createFakeCache(),
       entityRepository: {
         list: async () => [
           {
@@ -171,5 +192,84 @@ describe('sources service', () => {
         summary: 'Already normalized.',
       }),
     ]);
+    expect(result.source.lastStatus).toBe('success');
+    expect(result.source.itemCount).toBe(1);
+  });
+
+  it('stores failed refresh metadata and exposes it from listSources', async () => {
+    const source = sourceRecord({ label: 'Failing feed' });
+    const service = createSourcesService(createFakeRepository([source]), {
+      cache: createFakeCache(),
+      fetchers: {
+        rss: vi.fn(async () => {
+          throw new Error('RSS timeout');
+        }),
+      },
+    });
+
+    await expect(service.refreshSource(source.id)).rejects.toThrow('RSS timeout');
+    const listed = await service.listSources();
+
+    expect(listed.sources).toEqual([
+      expect.objectContaining({
+        id: source.id,
+        label: 'Failing feed',
+        itemCount: 0,
+        lastError: 'RSS timeout',
+        lastStatus: 'failed',
+      }),
+    ]);
+  });
+
+  it('continues refreshSource even when runtime state cache write fails', async () => {
+    const source = sourceRecord();
+    const service = createSourcesService(createFakeRepository([source]), {
+      cache: {
+        get: async () => ({ entry: null }),
+        set: async () => {
+          throw new Error('cache write failed');
+        },
+      },
+      fetchers: {
+        rss: async () => [
+          {
+            externalId: 'https://example.com/posts/1',
+            title: 'First post',
+            raw: { guid: 'post-1' },
+          },
+        ],
+      },
+    });
+
+    await expect(service.refreshSource(source.id)).resolves.toEqual(
+      expect.objectContaining({
+        source: expect.objectContaining({
+          id: source.id,
+          itemCount: 1,
+          lastStatus: 'success',
+        }),
+      })
+    );
+  });
+
+  it('continues listSources even when runtime state cache read fails', async () => {
+    const source = sourceRecord();
+    const service = createSourcesService(createFakeRepository([source]), {
+      cache: {
+        get: async () => {
+          throw new Error('cache read failed');
+        },
+        set: async () => ({ entry: null }),
+      },
+    });
+
+    await expect(service.listSources()).resolves.toEqual({
+      sources: [
+        expect.objectContaining({
+          id: source.id,
+          lastStatus: 'idle',
+        }),
+      ],
+    });
   });
 });

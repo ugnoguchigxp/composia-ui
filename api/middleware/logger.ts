@@ -5,10 +5,12 @@ import type { AppEnv } from '../lib/types';
 export const loggerMiddleware = () => {
   return createMiddleware<AppEnv>(async (c, next) => {
     const requestId = c.req.header('X-Request-Id') || crypto.randomUUID();
+    const user = c.get('user');
     const logger = globalLogger.child({
       requestId,
       method: c.req.method,
       path: c.req.path,
+      userId: user?.userId ?? 'anonymous',
     });
 
     c.set('logger', logger);
@@ -28,14 +30,19 @@ export const loggerMiddleware = () => {
     await next();
 
     const durationMs = Math.round(performance.now() - start);
-
-    logger.info(
-      {
-        type: 'request_completed',
-        status: c.res.status,
-        durationMs,
-      },
-      'Request completed'
-    );
+    const completionEvent = {
+      type: 'request_completed',
+      status: c.res.status,
+      durationMs,
+    };
+    if (c.res.status >= 500) {
+      logger.error(completionEvent, 'Request completed');
+      return;
+    }
+    if (c.res.status >= 400) {
+      logger.warn(completionEvent, 'Request completed');
+      return;
+    }
+    logger.info(completionEvent, 'Request completed');
   });
 };

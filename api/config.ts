@@ -36,7 +36,7 @@ const envSchema = z
       .transform((value) => value === 'true'),
     LOG_LEVEL: z.string().default('info'),
     OPENAI_API_KEY: z.string().trim().optional(),
-    OPENAI_MODEL: z.string().trim().default('gpt-5-mini'),
+    OPENAI_MODEL: z.string().trim().default('chat-gpt-5.4-nano'),
     AZURE_OPENAI_API_KEY: z.string().trim().optional(),
     AZURE_OPENAI_ENDPOINT: z.string().trim().url().optional(),
     AZURE_OPENAI_DEPLOYMENT_NAME: z.string().trim().optional(),

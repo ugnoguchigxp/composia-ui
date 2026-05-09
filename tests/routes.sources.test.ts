@@ -121,4 +121,82 @@ describe('sources routes', () => {
     expect(apiRes.status).toBe(201);
     expect(markdownRes.status).toBe(201);
   });
+
+  it('lists sources with operational refresh metadata', async () => {
+    sourcesServiceMocks.listSources.mockResolvedValue({
+      sources: [
+        {
+          ...source,
+          itemCount: 12,
+          lastStatus: 'success',
+          lastRefreshedAt: '2026-05-09T00:00:00.000Z',
+          createdAt: '2026-05-09T00:00:00.000Z',
+          updatedAt: '2026-05-09T00:01:00.000Z',
+        },
+      ],
+    });
+
+    const res = await createApp().request('/api/sources', {
+      method: 'GET',
+    });
+
+    expect(res.status).toBe(200);
+    const payload = await res.json();
+    expect(payload).toEqual({
+      sources: [
+        expect.objectContaining({
+          id: source.id,
+          itemCount: 12,
+          lastStatus: 'success',
+          lastRefreshedAt: '2026-05-09T00:00:00.000Z',
+        }),
+      ],
+    });
+  });
+
+  it('refreshes source and returns refreshed metadata and items', async () => {
+    sourcesServiceMocks.refreshSource.mockResolvedValue({
+      source: {
+        ...source,
+        itemCount: 1,
+        lastStatus: 'success',
+        lastRefreshedAt: '2026-05-09T00:00:00.000Z',
+        createdAt: '2026-05-09T00:00:00.000Z',
+        updatedAt: '2026-05-09T00:01:00.000Z',
+      },
+      items: [
+        {
+          id: 'item-1',
+          source: 'rss',
+          entityType: 'article',
+          title: 'Release note',
+          summary: 'Summary',
+          raw: { guid: 'g-1' },
+        },
+      ],
+      refreshedAt: '2026-05-09T00:02:00.000Z',
+    });
+
+    const res = await createApp().request(`/api/sources/${source.id}/refresh`, {
+      method: 'POST',
+    });
+
+    expect(res.status).toBe(200);
+    const payload = await res.json();
+    expect(payload).toEqual({
+      source: expect.objectContaining({
+        id: source.id,
+        itemCount: 1,
+        lastStatus: 'success',
+      }),
+      items: [
+        expect.objectContaining({
+          id: 'item-1',
+          source: 'rss',
+          entityType: 'article',
+        }),
+      ],
+      refreshedAt: '2026-05-09T00:02:00.000Z',
+    });
+  });
 });

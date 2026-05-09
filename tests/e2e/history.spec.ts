@@ -174,7 +174,7 @@ function databaseDesignResponse() {
 }
 
 test.describe('Generated screen history @regression', () => {
-  test('replays a saved generated screen @smoke', async ({ page }) => {
+  test('replays a saved generated screen @smoke @visual', async ({ page }) => {
     await mockAuthMe(page);
     await page.route('**/api/screens**', async (route) => {
       if (route.request().method() !== 'GET') return route.fallback();
@@ -400,6 +400,30 @@ test.describe('Generated screen history @regression', () => {
         }),
       });
     });
+    await page.route('**/api/sources', async (route) => {
+      if (route.request().method() !== 'GET') return route.fallback();
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          sources: [
+            {
+              id: '55555555-5555-4555-8555-555555555555',
+              kind: 'rss',
+              label: 'Release feed',
+              url: 'https://example.com/feed.xml',
+              entityType: 'article',
+              enabled: true,
+              itemCount: 12,
+              lastStatus: 'success',
+              lastRefreshedAt: '2026-05-07T00:00:00.000Z',
+              createdAt: '2026-05-07T00:00:00.000Z',
+              updatedAt: '2026-05-07T00:00:00.000Z',
+            },
+          ],
+        }),
+      });
+    });
 
     await page.goto('/history');
     await expect(page.getByRole('heading', { name: 'UIDesign', exact: true })).toBeVisible();
@@ -424,6 +448,33 @@ test.describe('Generated screen history @regression', () => {
     await expect(page.getByRole('button', { name: '現在 v1' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'v2' })).toBeVisible();
     await expect(page.getByText('Future Shop を更新しました。')).toBeHidden();
+    await page.getByRole('button', { name: 'Compose' }).click();
+    await expect(page).toHaveScreenshot('history-compose-desktop.png', {
+      animations: 'disabled',
+      fullPage: true,
+    });
+    await page.getByRole('button', { name: 'AI Chat' }).click();
+    await expect(page).toHaveScreenshot('history-replay-desktop.png', {
+      animations: 'disabled',
+      fullPage: true,
+    });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.reload();
+    await expect(page.getByRole('region', { name: 'Flower Shop' })).toBeVisible();
+    await expect(page).toHaveScreenshot('history-replay-mobile.png', {
+      animations: 'disabled',
+      fullPage: true,
+    });
+    const regionOverflowPx = await page
+      .getByRole('region', { name: 'Flower Shop' })
+      .evaluate((element) => element.scrollWidth - element.clientWidth);
+    expect(regionOverflowPx).toBeLessThanOrEqual(24);
+    await page.getByRole('button', { name: 'Collapse Chatdock' }).click();
+    const pageOverflowPx = await page.evaluate(
+      () => document.documentElement.scrollWidth - window.innerWidth
+    );
+    expect(pageOverflowPx).toBeLessThanOrEqual(240);
+    await page.setViewportSize({ width: 1280, height: 720 });
 
     await page.reload();
     await expect(page.getByRole('region', { name: 'Flower Shop' })).toBeVisible();

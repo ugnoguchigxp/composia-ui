@@ -1,8 +1,16 @@
 # composia-ai
 
-composia-ai は、プロンプトから業務アプリの画面を生成し、保存済みの画面を履歴から再現し、画面内のアクションから次に必要な画面へ分岐できる AI UI 生成ランタイムです。
+composia-ai は、社内・業務アプリ向けの **governed AI UI runtime** です。プロンプトから業務アプリの画面を生成し、保存済みの画面を履歴から再現し、画面内のアクションから次に必要な画面へ分岐できます。
 
 AI に任意の HTML / React / SQL を生成させるのではなく、アプリケーション側で許可した App UI Schema、json-render catalog、registry component の範囲だけで画面を構成します。生成結果は Zod と catalog validation を通過したものだけが保存・描画されます。
+
+## Positioning
+
+Composia UI の価値軸は「何でもコード生成すること」ではなく、「制約された生成結果を安全に運用すること」です。
+
+- 汎用 AI app builder と比べて、自由生成より **governance / replay / DB state 接続** を優先します。
+- no-code ツールと比べて、prompt 起点で ScreenJSON を継続生成・再現できます。
+- design-system-only ツールと比べて、component catalog を runtime 制御面として使います。
 
 ![Prompt generated operations dashboard](public/images/screenshot1.png)
 
@@ -202,6 +210,7 @@ Azure OpenAI は key、endpoint、deployment name をセットで設定します
 | `pnpm test:e2e` | Playwright E2E |
 | `pnpm test:e2e:smoke` | `@smoke` E2E |
 | `pnpm test:e2e:regression` | `@regression` E2E |
+| `pnpm test:e2e:visual` | `@visual` E2E |
 | `pnpm storybook` | root app catalog の Storybook を起動 |
 | `pnpm build-storybook` | Storybook static build |
 | `pnpm verify` | `typecheck`、`lint`、`vitest run` |
@@ -316,19 +325,16 @@ E2E のタグ運用:
 - local / OAuth auth
 - OpenAPI document
 
-未完・今後の拡張候補:
+今後の拡張候補（MVP外）:
 
-- 生成UIの screenshot regression / golden prompt 評価
-- action `submit` の実データ mutation 連携
-- source refresh の運用UIとスケジューリング
-- bundle code splitting
+- source refresh scheduler（manual refresh は実装済み）
 - design token / theme authoring workflow
-- production observability
 
 ## ドキュメント
 
 - [Composia UI Project Plan](docs/project_plan.md)
-- [Design System Sync Plan](docs/design-system-sync-plan.md)
+- [Project Value Gap Recovery Proposal](docs/project-value-gap-recovery-proposal.md)
+- [Positioning](docs/positioning.md)
 
 ## ライセンス
 

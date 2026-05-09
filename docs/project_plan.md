@@ -17,6 +17,8 @@ Composia UI は、Hono + React + Drizzle + TanStack Router/Query で構成され
 
 AI が任意の HTML / React / SQL を生成するのではなく、アプリケーションが許可した catalog component と action だけを使って画面構成を提案する。初期スコープは、Prompt から生成した画面を履歴として保存・再現し、画面内のボタンやリンク操作から次に期待される画面を LLM が判断して生成する SPA 型の動的 UI 生成基盤とする。SEO / SSR / SSG は後回しにする。
 
+市場上の立ち位置は「汎用 app builder」ではなく「governed AI UI runtime」に固定する。評価軸は code 生成量ではなく、catalog による制御、ScreenJSON replay、SandboxDB の現在状態との接続で判断する。
+
 `admin` と `showcase` は実装検証用の仮画面として扱い、今後の product surface から外す。管理画面や固定 showcase をユーザー導線として維持せず、生成画面・履歴・再現・次画面生成を主導線にする。
 
 既存の `designSystem/` workspace と Pencil 同期は今後の基盤として踏襲しない。一方で、既存の design token / theme 設定は root app 側へ移管し、json-render registry component が CSS variables / Tailwind v4 token を使って描画する。Storybook は root app catalog の描画確認用として root app 側に置く。

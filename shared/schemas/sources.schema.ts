@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { normalizedEntitySchema } from './entities.schema';
 
 export const sourceKindSchema = z.enum(['rss', 'postgres', 'api', 'markdown']);
+export const sourceRefreshStatusSchema = z.enum(['idle', 'success', 'failed', 'stale']);
 
 export const sourceSettingsSchema = z
   .object({
@@ -27,6 +28,10 @@ export const sourceDefinitionSchema = z
     entityType: z.string().min(1),
     settings: sourceSettingsSchema.optional(),
     enabled: z.boolean().default(true),
+    lastRefreshedAt: z.string().datetime().optional(),
+    lastStatus: sourceRefreshStatusSchema.optional(),
+    itemCount: z.number().int().nonnegative().optional(),
+    lastError: z.string().min(1).optional(),
     createdAt: z.string().datetime().optional(),
     updatedAt: z.string().datetime().optional(),
   })
@@ -86,6 +91,7 @@ export const sourceRefreshResponseSchema = z
   .strict();
 
 export type SourceKind = z.infer<typeof sourceKindSchema>;
+export type SourceRefreshStatus = z.infer<typeof sourceRefreshStatusSchema>;
 export type SourceSettings = z.infer<typeof sourceSettingsSchema>;
 export type SourceDefinition = z.infer<typeof sourceDefinitionSchema>;
 export type CreateRssSourceRequest = z.infer<typeof createRssSourceRequestSchema>;

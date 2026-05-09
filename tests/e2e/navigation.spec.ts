@@ -5,9 +5,14 @@ test.describe('Navigation and Public Pages @regression', () => {
     await page.goto('/');
     await expect(page.getByRole('heading', { level: 1 })).toContainText('Welcome to composia-ai');
     await expect(page.getByRole('link', { name: 'composia-ai' })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Prompt', exact: true })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'History', exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'UIDesign', exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'DBDesign', exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Media', exact: true })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Login', exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Start prompting' })).toHaveAttribute(
+      'href',
+      '/prompt'
+    );
   });
 
   test('shows OAuth buttons on login page', async ({ page }) => {

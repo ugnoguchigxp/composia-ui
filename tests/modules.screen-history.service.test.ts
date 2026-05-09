@@ -558,6 +558,66 @@ describe('screen history service', () => {
     expect(layoutService.generateLayout).not.toHaveBeenCalled();
   });
 
+  it('rejects generateFromAction when the selected action is submit', async () => {
+    const parent = screenJsonRecord({
+      schema: schema({
+        page: 'Incident form',
+        sections: [
+          {
+            component: 'FormSection',
+            source: 'app',
+            props: {
+              title: 'Incident form',
+              fields: [{ name: 'title', label: 'Title', type: 'text' }],
+              submitLabel: 'Save',
+            },
+            actions: [{ id: 'save-incident', label: 'Save', kind: 'submit' }],
+          },
+        ],
+      }),
+    });
+    const { repo } = createFakeRepository({ initialScreenJsons: [parent] });
+    const layoutService = {
+      generateLayout: vi.fn(async () => ({ schema: schema(), activities: [] })),
+    };
+    const service = createScreenHistoryService(repo, layoutService);
+
+    await expect(
+      service.generateFromAction(userId, parent.id, 'save-incident', {})
+    ).rejects.toThrow('Submit actions cannot generate a page');
+    expect(layoutService.generateLayout).not.toHaveBeenCalled();
+  });
+
+  it('rejects generateFromSessionAction when the selected action is submit', async () => {
+    const current = screenJsonRecord({
+      schema: schema({
+        page: 'Incident form',
+        sections: [
+          {
+            component: 'FormSection',
+            source: 'app',
+            props: {
+              title: 'Incident form',
+              fields: [{ name: 'title', label: 'Title', type: 'text' }],
+              submitLabel: 'Save',
+            },
+            actions: [{ id: 'save-incident', label: 'Save', kind: 'submit' }],
+          },
+        ],
+      }),
+    });
+    const { repo } = createFakeRepository({ initialScreenJsons: [current] });
+    const layoutService = {
+      generateLayout: vi.fn(async () => ({ schema: schema(), activities: [] })),
+    };
+    const service = createScreenHistoryService(repo, layoutService);
+
+    await expect(
+      service.generateFromSessionAction(userId, sessionId, 'save-incident', {})
+    ).rejects.toThrow('Submit actions cannot generate a page');
+    expect(layoutService.generateLayout).not.toHaveBeenCalled();
+  });
+
   it('generates from a props href action and persists the updated href in ScreenJSON', async () => {
     const currentSchema = schema({
       intent: 'Shop top page',
@@ -839,6 +899,36 @@ describe('screen history service', () => {
 
     await service.unlinkAction(userId, sessionId, 'flower-detail');
     expect(repo.deleteActionLink).toHaveBeenCalledWith(sessionId, 'flower-detail');
+  });
+
+  it('rejects linkAction when the selected action is submit', async () => {
+    const current = screenJsonRecord({
+      schema: schema({
+        page: 'Incident form',
+        sections: [
+          {
+            component: 'FormSection',
+            source: 'app',
+            props: {
+              title: 'Incident form',
+              fields: [{ name: 'title', label: 'Title', type: 'text' }],
+              submitLabel: 'Save',
+            },
+            actions: [{ id: 'save-incident', label: 'Save', kind: 'submit' }],
+          },
+        ],
+      }),
+    });
+    const { repo } = createFakeRepository({ initialScreenJsons: [current] });
+    const layoutService = {
+      generateLayout: vi.fn(async () => ({ schema: schema(), activities: [] })),
+    };
+    const service = createScreenHistoryService(repo, layoutService);
+
+    await expect(
+      service.linkAction(userId, sessionId, 'save-incident', { targetPath: '/incidents' })
+    ).rejects.toThrow('Submit actions cannot link to a page');
+    expect(repo.upsertActionLink).not.toHaveBeenCalled();
   });
 
   it('deletes a prompt session with all ScreenJSON versions and messages', async () => {

@@ -51,7 +51,7 @@ describe('ai provider system context', () => {
   });
 
   it('allows larger structured UI responses before provider truncation', () => {
-    expect(aiJsonMaxOutputTokens).toBe(8000);
+    expect(aiJsonMaxOutputTokens).toBe(100_000);
   });
 
   it('constrains FormSection select options in the provider JSON schema', () => {

@@ -14,6 +14,9 @@ const config: StorybookConfig = {
   },
   viteFinal: async (config) =>
     mergeConfig(config, {
+      build: {
+        chunkSizeWarningLimit: 1400,
+      },
       resolve: {
         alias: {
           '@': path.resolve(dirname, '../src'),

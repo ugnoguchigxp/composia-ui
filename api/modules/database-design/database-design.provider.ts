@@ -21,8 +21,8 @@ import { AppError, ValidationError } from '../../lib/errors';
 import { logger } from '../../lib/logger';
 import { layoutSystemContextVersion } from '../ai/ai.provider';
 
-const dbDesignInputTokenLimit = 24_000;
-const dbDesignMaxOutputTokens = 24_000;
+const dbDesignInputTokenLimit = 128_000;
+const dbDesignMaxOutputTokens = 100_000;
 const dbDesignReasoningEffort = 'minimal';
 const dbDesignProviderProgressLogIntervalMs = 5000;
 const componentRegistryVersion = `component-registry-v2:${layoutSystemContextVersion}`;
@@ -152,10 +152,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function durationMs(startedAt: number) {
   return Date.now() - startedAt;
-}
-
-function textPreview(text: string, limit = 500) {
-  return text.length > limit ? `${text.slice(0, limit)}...` : text;
 }
 
 function schemaSummary(schema?: DatabaseSchemaJson | null) {
@@ -883,7 +879,7 @@ function extractResponseText(payload: Record<string, unknown>, trace: ProviderTr
   }
 
   logger.error(
-    { ...trace, payload, payloadSummary: responsePayloadSummary(payload) },
+    { ...trace, payloadSummary: responsePayloadSummary(payload) },
     'DBDesign provider response did not include text output'
   );
   throw providerError('Database design provider did not include text output', {
@@ -914,7 +910,28 @@ async function parseProviderResponse(response: Response, trace: ProviderTrace, s
   );
   if (!response.ok) {
     logger.error(
-      { ...trace, payload, status: response.status },
+      {
+        ...trace,
+        payloadSummary: responsePayloadSummary(payload),
+        providerError:
+          typeof payload.error === 'object' && payload.error !== null
+            ? {
+                code:
+                  typeof (payload.error as { code?: unknown }).code === 'string'
+                    ? (payload.error as { code: string }).code
+                    : undefined,
+                message:
+                  typeof (payload.error as { message?: unknown }).message === 'string'
+                    ? (payload.error as { message: string }).message
+                    : undefined,
+                type:
+                  typeof (payload.error as { type?: unknown }).type === 'string'
+                    ? (payload.error as { type: string }).type
+                    : undefined,
+              }
+            : undefined,
+        status: response.status,
+      },
       'DBDesign provider request failed'
     );
     throw providerError('Database design provider request failed', {
@@ -931,10 +948,7 @@ function parseDesignJobResponseText(
   trace: ProviderTrace,
   input: DatabaseDesignProviderInput
 ) {
-  logger.info(
-    { ...trace, textChars: text.length, outputPreview: textPreview(text) },
-    'DBDesign provider parsing job JSON'
-  );
+  logger.info({ ...trace, textChars: text.length }, 'DBDesign provider parsing job JSON');
   if (!text.trim()) {
     logger.error(
       { ...trace, textChars: text.length },
@@ -950,7 +964,7 @@ function parseDesignJobResponseText(
     job = JSON.parse(text);
   } catch (error) {
     logger.error(
-      { ...trace, err: error, outputPreview: textPreview(text, 1200) },
+      { ...trace, err: error, textChars: text.length },
       'DBDesign provider job JSON parse failed'
     );
     throw new ValidationError('AI returned invalid DBDesignJob JSON', {
@@ -968,7 +982,7 @@ function parseDesignJobResponseText(
   const parsed = databaseDesignJobSchema.safeParse(job);
   if (!parsed.success) {
     logger.error(
-      { ...trace, issues: parsed.error.issues, outputPreview: textPreview(text, 1200) },
+      { ...trace, issueCount: parsed.error.issues.length, textChars: text.length },
       'DBDesign provider job schema validation failed'
     );
     throw new ValidationError('AI returned an invalid DBDesignJob', {
@@ -1041,9 +1055,12 @@ async function generateWithOpenAi(
   logger.info(
     {
       ...trace,
-      requestBody: openAiRequestBody,
+      hasInstructions: true,
+      inputChars: input.promptChars,
+      maxOutputTokens: dbDesignMaxOutputTokens,
+      requestName: 'dbdesign_job',
     },
-    'DBDesign OpenAI prompt payload'
+    'DBDesign OpenAI request summary'
   );
   const { response, startedAt } = await fetchWithProgress(
     'https://api.openai.com/v1/responses',
@@ -1098,9 +1115,12 @@ async function generateWithAzure(
   logger.info(
     {
       ...trace,
-      requestBody: azureRequestBody,
+      hasSystemMessage: true,
+      inputChars: input.promptChars,
+      maxCompletionTokens: dbDesignMaxOutputTokens,
+      requestName: 'dbdesign_job',
     },
-    'DBDesign Azure OpenAI prompt payload'
+    'DBDesign Azure OpenAI request summary'
   );
   const { response, startedAt } = await fetchWithProgress(
     url,

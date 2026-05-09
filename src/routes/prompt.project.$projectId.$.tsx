@@ -1,5 +1,10 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { PromptWorkspace } from '../modules/screen-history/components/PromptWorkspace';
+import { lazy, Suspense } from 'react';
+
+const PromptWorkspace = lazy(async () => {
+  const module = await import('../modules/screen-history/components/PromptWorkspace');
+  return { default: module.PromptWorkspace };
+});
 
 type ProjectRouteParams = {
   '*': string;
@@ -15,17 +20,27 @@ export const Route = createFileRoute('/prompt/project/$projectId/$' as any)({
   }),
 });
 
+function PromptWorkspaceFallback() {
+  return (
+    <div className="flex min-h-[65vh] items-center justify-center text-muted-foreground text-sm">
+      Loading workspace...
+    </div>
+  );
+}
+
 function PromptProjectRoute() {
   const params = Route.useParams() as ProjectRouteParams;
   const search = Route.useSearch() as { id?: string };
   const pagePath = params._splat ?? params['*'] ?? 'index';
 
   return (
-    <PromptWorkspace
-      key={`${params.projectId}/${pagePath}/${search.id ?? ''}`}
-      pagePath={pagePath}
-      projectId={params.projectId}
-      sessionId={search.id ?? null}
-    />
+    <Suspense fallback={<PromptWorkspaceFallback />}>
+      <PromptWorkspace
+        key={`${params.projectId}/${pagePath}/${search.id ?? ''}`}
+        pagePath={pagePath}
+        projectId={params.projectId}
+        sessionId={search.id ?? null}
+      />
+    </Suspense>
   );
 }

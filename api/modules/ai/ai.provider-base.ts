@@ -3,7 +3,7 @@ import { AppError } from '../../lib/errors';
 import { logger } from '../../lib/logger';
 import type { AiLayoutProvider } from './ai.provider';
 
-export const aiJsonMaxOutputTokens = 8000;
+export const aiJsonMaxOutputTokens = 100_000;
 
 export type GenerateJsonParams = {
   input: string;
@@ -37,18 +37,25 @@ export function parseJsonText(text: string): unknown {
       logger.warn(
         {
           reason: error instanceof Error ? error.message : 'Unknown JSON parse error',
-          outputPreview: trimmed.slice(0, 240),
+          responseChars: trimmed.length,
         },
         'AI provider returned repairable JSON'
       );
       return parsed;
     } catch (repairError) {
-      logger.error({ text: trimmed, error, repairError }, 'AI provider returned invalid JSON');
+      logger.error(
+        {
+          error,
+          repairError,
+          responseChars: trimmed.length,
+        },
+        'AI provider returned invalid JSON'
+      );
       throw providerError('AI provider returned invalid JSON', {
         reason: error instanceof Error ? error.message : 'Unknown JSON parse error',
         repairReason:
           repairError instanceof Error ? repairError.message : 'Unknown JSON repair error',
-        outputPreview: trimmed.slice(0, 240),
+        responseChars: trimmed.length,
       });
     }
   }

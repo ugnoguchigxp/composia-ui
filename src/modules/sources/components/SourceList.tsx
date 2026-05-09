@@ -1,5 +1,18 @@
 import type { SourceDefinition } from '../../../../shared/schemas/sources.schema';
 
+function sourceStatusLabel(status: SourceDefinition['lastStatus']) {
+  switch (status) {
+    case 'success':
+      return 'OK';
+    case 'failed':
+      return 'FAILED';
+    case 'stale':
+      return 'STALE';
+    default:
+      return 'IDLE';
+  }
+}
+
 export function SourceList({
   isBusy,
   onRefresh,
@@ -38,6 +51,19 @@ export function SourceList({
                   <p className="mt-2 text-muted-foreground text-xs">
                     {source.kind} / {source.entityType}
                   </p>
+                  <p className="mt-1 text-muted-foreground text-xs">
+                    status: {sourceStatusLabel(source.lastStatus)}
+                    {typeof source.itemCount === 'number' ? ` / items: ${source.itemCount}` : ''}
+                  </p>
+                  <p className="mt-1 text-muted-foreground text-xs">
+                    last refresh:{' '}
+                    {source.lastRefreshedAt
+                      ? new Date(source.lastRefreshedAt).toLocaleString()
+                      : 'never'}
+                  </p>
+                  {source.lastError ? (
+                    <p className="mt-1 line-clamp-2 text-destructive text-xs">{source.lastError}</p>
+                  ) : null}
                 </button>
                 <button
                   className="inline-flex h-ui shrink-0 items-center rounded-md border border-border px-ui-button text-sm hover:bg-secondary disabled:opacity-50"

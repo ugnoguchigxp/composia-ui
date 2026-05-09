@@ -1,23 +1,33 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { Loader2, WandSparkles } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import type { ScreenListQuery } from '../../shared/schemas/screen-history.schema';
 import { useAuth } from '../lib/auth';
 import { logRenderPerf, renderPerfStart } from '../lib/render-performance';
-import {
-  type ScreenHistoryDeleteTarget,
-  ScreenHistoryTable,
-} from '../modules/screen-history/components/ScreenHistoryTable';
+import type { ScreenHistoryDeleteTarget } from '../modules/screen-history/components/ScreenHistoryTable';
 import {
   useDeletePromptSession,
   useDeleteScreen,
   useScreenHistory,
 } from '../modules/screen-history/hooks/screen-history.hooks';
 
+const ScreenHistoryTable = lazy(async () => {
+  const module = await import('../modules/screen-history/components/ScreenHistoryTable');
+  return { default: module.ScreenHistoryTable };
+});
+
 // biome-ignore lint/suspicious/noExplicitAny: route path type is generated dynamically.
 export const Route = createFileRoute('/history' as any)({
   component: HistoryPage,
 });
+
+function ScreenHistoryTableFallback() {
+  return (
+    <div className="flex min-h-[45vh] items-center justify-center text-muted-foreground text-sm">
+      Loading history...
+    </div>
+  );
+}
 
 function HistoryPage() {
   const renderStartedAt = renderPerfStart();
@@ -105,15 +115,17 @@ function HistoryPage() {
         </div>
       ) : (
         <div>
-          <ScreenHistoryTable
-            isDeleting={isDeleting}
-            onDelete={handleDelete}
-            onQueryChange={setQuery}
-            query={query}
-            screens={screens}
-            sessions={sessions}
-            total={total}
-          />
+          <Suspense fallback={<ScreenHistoryTableFallback />}>
+            <ScreenHistoryTable
+              isDeleting={isDeleting}
+              onDelete={handleDelete}
+              onQueryChange={setQuery}
+              query={query}
+              screens={screens}
+              sessions={sessions}
+              total={total}
+            />
+          </Suspense>
         </div>
       )}
     </div>

@@ -38,6 +38,7 @@ import type {
   ScreenCheckpoint,
   ScreenJson,
 } from '../../../../shared/schemas/screen-history.schema';
+import type { SourceDefinition } from '../../../../shared/schemas/sources.schema';
 import {
   collectRenderableActions,
   updateRenderableActionTarget,
@@ -52,6 +53,8 @@ import {
   useSandboxBindingRows,
   useSandboxState,
 } from '../../database-design/hooks/database-design.hooks';
+import { SourceList } from '../../sources/components/SourceList';
+import { useRefreshSource, useSources } from '../../sources/hooks/sources.hooks';
 import { JsonRenderRenderer } from '../../ui-schema/components/JsonRenderRenderer';
 import {
   useEditSessionScreen,
@@ -278,6 +281,7 @@ export function PromptWorkspace({
   const [restoringScreenJsonId, setRestoringScreenJsonId] = useState<string | null>(null);
   const [selectedAction, setSelectedAction] = useState<SelectedAction | null>(null);
   const [composeNotice, setComposeNotice] = useState<BindingNotice | null>(null);
+  const [refreshingSourceId, setRefreshingSourceId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([initialAssistantMessage]);
   const handledScreenRouteRef = useRef<string | null>(null);
   const [activities, setActivities] = useState<DockActivity[]>([]);
@@ -311,6 +315,8 @@ export function PromptWorkspace({
     { limit: 100, page: 1, sortBy: 'updatedAt', sortOrder: 'desc' },
     Boolean(auth.user && ((isDockOpen && dockTab === 'compose') || projectId || sessionId))
   );
+  const sourcesQuery = useSources(Boolean(auth.user && isDockOpen && dockTab === 'compose'));
+  const refreshSource = useRefreshSource();
   const actionParentId =
     localScreen && (!screenId || localScreen.id === screenId) ? localScreen.id : (screenId ?? null);
   const generateFromAction = useGenerateScreenFromAction(actionParentId);
@@ -324,6 +330,7 @@ export function PromptWorkspace({
   const generateFromSessionActionMutate = generateFromSessionAction.mutate;
   const insertSandboxRowMutate = insertSandboxRow.mutate;
   const proposeDatabaseDesignMutate = proposeDatabaseDesign.mutate;
+  const refreshSourceMutate = refreshSource.mutate;
   const activeConversationScreen = conversationQuery.data?.activeScreenJson ?? null;
   const activeScreenStartedAt = renderPerfStart();
   const activeScreen: WorkspaceScreen | null =
@@ -874,6 +881,19 @@ export function PromptWorkspace({
     ]
   );
 
+  const handleRefreshSource = useCallback(
+    (sourceId: string) => {
+      if (refreshSource.isPending) return;
+      setRefreshingSourceId(sourceId);
+      refreshSourceMutate(sourceId, {
+        onSettled: () => {
+          setRefreshingSourceId((current) => (current === sourceId ? null : current));
+        },
+      });
+    },
+    [refreshSource.isPending, refreshSourceMutate]
+  );
+
   const handleRestoreCheckpoint = useCallback(
     (screenJsonId: string) => {
       if (!routeSessionId || restoreCheckpoint.isPending) return;
@@ -1282,14 +1302,17 @@ export function PromptWorkspace({
         onOpenChange={setIsDockOpen}
         onOpenTargetPath={handleOpenTargetPath}
         onResolveTargetPath={resolveTargetPath}
+        onRefreshSource={handleRefreshSource}
         onStageActionTarget={handleStageActionTarget}
         onSubmitPrompt={handleSubmitPrompt}
         onTabChange={setDockTab}
         promptResetKey={promptResetKey}
+        refreshingSourceId={refreshingSourceId}
         selectedAction={selectedAction}
         sessionTitle={conversationQuery.data?.session.title}
         projectSessions={projectSessions}
         sessions={historyQuery.data?.sessions ?? []}
+        sources={sourcesQuery.data?.sources ?? []}
       />
     </div>
   );
@@ -1546,14 +1569,17 @@ function ChatDock({
   onOpenChange,
   onOpenTargetPath,
   onResolveTargetPath,
+  onRefreshSource,
   onStageActionTarget,
   onSubmitPrompt,
   onTabChange,
   promptResetKey,
+  refreshingSourceId,
   projectSessions,
   selectedAction,
   sessionTitle,
   sessions,
+  sources,
 }: {
   actionLinks: ScreenActionLink[];
   activeTab: DockTab;
@@ -1572,14 +1598,17 @@ function ChatDock({
   onOpenChange: (value: boolean) => void;
   onOpenTargetPath: (targetPath: string) => void;
   onResolveTargetPath: (targetPath: string | null | undefined) => string | null;
+  onRefreshSource: (sourceId: string) => void;
   onStageActionTarget: (action: AppAction, targetPath: string) => AppUiSchema | null;
   onSubmitPrompt: (prompt: string) => void;
   onTabChange: (tab: DockTab) => void;
   promptResetKey: number;
+  refreshingSourceId: string | null;
   projectSessions: PromptSessionSummary[];
   selectedAction: SelectedAction | null;
   sessionTitle?: string;
   sessions: PromptSessionSummary[];
+  sources: SourceDefinition[];
 }) {
   const [prompt, setPrompt] = useState(initialPrompt);
 
@@ -1693,21 +1722,29 @@ function ChatDock({
             ) : null}
           </>
         ) : (
-          <ComposePanel
-            actionLinks={actionLinks}
-            availableActions={availableActions}
-            composeNotice={composeNotice}
-            currentProjectId={currentProjectId}
-            currentSessionId={currentSessionId}
-            isPending={isPending}
-            onGenerateAction={onGenerateAction}
-            onOpenTargetPath={onOpenTargetPath}
-            onResolveTargetPath={onResolveTargetPath}
-            onStageActionTarget={onStageActionTarget}
-            projectSessions={projectSessions}
-            selectedAction={selectedAction}
-            sessions={sessions}
-          />
+          <div className="grid gap-3">
+            <ComposePanel
+              actionLinks={actionLinks}
+              availableActions={availableActions}
+              composeNotice={composeNotice}
+              currentProjectId={currentProjectId}
+              currentSessionId={currentSessionId}
+              isPending={isPending}
+              onGenerateAction={onGenerateAction}
+              onOpenTargetPath={onOpenTargetPath}
+              onResolveTargetPath={onResolveTargetPath}
+              onStageActionTarget={onStageActionTarget}
+              projectSessions={projectSessions}
+              selectedAction={selectedAction}
+              sessions={sessions}
+            />
+            <SourceList
+              isBusy={Boolean(refreshingSourceId)}
+              onRefresh={onRefreshSource}
+              selectedSourceId={refreshingSourceId}
+              sources={sources}
+            />
+          </div>
         )}
       </div>
 

@@ -12,8 +12,9 @@ export const sourceQueryKeys = {
   items: (sourceId: string) => ['sources', sourceId, 'items'] as const,
 };
 
-export function useSources() {
+export function useSources(enabled = true) {
   return useQuery({
+    enabled,
     queryKey: sourceQueryKeys.all,
     queryFn: () => sourcesRepository.list(),
   });
@@ -63,9 +64,11 @@ export function useRefreshSource() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (sourceId: string) => sourcesRepository.refresh(sourceId),
-    onSuccess: (data) => {
+    onSettled: (_data, _error, sourceId) => {
       queryClient.invalidateQueries({ queryKey: sourceQueryKeys.all });
-      queryClient.invalidateQueries({ queryKey: sourceQueryKeys.items(data.source.id) });
+      if (sourceId) {
+        queryClient.invalidateQueries({ queryKey: sourceQueryKeys.items(sourceId) });
+      }
     },
   });
 }

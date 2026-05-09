@@ -2,6 +2,8 @@
 
 この一覧は UIDesign の生成 AI と renderer が共有する root app catalog の現行パーツ一覧です。
 
+catalog は UI 部品一覧ではなく、Composia UI の governance 境界です。AI はこの catalog 外の component / props / source を返しても保存・描画されません。
+
 ## Source Of Truth
 
 | Surface | Status | Role |

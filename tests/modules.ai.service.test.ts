@@ -57,12 +57,19 @@ describe('ai service', () => {
           id: 'schema-validation',
           label: 'App UI Schema validation',
           status: 'completed',
-          detail: '1 sections',
+          detail: expect.stringMatching(/^1 sections \/ \d+ms$/),
         }),
         expect.objectContaining({
           id: 'catalog-validation',
           label: 'Component catalog validation',
           status: 'completed',
+          detail: expect.stringMatching(/^\d+ms$/),
+        }),
+        expect.objectContaining({
+          id: 'render-preparation',
+          label: 'Render preparation',
+          status: 'completed',
+          detail: expect.stringMatching(/^\d+ms$/),
         }),
       ]),
     });
@@ -377,6 +384,13 @@ describe('ai service', () => {
           id: 'catalog-validation',
           label: 'Component catalog validation',
           status: 'completed',
+          detail: expect.stringMatching(/^\d+ms$/),
+        }),
+        expect.objectContaining({
+          id: 'render-preparation',
+          label: 'Render preparation',
+          status: 'completed',
+          detail: expect.stringMatching(/^\d+ms$/),
         }),
       ]),
     });
@@ -462,6 +476,59 @@ describe('ai service', () => {
       expect.stringContaining('Available app data context JSON')
     );
     expect(provider.generateLayout).toHaveBeenCalledWith(expect.stringContaining('Release feed'));
+  });
+
+  it('omits failed source items from provider context payload', async () => {
+    const provider = {
+      generateLayout: vi.fn(async () => ({
+        page: 'Contextual',
+        intent: 'Use source data',
+        layout: 'dashboard',
+        sections: [
+          {
+            component: 'InsightPanel',
+            source: 'summary',
+            props: {
+              title: 'Context',
+              body: 'Context was included.',
+            },
+          },
+        ],
+      })),
+    };
+    const service = createAiService(provider, undefined, {
+      getLayoutContext: async () => ({
+        sources: [
+          {
+            source: {
+              id: 'source-1',
+              kind: 'rss',
+              label: 'Release feed',
+              entityType: 'article',
+              enabled: true,
+              lastStatus: 'failed',
+            },
+            items: [
+              {
+                id: 'item-1',
+                source: 'rss',
+                entityType: 'article',
+                title: 'Should not be included',
+                raw: {},
+              },
+            ],
+          },
+        ],
+        entities: [],
+      }),
+    });
+
+    await service.generateLayout({ prompt: 'Make a release dashboard' });
+
+    expect(provider.generateLayout).toHaveBeenCalledWith(expect.stringContaining('Release feed'));
+    expect(provider.generateLayout).not.toHaveBeenCalledWith(
+      expect.stringContaining('Should not be included')
+    );
   });
 
   it('validates summarize, classify, and navigation provider output', async () => {

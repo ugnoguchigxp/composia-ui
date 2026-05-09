@@ -1,12 +1,25 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { Image, Loader2 } from 'lucide-react';
+import { lazy, Suspense } from 'react';
 import { useAuth } from '../lib/auth';
-import { MediaLibrary } from '../modules/media/components/MediaLibrary';
+
+const MediaLibrary = lazy(async () => {
+  const module = await import('../modules/media/components/MediaLibrary');
+  return { default: module.MediaLibrary };
+});
 
 // biome-ignore lint/suspicious/noExplicitAny: route path type is generated dynamically.
 export const Route = createFileRoute('/media' as any)({
   component: MediaPage,
 });
+
+function MediaLibraryFallback() {
+  return (
+    <div className="flex min-h-[45vh] items-center justify-center text-muted-foreground text-sm">
+      Loading media library...
+    </div>
+  );
+}
 
 function MediaPage() {
   const auth = useAuth();
@@ -43,7 +56,9 @@ function MediaPage() {
           <h1 className="text-lg font-semibold tracking-tight">Media</h1>
         </div>
       </header>
-      <MediaLibrary />
+      <Suspense fallback={<MediaLibraryFallback />}>
+        <MediaLibrary />
+      </Suspense>
     </div>
   );
 }
