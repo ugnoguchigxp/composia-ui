@@ -8,7 +8,7 @@ describe('ai provider system context', () => {
     expect(layoutSystemContext).toContain('strict JSON only');
     expect(layoutSystemContext).toContain('No Markdown or prose');
     expect(layoutSystemContext).toContain('Do not output null values');
-    expect(layoutSystemContext).toContain('visible product copy');
+    expect(layoutSystemContext).toContain('visible task copy');
     expect(layoutSystemContext).toContain('Never mention generate/create/infer/build');
     expect(layoutSystemContext).toContain(
       'Keep generation mechanics only in action.kind and intentHint'
@@ -26,7 +26,9 @@ describe('ai provider system context', () => {
     expect(layoutSystemContext).toContain('Use ChartSection only for numeric');
     expect(layoutSystemContext).toContain('Use ProgressListSection for completion');
     expect(layoutSystemContext).toContain('Do not create page-level side menus');
-    expect(layoutSystemContext).toContain('Use MainSearchNavigationSection for Amazon-style');
+    expect(layoutSystemContext).toContain(
+      'Use MainSearchNavigationSection for search-driven list pages'
+    );
     expect(layoutSystemContext).toContain('NavigationPanel only as compact local tab navigation');
     expect(layoutSystemContext).toContain('hierarchy, tree, archive, or related-post list');
     expect(layoutSystemContext).toContain('Do not add newsletter');

@@ -80,10 +80,10 @@ describe('Component Catalog Parity', () => {
     expect(sectionNames).toContain('InsightPanel');
   });
 
-  it('exposes marketplace search tabs as a catalog variant', () => {
+  it('exposes search-navigation tabs as a catalog variant', () => {
     expect(
       componentDefinitions.find((definition) => definition.name === 'MainSearchNavigationSection')
-    ).toEqual(expect.objectContaining({ variants: ['marketplace-search-tabs'] }));
+    ).toEqual(expect.objectContaining({ variants: ['search-navigation-tabs'] }));
   });
 
   it('materializes default props for default-safe generated sections', () => {
@@ -111,17 +111,17 @@ describe('Component Catalog Parity', () => {
       schema.sections.find((section) => section.component === 'MainSearchNavigationSection')?.props
     ).toEqual(
       expect.objectContaining({
-        searchPlaceholder: '商品を検索',
-        searchButtonLabel: '検索',
+        searchPlaceholder: 'Search...',
+        searchButtonLabel: 'Search',
         categories: [],
         links: [],
-        resultsTitle: '検索結果',
+        resultsTitle: 'Results',
       })
     );
     expect(
       schema.sections.find((section) => section.component === 'MainSearchNavigationSection')?.props
         .results as unknown[]
-    ).toHaveLength(4);
+    ).toHaveLength(0);
     expect(schema.sections.find((section) => section.component === 'ChartSection')?.props).toEqual(
       expect.objectContaining({
         chartType: 'bar',

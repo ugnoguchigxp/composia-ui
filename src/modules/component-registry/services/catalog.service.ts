@@ -155,7 +155,7 @@ export const appJsonRenderCatalog = defineCatalog(reactSchema, {
     },
     MainSearchNavigationSection: {
       props: componentPropsSchemas.MainSearchNavigationSection,
-      description: 'A marketplace-style main search bar with tab navigation underneath.',
+      description: 'A main search bar with tab navigation underneath.',
     },
     EmptyState: {
       props: componentPropsSchemas.EmptyState,

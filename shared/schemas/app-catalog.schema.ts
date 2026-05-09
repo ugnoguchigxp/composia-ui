@@ -126,52 +126,6 @@ const cardGridItemSchema = z
   })
   .strict();
 
-const defaultMarketplaceSearchResults = [
-  {
-    title: 'ワイヤレスイヤホン',
-    description: 'ノイズキャンセルと長時間バッテリーに対応した定番モデル。',
-    badge: '人気',
-    href: '/products/wireless-earbuds',
-    image: {
-      src: 'https://picsum.photos/seed/marketplace-earbuds/1200/720',
-      alt: 'ワイヤレスイヤホン',
-    },
-    meta: { label: '価格', value: '¥12,800' },
-  },
-  {
-    title: 'ステンレスボトル',
-    description: '通勤やアウトドアで使いやすい軽量ボトル。',
-    badge: '本日のお得',
-    href: '/products/stainless-bottle',
-    image: {
-      src: 'https://picsum.photos/seed/marketplace-bottle/1200/720',
-      alt: 'ステンレスボトル',
-    },
-    meta: { label: '評価', value: 4.7 },
-  },
-  {
-    title: 'デスクライト',
-    description: '明るさと色温度を調整できる省スペースライト。',
-    badge: '新着',
-    href: '/products/desk-light',
-    image: {
-      src: 'https://picsum.photos/seed/marketplace-desk-light/1200/720',
-      alt: 'デスクライト',
-    },
-    meta: { label: '在庫', value: 'あり' },
-  },
-  {
-    title: 'キャンバストート',
-    description: '毎日の買い物や通学に使える丈夫なトートバッグ。',
-    href: '/products/canvas-tote',
-    image: {
-      src: 'https://picsum.photos/seed/marketplace-canvas-tote/1200/720',
-      alt: 'キャンバストート',
-    },
-    meta: { label: '配送', value: '明日到着' },
-  },
-];
-
 const optionSchema = z
   .object({
     label: z.string().min(1),
@@ -600,9 +554,9 @@ export const componentPropsSchemas = {
     .strict(),
   ScheduleSection: z
     .object({
-      title: z.string().min(1).default('Upcoming Schedule'),
-      description: z.string().default('Select a date to view scheduled items.'),
-      monthLabel: z.string().min(1).default('May 2026'),
+      title: z.string().min(1).default('Schedule'),
+      description: z.string().default(''),
+      monthLabel: z.string().min(1).default('Month'),
       weekDays: z
         .array(z.string().min(1))
         .length(7)
@@ -622,7 +576,7 @@ export const componentPropsSchemas = {
     .strict(),
   HoldingsListSection: z
     .object({
-      searchPlaceholder: z.string().min(1).default('Search holdings or tickers...'),
+      searchPlaceholder: z.string().min(1).default('Search...'),
       tabs: z.array(z.string().min(1)).default([]),
       activeTab: z.string().min(1).optional(),
       holdings: z.array(holdingRecordSchema).max(40).default([]),
@@ -691,11 +645,11 @@ export const componentPropsSchemas = {
     .strict(),
   CheckoutSummarySection: z
     .object({
-      title: z.string().min(1).default('Order Summary'),
+      title: z.string().min(1).default('Summary'),
       description: z.string().optional(),
       lines: z.array(checkoutLineItemSchema).max(20).default([]),
-      primaryActionLabel: z.string().min(1).default('Proceed to Payment'),
-      secondaryActionLabel: z.string().min(1).default('Edit Cart'),
+      primaryActionLabel: z.string().min(1).default('Confirm'),
+      secondaryActionLabel: z.string().min(1).default('Cancel'),
       actions: renderActionsSchema,
       visualIntent: visualIntentSchema.optional(),
     })
@@ -751,12 +705,12 @@ export const componentPropsSchemas = {
   MainSearchNavigationSection: z
     .object({
       title: z.string().min(1).optional(),
-      searchPlaceholder: z.string().min(1).default('商品を検索'),
-      searchButtonLabel: z.string().min(1).default('検索'),
+      searchPlaceholder: z.string().min(1).default('Search...'),
+      searchButtonLabel: z.string().min(1).default('Search'),
       categories: z.array(optionSchema).default([]),
       links: z.array(actionLinkSchema).default([]),
-      resultsTitle: z.string().min(1).default('検索結果'),
-      results: z.array(cardGridItemSchema).max(24).default(defaultMarketplaceSearchResults),
+      resultsTitle: z.string().min(1).default('Results'),
+      results: z.array(cardGridItemSchema).max(24).default([]),
       actions: renderActionsSchema,
       visualIntent: visualIntentSchema.optional(),
     })
@@ -1090,16 +1044,15 @@ export const componentDefinitions = componentDefinitionSchema.array().parse([
   },
   {
     name: 'MainSearchNavigationSection',
-    description:
-      'A marketplace-style main search bar with category controls and tab navigation directly below it.',
+    description: 'A main search bar with category controls and tab navigation directly below it.',
     allowedSources: ['navigation', 'app'],
     placement: 'section',
     propsSchema: componentPropsSchemas.MainSearchNavigationSection,
     promptProps:
       'title?, searchPlaceholder?, searchButtonLabel?, categories[label,value]?, links[label,href]?, resultsTitle?, results[title,description?,badge?,href?,meta?,image]?',
     promptGuidance:
-      'use for Amazon-style catalog pages with a prominent search bar, flexible wrapped tabs from props.links, and visible result cards; do not add a search-results action button',
-    variants: ['marketplace-search-tabs'],
+      'use for search-driven list pages with a prominent search bar, flexible wrapped tabs from props.links, and visible result cards; do not add a search-results action button',
+    variants: ['search-navigation-tabs'],
   },
   {
     name: 'EmptyState',

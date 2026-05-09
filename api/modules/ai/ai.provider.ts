@@ -199,16 +199,16 @@ export const layoutSystemContextVersion = 'layout-system-context-v10';
 export const layoutSystemContext = `
 Return App UI Schema as strict JSON only. No Markdown or prose.
 Do not output null values. Omit optional fields instead of setting them to null.
-All labels are visible product copy. Never mention generate/create/infer/build screen/page/UI in visible labels.
+All labels are visible task copy. Never mention generate/create/infer/build screen/page/UI in visible labels.
 Do not write labels like "画面を生成", "ページを生成", "注文管理画面を生成", "Generate screen", or "Create page".
-Action/navigation labels must name the destination or intent, e.g. "注文管理", "障害対応", "花の商品を見る", "詳細を見る".
+Action/navigation labels must name the destination or intent, e.g. "受注一覧", "障害対応", "設定", "詳細を見る".
 Keep generation mechanics only in action.kind and intentHint, never in label fields.
 For FormSection select fields, options must always be objects like {"label":"高","value":"high"}; never return string arrays like ["高","中","低"].
 For DataTableSection rows, each cell value must be a string, number, boolean, or null. Never put nested objects or arrays inside row cells.
 For NotificationCenterSection item level, use only info, success, warning, or danger. Map critical/error/urgent states to danger.
 Keep page titles compact and workmanlike. Do not use oversized landing-page H1 or billboard headline patterns.
 The page and intent fields are internal metadata. Do not turn the user's prompt or inferred intent into visible title, description, intro, summary, or sidebar copy.
-Do not create sections that merely restate the request, such as "ホーム" plus a sentence describing the requested EC site. Put only real product content, navigation, search, listings, forms, or workflow UI in sections.
+Do not create sections that merely restate the request, such as "ホーム" plus a sentence describing the requested site. Put only real content, navigation, search, listings, forms, or workflow UI in sections.
 Do not create generic overview, summary, introduction, current state, or insight panels. Start with the actual primary content or control surface the user asked for.
 Do not add section.actions as generic bottom CTA buttons. Put navigation on the concrete visible item via href, such as card items, carousel items, tabs, or hero actions.
 InsightPanel is not available for new generated screens. Use concrete components such as MainSearchNavigationSection, CardGridSection, DataTableSection, StepperSection, ChatPanelSection, FormSection, KanbanSection, CalendarSection, or SplitHeroSection.
@@ -217,16 +217,16 @@ Use ChartSection only for numeric trends, comparisons, shares, or radar scores. 
 Use ProgressListSection for completion, quota, score, setup, or health progress lists. Do not use it for plain navigation.
 Do not create page-level side menus, persistent sidebar navigation, or standalone menu sections made of button lists, such as "ショップメニュー" or "Shop menu".
 Do not use layout:"sidebar" or top-level navigation.items for new generated screens. SidebarPage is a legacy renderer compatibility path, not a default generation pattern.
-Use MainSearchNavigationSection for Amazon-style marketplace pages that need a prominent main search bar with category tabs directly underneath.
+Use MainSearchNavigationSection for search-driven list pages that need a prominent main search bar with category tabs directly underneath.
 When MainSearchNavigationSection is present, do not add NavigationPanel or an additional search/filter form section that duplicates the same purpose.
-MainSearchNavigationSection props.links is a flexible tab list: choose 0, 1, or many tabs from the requested product/domain categories instead of relying on a fixed default set.
+MainSearchNavigationSection props.links is a flexible tab list: choose 0, 1, or many tabs from the requested domain categories instead of relying on a fixed default set.
 For MainSearchNavigationSection, put search results in props.results with image and href. Never model search results as actions or labels like "検索結果を見る".
 Use NavigationPanel only as compact local tab navigation when the user explicitly asks for tabs or local category switching without a main search bar; its links are also flexible and should match the requested menu count.
 Section selection priority must follow: request-fit first, then no-duplication, then source compatibility, then visual balance.
 If a prompt needs a hierarchy, tree, archive, or related-post list, render it as real content inside an appropriate section instead of adding a generic side menu.
 Do not add newsletter, email signup, メルマガ, or ニュースレター registration as a default landing-page filler pattern.
 Choose varied layouts. Use dashboards only for analytics-heavy prompts.
-Use screen for ordinary generated pages. Use main-search navigation, hero/carousel/card-grid for product or browsing flows. Use stepper, kanban, calendar, chat, editor-preview, comparison, form, or article-feed when they fit the user request.
+Use screen for ordinary generated pages. Use main-search navigation, hero/carousel/card-grid for search/listing or browsing flows. Use stepper, kanban, calendar, chat, editor-preview, comparison, form, or article-feed when they fit the user request.
 `.trim();
 
 const layoutInstructions = `
@@ -234,7 +234,7 @@ ${layoutSystemContext}
 
 Use catalog components only. Allowed components:
 ${componentInstructions}
-Links are project-local app paths like "/", "/cart", "/basket", "/products". Use "/" for home/index links. Do not output "/prompt/project/..." routes; the backend canonicalizes generated page links. Images use https://picsum.photos/seed/<topic>/1200/720 by default. Existing uploaded media may use /images/<filename> when the user supplies that path.
+Links are project-local app-relative paths (single leading "/"). Use "/" for home/index links. Do not output "/prompt/project/..." routes; the backend canonicalizes generated page links. Images use https://picsum.photos/seed/<topic>/1200/720 by default. Existing uploaded media may use /images/<filename> when the user supplies that path.
 For inferred next screens, prefer href on the visible content item. Only include actions when they match an existing visible href-bearing prop; never create a standalone "view more" filler action.
 Prefer 2-5 well-chosen sections with concise static sample data.
 `.trim();

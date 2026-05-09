@@ -593,12 +593,12 @@ describe('ui schema renderer', () => {
     expect(html).toContain('border-b-2');
   });
 
-  it('does not synthesize a fixed marketplace tab menu when AI omits tab props', () => {
+  it('does not synthesize a fixed tab menu or result cards when AI omits tab props', () => {
     const html = renderToStaticMarkup(
       <JsonRenderRenderer
         schema={{
           page: 'Marketplace',
-          intent: 'Render default marketplace navigation',
+          intent: 'Render default search navigation',
           layout: 'screen',
           sections: [
             {
@@ -611,12 +611,12 @@ describe('ui schema renderer', () => {
       />
     );
 
-    expect(html).toContain('商品を検索');
-    expect(html).toContain('検索結果');
-    expect(html).toContain('ワイヤレスイヤホン');
+    expect(html).toContain('Search...');
+    expect(html).toContain('Search');
     expect(html).not.toContain('おすすめ');
     expect(html).not.toContain('href="/deals"');
     expect(html).not.toContain('aria-label="Main navigation"');
+    expect(html).not.toContain('aria-label="Results"');
   });
 
   it('renders card grid metadata objects from AI output', () => {

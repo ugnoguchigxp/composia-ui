@@ -296,10 +296,10 @@ describe('ai service', () => {
             expect.objectContaining({
               component: 'MainSearchNavigationSection',
               props: expect.objectContaining({
-                searchPlaceholder: '商品を検索',
-                searchButtonLabel: '検索',
+                searchPlaceholder: 'Search...',
+                searchButtonLabel: 'Search',
                 links: [],
-                resultsTitle: '検索結果',
+                resultsTitle: 'Results',
               }),
             }),
           ],
