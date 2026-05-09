@@ -3,6 +3,7 @@ import { collectSectionRenderableActions } from '../../../../shared/schemas/ui-a
 import type { AppUiLayout, AppUiSchema } from '../../../../shared/schemas/ui-schema.schema';
 import { appUiSchemaSchema } from '../../../../shared/schemas/ui-schema.schema';
 import { normalizeAppUiSchemaCatalog } from '../../component-registry/services/registry.service';
+import { resolveRenderableSchemaSections } from './binding-section-props.service';
 
 export type AppUiSchemaToJsonRenderOptions = {
   bindingRows?: Record<string, Record<string, unknown>[]>;
@@ -54,7 +55,8 @@ export function appUiSchemaToJsonRenderSpec(
   const schema = normalizeAppUiSchemaCatalog(appUiSchemaSchema.parse(input));
 
   const root = elementKey('page', schema.page);
-  const childKeys = schema.sections.map((section, index) =>
+  const renderableSections = resolveRenderableSchemaSections(schema, options.bindingRows);
+  const childKeys = renderableSections.map(({ index, section }) =>
     elementKey('section', section.component, index)
   );
   const pageVisualIntent = {
@@ -75,18 +77,14 @@ export function appUiSchemaToJsonRenderSpec(
         children: childKeys,
       },
       ...Object.fromEntries(
-        schema.sections.map((section, index) => {
-          const key = childKeys[index];
-          const rows = section.dataBindingId
-            ? options.bindingRows?.[section.dataBindingId]
-            : undefined;
+        renderableSections.map(({ index, props, section }, renderableIndex) => {
+          const key = childKeys[renderableIndex];
           return [
             key,
             {
               type: section.component,
               props: {
-                ...section.props,
-                ...(rows && section.component === 'DataTableSection' ? { rows } : {}),
+                ...props,
                 dataBindingId: section.dataBindingId,
                 actions: collectSectionRenderableActions(section, index),
                 visualIntent: section.visualIntent ?? pageVisualIntent,

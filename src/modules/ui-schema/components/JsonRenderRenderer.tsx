@@ -18,6 +18,7 @@ import { logRenderPerf, measureRenderTask, renderPerfStart } from '../../../lib/
 import { AppActionRenderProvider } from '../../component-registry/components/AppActionControl';
 import { appJsonRenderComponentMap } from '../../component-registry/components/registry';
 import { normalizeAppUiSchemaCatalog } from '../../component-registry/services/registry.service';
+import { resolveRenderableSchemaSections } from '../services/binding-section-props.service';
 
 type JsonRenderRendererProps = {
   bindingRows?: Record<string, Record<string, unknown>[]>;
@@ -160,6 +161,7 @@ function renderDirectPreview({
     tone: schema.tone,
   };
   const PageComponent = getDirectComponent(layoutComponentMap[schema.layout]);
+  const renderableSections = resolveRenderableSchemaSections(schema, bindingRows);
   const pageProps = {
     title: schema.page,
     navigation: schema.navigation?.items ?? [],
@@ -168,14 +170,12 @@ function renderDirectPreview({
 
   return (
     <PageComponent props={pageProps}>
-      {schema.sections.slice(0, visibleSectionCount).map((section, index) => {
+      {renderableSections.slice(0, visibleSectionCount).map(({ index, props, section }) => {
         const SectionComponent = getDirectComponent(
           section.component as AppJsonRenderComponentName
         );
-        const rows = section.dataBindingId ? bindingRows?.[section.dataBindingId] : undefined;
         const sectionProps = {
-          ...section.props,
-          ...(rows && section.component === 'DataTableSection' ? { rows } : {}),
+          ...props,
           dataBindingId: section.dataBindingId,
           actions: collectSectionRenderableActions(section, index),
           visualIntent: section.visualIntent ?? pageVisualIntent,

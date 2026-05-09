@@ -4,6 +4,8 @@ import { mockAuthMe } from './helpers';
 const screenId = '11111111-1111-4111-8111-111111111111';
 const futureScreenId = '11111111-1111-4111-8111-222222222222';
 const sessionId = '22222222-2222-4222-8222-222222222222';
+const designSessionId = '33333333-3333-4333-8333-333333333333';
+const databaseSchemaJsonId = '44444444-4444-4444-8444-444444444444';
 
 function screenPayload(input: { id?: string; page?: string; version?: number } = {}) {
   return {
@@ -47,6 +49,127 @@ function screenPayload(input: { id?: string; page?: string; version?: number } =
     },
     createdAt: '2026-05-07T00:00:00.000Z',
     updatedAt: '2026-05-07T00:00:00.000Z',
+  };
+}
+
+function databaseSchemaJsonPayload() {
+  return {
+    id: databaseSchemaJsonId,
+    designSessionId,
+    version: 1,
+    prompt: 'このUIに必要なテーブル定義案を作成してください。',
+    trigger: 'dbdesign-proposal',
+    dataBindings: [],
+    schema: {
+      name: 'flower_shop_schema',
+      label: 'Flower Shop',
+      purpose: 'Flower Shop UI data model',
+      tables: [
+        {
+          name: 'products',
+          label: 'Products',
+          columns: [
+            {
+              name: 'id',
+              label: 'ID',
+              type: 'uuid',
+              nullable: false,
+              primaryKey: true,
+              unique: true,
+              default: { kind: 'uuid' },
+              validation: { required: true },
+              ui: { listVisible: false, formVisible: false, filterable: false, sortable: false },
+            },
+            {
+              name: 'name',
+              label: 'Name',
+              type: 'text',
+              nullable: false,
+              primaryKey: false,
+              unique: false,
+              validation: { required: true },
+              ui: { listVisible: true, formVisible: true, filterable: true, sortable: true },
+            },
+          ],
+          indexes: [],
+          ui: { displayField: 'name', defaultSortField: 'name', defaultSortDirection: 'asc' },
+        },
+      ],
+      relations: [],
+      uiHints: {
+        primaryTables: ['products'],
+        defaultNavigation: ['products'],
+        suggestedScreens: [{ name: 'Products', table: 'products', operation: 'list' }],
+      },
+    },
+    diffSummary: {
+      addedTables: ['products'],
+      changedTables: [],
+      removedTables: [],
+      destructive: false,
+    },
+    providerMeta: { provider: 'mock', componentRegistryVersion: 'component-registry-v2:test' },
+    createdAt: '2026-05-07T00:00:00.000Z',
+    updatedAt: '2026-05-07T00:00:00.000Z',
+  };
+}
+
+function databaseDraftGapResponse() {
+  return {
+    databaseSchemaJsonId,
+    gap: {
+      currentMatch: false,
+      blockingCount: 1,
+      infoCount: 0,
+      items: [
+        {
+          kind: 'missing_table',
+          severity: 'blocking',
+          table: 'products',
+          column: null,
+          expected: 'products',
+          actual: null,
+          message: 'products is missing from SandboxDB',
+        },
+      ],
+    },
+  };
+}
+
+function databaseDesignConversationResponse() {
+  return {
+    session: {
+      id: designSessionId,
+      title: 'Flower Shop',
+      createdBy: '44444444-4444-4444-8444-444444444444',
+      activeDatabaseSchemaJsonId: databaseSchemaJsonId,
+      activeScreenJsonId: screenId,
+      createdAt: '2026-05-07T00:00:00.000Z',
+      updatedAt: '2026-05-07T00:00:00.000Z',
+    },
+    activeDatabaseSchemaJsonId: databaseSchemaJsonId,
+    activeScreenJsonId: screenId,
+    databaseSchemaJsons: [databaseSchemaJsonPayload()],
+    messages: [],
+    dataBindings: [],
+  };
+}
+
+function databaseDesignResponse() {
+  return {
+    session: databaseDesignConversationResponse().session,
+    databaseSchemaJson: databaseSchemaJsonPayload(),
+    screenJsonId: screenId,
+    dataBindings: [],
+    activities: [],
+    migrationPreview: {
+      databaseSchemaJsonId,
+      sql: 'CREATE TABLE "products" ();',
+      warnings: [],
+      destructive: false,
+      requiresConfirmation: false,
+    },
+    conversation: databaseDesignConversationResponse(),
   };
 }
 
@@ -184,24 +307,127 @@ test.describe('Generated screen history @regression', () => {
         }),
       });
     });
+    await page.route('**/api/database-design/propose', async (route) => {
+      if (route.request().method() !== 'POST') return route.fallback();
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(databaseDesignResponse()),
+      });
+    });
+    await page.route('**/api/database-design/drafts', async (route) => {
+      if (route.request().method() !== 'GET') return route.fallback();
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          drafts: [
+            {
+              id: databaseSchemaJsonId,
+              designSessionId,
+              title: 'Flower Shop',
+              prompt: 'このUIに必要なテーブル定義案を作成してください。',
+              source: 'screen',
+              createdAt: '2026-05-07T00:00:00.000Z',
+              tableCount: 1,
+              sourceScreenJsonId: screenId,
+              boundScreenJsonId: screenId,
+              boundPromptSessionId: sessionId,
+              historicallyAppliedAt: null,
+              currentMatch: false,
+              gap: databaseDraftGapResponse().gap,
+            },
+          ],
+        }),
+      });
+    });
+    await page.route(`**/api/database-design/${designSessionId}/conversation`, async (route) => {
+      if (route.request().method() !== 'GET') return route.fallback();
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(databaseDesignConversationResponse()),
+      });
+    });
+    await page.route(
+      `**/api/database-design/schema-jsons/${databaseSchemaJsonId}`,
+      async (route) => {
+        if (route.request().method() !== 'GET') return route.fallback();
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ databaseSchemaJson: databaseSchemaJsonPayload() }),
+        });
+      }
+    );
+    await page.route(
+      `**/api/database-design/schema-jsons/${databaseSchemaJsonId}/gap`,
+      async (route) => {
+        if (route.request().method() !== 'GET') return route.fallback();
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(databaseDraftGapResponse()),
+        });
+      }
+    );
+    await page.route(
+      `**/api/database-design/schema-jsons/${databaseSchemaJsonId}/migration/preview`,
+      async (route) => {
+        if (route.request().method() !== 'POST') return route.fallback();
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            databaseSchemaJsonId,
+            sql: 'CREATE TABLE "products" ();',
+            warnings: [],
+            destructive: false,
+            requiresConfirmation: false,
+          }),
+        });
+      }
+    );
+    await page.route('**/api/sandbox-db/state', async (route) => {
+      if (route.request().method() !== 'GET') return route.fallback();
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          appliedDatabaseSchemaJsonId: null,
+          appliedVersion: null,
+          tables: [],
+        }),
+      });
+    });
 
     await page.goto('/history');
-    await expect(page.getByRole('heading', { name: 'History', exact: true })).toBeVisible();
-    await page.getByRole('textbox', { name: 'Search generated screens' }).fill('Future Shop');
+    await expect(page.getByRole('heading', { name: 'UIDesign', exact: true })).toBeVisible();
+    await page.getByRole('textbox', { name: 'Search UI designs...' }).fill('Future Shop');
     await expect(page.getByRole('link', { name: /Flower Shop/ })).toBeVisible();
-    await page.getByRole('textbox', { name: 'Search generated screens' }).fill('');
+    await page.getByRole('textbox', { name: 'Search UI designs...' }).fill('');
     await page.getByRole('link', { name: /Flower Shop/ }).click();
     await expect(page).toHaveURL(new RegExp(`/prompt/session/${sessionId}`));
     await expect(page.getByRole('region', { name: 'Flower Shop' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Flower details' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'DB生成' })).toBeVisible();
+    const proposeRequest = page.waitForRequest('**/api/database-design/propose');
+    await page.getByRole('button', { name: 'DB生成' }).click();
+    await expect(page).toHaveURL(new RegExp(`/dbdesign/drafts/${databaseSchemaJsonId}`));
+    await expect(await (await proposeRequest).postDataJSON()).toMatchObject({
+      screenJsonId: screenId,
+      source: 'screen',
+    });
+
+    await page.goto(`/prompt/session/${sessionId}`);
+    await expect(page.getByRole('region', { name: 'Flower Shop' })).toBeVisible();
     await expect(page.getByRole('button', { name: '現在 v1' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'v2' })).toBeVisible();
-    await expect(page.getByRole('button', { name: '現在のバージョン' })).toBeVisible();
     await expect(page.getByText('Future Shop を更新しました。')).toBeHidden();
 
     await page.reload();
     await expect(page.getByRole('region', { name: 'Flower Shop' })).toBeVisible();
-    await expect(page.getByRole('button', { name: '現在のバージョン' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '現在 v1' })).toBeVisible();
 
     await page.goto(`/prompt/${screenId}`);
     await expect(page).toHaveURL(new RegExp(`/prompt/session/${sessionId}`));

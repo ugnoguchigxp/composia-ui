@@ -48,6 +48,7 @@ import { logRenderPerf, measureRenderTask, renderPerfStart } from '../../../lib/
 import { cn } from '../../../lib/utils';
 import {
   useInsertSandboxRow,
+  useProposeDatabaseDesign,
   useSandboxBindingRows,
   useSandboxState,
 } from '../../database-design/hooks/database-design.hooks';
@@ -305,6 +306,7 @@ export function PromptWorkspace({
   const updateSessionVisibility = useUpdatePromptSessionVisibility(routeSessionId);
   const restoreCheckpoint = useRestoreScreenJsonCheckpoint(routeSessionId);
   const insertSandboxRow = useInsertSandboxRow();
+  const proposeDatabaseDesign = useProposeDatabaseDesign();
   const historyQuery = useScreenHistory(
     { limit: 100, page: 1, sortBy: 'updatedAt', sortOrder: 'desc' },
     Boolean(auth.user && ((isDockOpen && dockTab === 'compose') || projectId || sessionId))
@@ -321,6 +323,7 @@ export function PromptWorkspace({
   const generateFromActionMutate = generateFromAction.mutate;
   const generateFromSessionActionMutate = generateFromSessionAction.mutate;
   const insertSandboxRowMutate = insertSandboxRow.mutate;
+  const proposeDatabaseDesignMutate = proposeDatabaseDesign.mutate;
   const activeConversationScreen = conversationQuery.data?.activeScreenJson ?? null;
   const activeScreenStartedAt = renderPerfStart();
   const activeScreen: WorkspaceScreen | null =
@@ -456,6 +459,41 @@ export function PromptWorkspace({
   const displayMessages =
     persistedMessages.length > 0 ? [...persistedMessages, ...localOverlayMessages] : messages;
   const activeScreenJsonId = conversationQuery.data?.activeScreenJsonId ?? activeScreen?.id ?? null;
+  const handleGenerateDatabaseDraft = useCallback(
+    (screenJsonId: string) => {
+      if (!screenJsonId || proposeDatabaseDesign.isPending) return;
+
+      proposeDatabaseDesignMutate(
+        {
+          prompt: 'このUIに必要なテーブル定義案を作成してください。',
+          screenJsonId,
+          source: 'screen',
+        },
+        {
+          onSuccess: (data) => {
+            void navigate({
+              params: { databaseSchemaJsonId: data.databaseSchemaJson.id } as never,
+              to: '/dbdesign/drafts/$databaseSchemaJsonId' as never,
+            });
+          },
+          onError: (error) => {
+            setIsDockOpen(true);
+            setDockTab('chat');
+            setMessages((current) => [
+              ...current,
+              {
+                id: createId('assistant'),
+                role: 'assistant',
+                content:
+                  error instanceof Error ? error.message : 'DBDesign draft could not be generated.',
+              },
+            ]);
+          },
+        }
+      );
+    },
+    [navigate, proposeDatabaseDesign.isPending, proposeDatabaseDesignMutate]
+  );
   const [bindingNotice, setBindingNotice] = useState<BindingNotice | null>(null);
   const [pendingBindingId, setPendingBindingId] = useState<string | null>(null);
   const bindingResolution = useMemo(
@@ -1210,8 +1248,10 @@ export function PromptWorkspace({
           currentSessionId={routeSessionId}
           hasJsonChanges={hasJsonChanges}
           isPublishing={updateSessionVisibility.isPending}
+          isGeneratingDatabaseDraft={proposeDatabaseDesign.isPending}
           isRestoring={restoreCheckpoint.isPending}
           isSaving={saveSessionScreenJson.isPending}
+          onGenerateDatabaseDraft={handleGenerateDatabaseDraft}
           onRestoreCheckpoint={handleRestoreCheckpoint}
           onSave={handleSaveActiveScreen}
           onUpdateVisibility={handleUpdateVisibility}
@@ -1261,9 +1301,11 @@ function WorkspaceScreenToolbar({
   checkpoints,
   currentSessionId,
   hasJsonChanges,
+  isGeneratingDatabaseDraft,
   isPublishing,
   isRestoring,
   isSaving,
+  onGenerateDatabaseDraft,
   onRestoreCheckpoint,
   onSave,
   onUpdateVisibility,
@@ -1278,9 +1320,11 @@ function WorkspaceScreenToolbar({
   checkpoints: ScreenCheckpoint[];
   currentSessionId: string | null;
   hasJsonChanges: boolean;
+  isGeneratingDatabaseDraft: boolean;
   isPublishing: boolean;
   isRestoring: boolean;
   isSaving: boolean;
+  onGenerateDatabaseDraft: (screenJsonId: string) => void;
   onRestoreCheckpoint: (screenJsonId: string) => void;
   onSave: () => void;
   onUpdateVisibility: (visibility: PromptSessionVisibility) => void;
@@ -1297,6 +1341,7 @@ function WorkspaceScreenToolbar({
   const olderCheckpoints = sortedCheckpoints.slice(4);
   const canSave = Boolean(currentSessionId && hasJsonChanges && !isSaving);
   const canPublish = Boolean(currentSessionId && !isPublishing);
+  const canGenerateDatabaseDraft = Boolean(activeScreenJsonId && !isGeneratingDatabaseDraft);
   const isPublishingPrivate = pendingVisibility === 'private' && isPublishing;
   const isPublishingPublic = pendingVisibility === 'public' && isPublishing;
 
@@ -1360,25 +1405,21 @@ function WorkspaceScreenToolbar({
               公開
             </button>
           </div>
-          {activeScreenJsonId ? (
-            <Link
-              className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-3 text-primary-foreground text-sm font-medium hover:bg-primary/90"
-              search={{ screenJsonId: activeScreenJsonId } as never}
-              to={'/dbdesign' as never}
-            >
+          <button
+            className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-3 text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={!canGenerateDatabaseDraft}
+            onClick={() => {
+              if (activeScreenJsonId) onGenerateDatabaseDraft(activeScreenJsonId);
+            }}
+            type="button"
+          >
+            {isGeneratingDatabaseDraft ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
               <Database className="h-4 w-4" />
-              DB生成
-            </Link>
-          ) : (
-            <button
-              className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-3 text-primary-foreground text-sm font-medium opacity-50"
-              disabled
-              type="button"
-            >
-              <Database className="h-4 w-4" />
-              DB生成
-            </button>
-          )}
+            )}
+            DB生成
+          </button>
         </div>
       </div>
 

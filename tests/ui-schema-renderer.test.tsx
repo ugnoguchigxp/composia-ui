@@ -224,6 +224,79 @@ describe('ui schema renderer', () => {
     expect(html).not.toContain('Static product');
   });
 
+  it('hides bound sections when the applied table has no rows', () => {
+    const schema = appUiSchemaSchema.parse({
+      page: 'Empty bound rows',
+      intent: 'Hide empty bound data instead of showing static fallback',
+      layout: 'dashboard',
+      sections: [
+        {
+          component: 'DataTableSection',
+          dataBindingId: 'products_list',
+          source: 'postgres',
+          props: {
+            title: 'Products',
+            columns: [{ key: 'name', label: 'Name' }],
+            rows: [{ name: 'Static product' }],
+          },
+        },
+      ],
+    });
+    const spec = appUiSchemaToJsonRenderSpec(schema, { bindingRows: { products_list: [] } });
+    const html = renderToStaticMarkup(
+      <JsonRenderRenderer bindingRows={{ products_list: [] }} schema={schema} />
+    );
+
+    expect(spec.elements[spec.root].children).toEqual([]);
+    expect(html).not.toContain('Products');
+    expect(html).not.toContain('Name');
+    expect(html).not.toContain('Static product');
+  });
+
+  it('maps bound table rows into card grid items', () => {
+    const schema = appUiSchemaSchema.parse({
+      page: 'Bound cards',
+      intent: 'Render sandbox rows through bound cards',
+      layout: 'dashboard',
+      sections: [
+        {
+          component: 'CardGridSection',
+          dataBindingId: 'products_list',
+          source: 'postgres',
+          props: {
+            title: 'Products',
+            items: [{ title: 'Static product' }],
+          },
+        },
+      ],
+    });
+    const bindingRows = {
+      products_list: [
+        {
+          id: '1',
+          name: 'Sandbox product',
+          description: 'Loaded from SandboxDB',
+          price: 1200,
+        },
+      ],
+    };
+    const spec = appUiSchemaToJsonRenderSpec(schema, { bindingRows });
+    const html = renderToStaticMarkup(
+      <JsonRenderRenderer bindingRows={bindingRows} schema={schema} />
+    );
+
+    expect(spec.elements['section-cardgridsection-0']?.props.items).toEqual([
+      expect.objectContaining({
+        title: 'Sandbox product',
+        description: 'Loaded from SandboxDB',
+        meta: { label: 'price', value: '1200' },
+      }),
+    ]);
+    expect(html).toContain('Sandbox product');
+    expect(html).toContain('Loaded from SandboxDB');
+    expect(html).not.toContain('Static product');
+  });
+
   it('suppresses database system columns in rendered data tables', () => {
     const schema = appUiSchemaSchema.parse({
       page: 'System columns',
@@ -268,10 +341,10 @@ describe('ui schema renderer', () => {
     expect(html).not.toContain('system-row-id');
   });
 
-  it('keeps static rows while binding rows are unavailable', () => {
+  it('hides bound static rows while binding rows are unavailable', () => {
     const schema = appUiSchemaSchema.parse({
       page: 'Static fallback',
-      intent: 'Render static rows until binding rows are loaded',
+      intent: 'Avoid rendering static rows for bound sections before rows are loaded',
       layout: 'dashboard',
       sections: [
         {
@@ -289,10 +362,8 @@ describe('ui schema renderer', () => {
     const spec = appUiSchemaToJsonRenderSpec(schema, { bindingRows: {} });
     const html = renderToStaticMarkup(<JsonRenderRenderer bindingRows={{}} schema={schema} />);
 
-    expect(spec.elements['section-datatablesection-0']?.props.rows).toEqual([
-      { name: 'Static product' },
-    ]);
-    expect(html).toContain('Static product');
+    expect(spec.elements[spec.root].children).toEqual([]);
+    expect(html).not.toContain('Static product');
   });
 
   it('does not inject binding rows into unsupported components', () => {
