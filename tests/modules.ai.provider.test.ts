@@ -23,7 +23,9 @@ describe('ai provider', () => {
     await provider.classify({ text: 'hello' });
 
     expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining('https://test.openai.azure.com/openai/deployments/test-deploy/chat/completions'),
+      expect.stringContaining(
+        'https://test.openai.azure.com/openai/deployments/test-deploy/chat/completions'
+      ),
       expect.objectContaining({
         headers: expect.objectContaining({ 'api-key': 'test-key' }),
       })
@@ -101,7 +103,9 @@ describe('ai provider', () => {
     await provider.classify({ text: 'hello' });
 
     expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining('https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=goog-test'),
+      expect.stringContaining(
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=goog-test'
+      ),
       expect.anything()
     );
   });

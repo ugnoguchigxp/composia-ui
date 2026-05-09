@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import type postgres from 'postgres';
 import type {
   DatabaseColumn,
   DatabaseSchemaJson,
@@ -208,7 +209,10 @@ function managedObjectsForSchema(
   return [...objects, ...enumObjects];
 }
 
-export function createSandboxMigrationService(repo: DatabaseDesignRepository) {
+export function createSandboxMigrationService(
+  repo: DatabaseDesignRepository,
+  sandboxSql: postgres.Sql = getSandboxSql()
+) {
   return {
     preview: async (schemaRecord: DatabaseSchemaJsonRecord): Promise<SandboxMigrationPreview> => {
       const sql = migrationSql(schemaRecord.schema);
@@ -234,7 +238,7 @@ export function createSandboxMigrationService(repo: DatabaseDesignRepository) {
       });
 
       try {
-        await getSandboxSql().unsafe(sql);
+        await sandboxSql.unsafe(sql);
         const applied = await repo.updateMigrationRun(run.id, {
           appliedAt: new Date(),
           status: 'applied',
@@ -270,7 +274,7 @@ export function createSandboxMigrationService(repo: DatabaseDesignRepository) {
       ].join('\n');
 
       if (sql.trim()) {
-        await getSandboxSql().unsafe(sql);
+        await sandboxSql.unsafe(sql);
       }
       await repo.markManagedObjectsDropped(objects.map((object) => object.id));
       await repo.markAppliedMigrationRunsReverted();

@@ -1,3 +1,4 @@
+import type postgres from 'postgres';
 import type {
   DatabaseScalarType,
   DatabaseTable,
@@ -35,8 +36,8 @@ function sqlValue(tableSchema: DatabaseTable, field: string, value: unknown) {
   return quoteLiteral(String(value));
 }
 
-async function assertPublicTable(table: string) {
-  const rows = await getSandboxSql().unsafe(
+async function assertPublicTable(sandboxSql: postgres.Sql, table: string) {
+  const rows = await sandboxSql.unsafe(
     `SELECT 1
      FROM pg_class c
      JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -99,10 +100,10 @@ function scalarType(type: string, isEnum: boolean): DatabaseScalarType {
 }
 
 async function introspectSandboxTables(
-  repo: DatabaseDesignRepository
+  repo: DatabaseDesignRepository,
+  sandboxSql: postgres.Sql
 ): Promise<SandboxTableState[]> {
   const startedAt = Date.now();
-  const sandboxSql = getSandboxSql();
   const tableRowsStartedAt = Date.now();
   const tableRows = (await sandboxSql.unsafe(
     `SELECT
@@ -337,7 +338,10 @@ async function cachedSandboxState(
   return promise;
 }
 
-export function createSandboxQueryService(repo: DatabaseDesignRepository) {
+export function createSandboxQueryService(
+  repo: DatabaseDesignRepository,
+  sandboxSql: postgres.Sql = getSandboxSql()
+) {
   const activeSchema = async () => {
     const schema = await repo.latestAppliedSchemaJson();
     if (!schema) return null;
@@ -365,7 +369,10 @@ export function createSandboxQueryService(repo: DatabaseDesignRepository) {
   return {
     state: async (): Promise<SandboxStateResponse> => {
       return cachedSandboxState(repo, async () => {
-        const [schema, tables] = await Promise.all([activeSchema(), introspectSandboxTables(repo)]);
+        const [schema, tables] = await Promise.all([
+          activeSchema(),
+          introspectSandboxTables(repo, sandboxSql),
+        ]);
         return {
           appliedDatabaseSchemaJsonId: schema?.id ?? null,
           appliedVersion: schema?.version ?? null,
@@ -376,22 +383,22 @@ export function createSandboxQueryService(repo: DatabaseDesignRepository) {
     listRows: async (table: string, limit = 50): Promise<SandboxRowsResponse> => {
       await assertManagedTable(table);
       const boundedLimit = Math.min(Math.max(limit, 1), 200);
-      const rows = await getSandboxSql().unsafe(
+      const rows = await sandboxSql.unsafe(
         `SELECT * FROM ${quoteIdent(table)} LIMIT ${boundedLimit}`
       );
       return { table, rows: rows as Record<string, unknown>[] };
     },
     inspectRows: async (table: string, limit = 100): Promise<SandboxRowsResponse> => {
-      await assertPublicTable(table);
+      await assertPublicTable(sandboxSql, table);
       const boundedLimit = Math.min(Math.max(limit, 1), 200);
-      const rows = await getSandboxSql().unsafe(
+      const rows = await sandboxSql.unsafe(
         `SELECT * FROM ${quoteIdent(table)} LIMIT ${boundedLimit}`
       );
       return { table, rows: rows as Record<string, unknown>[] };
     },
     getRow: async (table: string, id: string): Promise<SandboxRowResponse> => {
       await assertManagedTable(table);
-      const rows = await getSandboxSql().unsafe(
+      const rows = await sandboxSql.unsafe(
         `SELECT * FROM ${quoteIdent(table)} WHERE id = ${quoteLiteral(id)} LIMIT 1`
       );
       if (!rows[0]) throw new NotFoundError(`Sandbox row "${id}" was not found`);
@@ -407,7 +414,7 @@ export function createSandboxQueryService(repo: DatabaseDesignRepository) {
       if (keys.length === 0) throw new ValidationError('Row payload is empty');
       const columns = keys.map(quoteIdent).join(', ');
       const values = keys.map((key) => sqlValue(tableSchema, key, parsed[key])).join(', ');
-      const rows = await getSandboxSql().unsafe(
+      const rows = await sandboxSql.unsafe(
         `INSERT INTO ${quoteIdent(table)} (${columns}) VALUES (${values}) RETURNING *`
       );
       invalidateSandboxStateCache(repo);
@@ -430,7 +437,7 @@ export function createSandboxQueryService(repo: DatabaseDesignRepository) {
           ? [`${quoteIdent('updated_at')} = now()`]
           : []),
       ].join(', ');
-      const rows = await getSandboxSql().unsafe(
+      const rows = await sandboxSql.unsafe(
         `UPDATE ${quoteIdent(table)} SET ${assignments} WHERE id = ${quoteLiteral(id)} RETURNING *`
       );
       invalidateSandboxStateCache(repo);
@@ -438,9 +445,7 @@ export function createSandboxQueryService(repo: DatabaseDesignRepository) {
     },
     deleteRow: async (table: string, id: string) => {
       await assertManagedTable(table);
-      await getSandboxSql().unsafe(
-        `DELETE FROM ${quoteIdent(table)} WHERE id = ${quoteLiteral(id)}`
-      );
+      await sandboxSql.unsafe(`DELETE FROM ${quoteIdent(table)} WHERE id = ${quoteLiteral(id)}`);
       invalidateSandboxStateCache(repo);
       return { success: true };
     },
@@ -458,7 +463,7 @@ export function createSandboxQueryService(repo: DatabaseDesignRepository) {
         ...enums.map((object) => `DROP TYPE IF EXISTS ${quoteIdent(object.objectName)} CASCADE;`),
       ].join('\n');
 
-      await getSandboxSql().unsafe(statements);
+      await sandboxSql.unsafe(statements);
       await repo.markManagedObjectsDropped(managedObjects.map((object) => object.id));
       invalidateSandboxStateCache(repo);
       return { success: true };
@@ -476,7 +481,7 @@ export function createSandboxQueryService(repo: DatabaseDesignRepository) {
         throw new NotFoundError(`Sandbox relation "${relationName}" is not managed`);
       }
       await assertManagedTable(relation.joinTable);
-      const rows = await getSandboxSql().unsafe(
+      const rows = await sandboxSql.unsafe(
         `INSERT INTO ${quoteIdent(relation.joinTable)}
           (${quoteIdent(relation.leftForeignKeyColumn)}, ${quoteIdent(
             relation.rightForeignKeyColumn
@@ -497,7 +502,7 @@ export function createSandboxQueryService(repo: DatabaseDesignRepository) {
         throw new NotFoundError(`Sandbox relation "${relationName}" is not managed`);
       }
       await assertManagedTable(relation.joinTable);
-      await getSandboxSql().unsafe(
+      await sandboxSql.unsafe(
         `DELETE FROM ${quoteIdent(relation.joinTable)}
         WHERE ${quoteIdent(relation.leftForeignKeyColumn)} = ${quoteLiteral(input.leftId)}
           AND ${quoteIdent(relation.rightForeignKeyColumn)} = ${quoteLiteral(input.rightId)}`

@@ -53,6 +53,11 @@ export type DatabaseDesignProvider = {
   propose: (input: DatabaseDesignProviderInput) => Promise<DatabaseDesignProviderOutput>;
 };
 
+export type DatabaseDesignProviderDependencies = {
+  fetch?: typeof fetch;
+  config?: typeof config;
+};
+
 const databaseDesignJobIdentifierSchema = z
   .string()
   .trim()
@@ -1005,7 +1010,12 @@ function parseDesignJobResponseText(
   return draft;
 }
 
-async function fetchWithProgress(url: string, init: RequestInit, trace: ProviderTrace) {
+async function fetchWithProgress(
+  url: string,
+  init: RequestInit,
+  trace: ProviderTrace,
+  currentFetch: typeof fetch = fetch
+) {
   const startedAt = Date.now();
   logger.info({ ...trace, url }, 'DBDesign provider HTTP request started');
   const progressTimer = setInterval(() => {
@@ -1015,7 +1025,7 @@ async function fetchWithProgress(url: string, init: RequestInit, trace: Provider
     );
   }, dbDesignProviderProgressLogIntervalMs);
   try {
-    const response = await fetch(url, init);
+    const response = await currentFetch(url, init);
     clearInterval(progressTimer);
     return { response, startedAt };
   } catch (error) {
@@ -1031,21 +1041,24 @@ async function fetchWithProgress(url: string, init: RequestInit, trace: Provider
 async function generateWithOpenAi(
   input: BuiltLlmInput,
   trace: ProviderTrace,
-  sourceInput: DatabaseDesignProviderInput
+  sourceInput: DatabaseDesignProviderInput,
+  deps: DatabaseDesignProviderDependencies = {}
 ) {
+  const currentConfig = deps.config ?? config;
+  const currentFetch = deps.fetch ?? fetch;
   logger.info(
     {
       ...trace,
       estimatedTokens: input.estimatedTokens,
       maxOutputTokens: dbDesignMaxOutputTokens,
-      model: config.OPENAI_MODEL,
+      model: currentConfig.OPENAI_MODEL,
       promptChars: input.promptChars,
       reasoningEffort: dbDesignReasoningEffort,
     },
     'DBDesign OpenAI generation started'
   );
   const openAiRequestBody = {
-    model: config.OPENAI_MODEL,
+    model: currentConfig.OPENAI_MODEL,
     instructions: dbDesignSystemInstructions,
     input: input.prompt,
     max_output_tokens: dbDesignMaxOutputTokens,
@@ -1067,12 +1080,13 @@ async function generateWithOpenAi(
     {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${config.OPENAI_API_KEY}`,
+        Authorization: `Bearer ${currentConfig.OPENAI_API_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(openAiRequestBody),
     },
-    trace
+    trace,
+    currentFetch
   );
   const payload = await parseProviderResponse(response, trace, startedAt);
   return parseDesignJobResponseText(extractResponseText(payload, trace), trace, sourceInput);
@@ -1081,18 +1095,21 @@ async function generateWithOpenAi(
 async function generateWithAzure(
   input: BuiltLlmInput,
   trace: ProviderTrace,
-  sourceInput: DatabaseDesignProviderInput
+  sourceInput: DatabaseDesignProviderInput,
+  deps: DatabaseDesignProviderDependencies = {}
 ) {
-  const rawEndpoint = config.AZURE_OPENAI_ENDPOINT;
+  const currentConfig = deps.config ?? config;
+  const currentFetch = deps.fetch ?? fetch;
+  const rawEndpoint = currentConfig.AZURE_OPENAI_ENDPOINT;
   const endpoint = rawEndpoint?.endsWith('/') ? rawEndpoint.slice(0, -1) : rawEndpoint;
-  const deployment = encodeURIComponent(config.AZURE_OPENAI_DEPLOYMENT_NAME ?? '');
+  const deployment = encodeURIComponent(currentConfig.AZURE_OPENAI_DEPLOYMENT_NAME ?? '');
   const url = `${endpoint}/openai/deployments/${deployment}/chat/completions?api-version=${encodeURIComponent(
-    config.AZURE_OPENAI_API_VERSION
+    currentConfig.AZURE_OPENAI_API_VERSION
   )}`;
   logger.info(
     {
       ...trace,
-      deployment: config.AZURE_OPENAI_DEPLOYMENT_NAME,
+      deployment: currentConfig.AZURE_OPENAI_DEPLOYMENT_NAME,
       estimatedTokens: input.estimatedTokens,
       maxCompletionTokens: dbDesignMaxOutputTokens,
       promptChars: input.promptChars,
@@ -1127,18 +1144,22 @@ async function generateWithAzure(
     {
       method: 'POST',
       headers: {
-        'api-key': config.AZURE_OPENAI_API_KEY ?? '',
+        'api-key': currentConfig.AZURE_OPENAI_API_KEY ?? '',
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(azureRequestBody),
     },
-    trace
+    trace,
+    currentFetch
   );
   const payload = await parseProviderResponse(response, trace, startedAt);
   return parseDesignJobResponseText(extractResponseText(payload, trace), trace, sourceInput);
 }
 
-export function createDefaultDatabaseDesignProvider(): DatabaseDesignProvider {
+export function createDefaultDatabaseDesignProvider(
+  deps: DatabaseDesignProviderDependencies = {}
+): DatabaseDesignProvider {
+  const currentConfig = deps.config ?? config;
   return {
     propose: async (input) => {
       const startedAt = Date.now();
@@ -1175,20 +1196,20 @@ export function createDefaultDatabaseDesignProvider(): DatabaseDesignProvider {
       ];
 
       if (
-        config.AZURE_OPENAI_API_KEY &&
-        config.AZURE_OPENAI_ENDPOINT &&
-        config.AZURE_OPENAI_DEPLOYMENT_NAME
+        currentConfig.AZURE_OPENAI_API_KEY &&
+        currentConfig.AZURE_OPENAI_ENDPOINT &&
+        currentConfig.AZURE_OPENAI_DEPLOYMENT_NAME
       ) {
         const trace: ProviderTrace = { provider: 'azure-openai', traceId };
         logger.info(
           {
             ...trace,
-            deployment: config.AZURE_OPENAI_DEPLOYMENT_NAME,
+            deployment: currentConfig.AZURE_OPENAI_DEPLOYMENT_NAME,
             providerPriority: 'azure-openai',
           },
           'DBDesign provider selected'
         );
-        const draft = await generateWithAzure(llmInput, trace, input);
+        const draft = await generateWithAzure(llmInput, trace, input, deps);
         logger.info(
           { ...trace, durationMs: durationMs(startedAt) },
           'DBDesign provider propose completed'
@@ -1198,19 +1219,19 @@ export function createDefaultDatabaseDesignProvider(): DatabaseDesignProvider {
           draft,
           providerMeta: {
             provider: 'azure-openai',
-            model: config.AZURE_OPENAI_DEPLOYMENT_NAME,
+            model: currentConfig.AZURE_OPENAI_DEPLOYMENT_NAME,
             componentRegistryVersion,
           },
         };
       }
 
-      if (config.OPENAI_API_KEY) {
+      if (currentConfig.OPENAI_API_KEY) {
         const trace: ProviderTrace = { provider: 'openai', traceId };
         logger.info(
-          { ...trace, model: config.OPENAI_MODEL, providerPriority: 'openai' },
+          { ...trace, model: currentConfig.OPENAI_MODEL, providerPriority: 'openai' },
           'DBDesign provider selected'
         );
-        const draft = await generateWithOpenAi(llmInput, trace, input);
+        const draft = await generateWithOpenAi(llmInput, trace, input, deps);
         logger.info(
           { ...trace, durationMs: durationMs(startedAt) },
           'DBDesign provider propose completed'
@@ -1220,7 +1241,7 @@ export function createDefaultDatabaseDesignProvider(): DatabaseDesignProvider {
           draft,
           providerMeta: {
             provider: 'openai',
-            model: config.OPENAI_MODEL,
+            model: currentConfig.OPENAI_MODEL,
             componentRegistryVersion,
           },
         };

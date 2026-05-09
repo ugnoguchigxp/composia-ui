@@ -15,6 +15,8 @@ export default defineConfig({
         'api/lib/**/*.ts',
         'api/middleware/**/*.ts',
         'api/modules/ai/**/*.ts',
+        'api/modules/screen-history/**/*.ts',
+        'api/modules/database-design/**/*.ts',
         'api/services/oauth/**/*.ts',
         'api/services/token.service.ts',
         'api/services/auth.service.ts',

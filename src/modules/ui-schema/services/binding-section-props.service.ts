@@ -123,7 +123,7 @@ export function resolveRenderableSchemaSections(
   schema: AppUiSchema,
   bindingRows?: Record<string, BoundRow[]>
 ): RenderableSchemaSection[] {
-  return schema.sections.flatMap((section, index) => {
+  return (schema.sections ?? []).flatMap((section, index) => {
     if (!section.dataBindingId || !rowBoundComponents.has(section.component)) {
       return [{ index, props: section.props, section }];
     }

@@ -1,4 +1,5 @@
 import { OpenAPIHono } from '@hono/zod-openapi';
+import { timing } from 'hono/timing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AppEnv } from '../api/lib/types';
 import { errorHandler } from '../api/middleware/error-handler';
@@ -157,6 +158,7 @@ describe('screen history routes', () => {
 
   function createApp() {
     const app = new OpenAPIHono<AppEnv>();
+    app.use('*', timing());
     app.onError(errorHandler);
     app.route('/api/mcp', mcpToolsRouter);
     app.route('/api/screens', screenHistoryRouter);

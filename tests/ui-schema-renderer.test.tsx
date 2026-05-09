@@ -870,4 +870,14 @@ describe('ui schema renderer', () => {
     expect(html).toContain('Response options');
     expect(html).toContain('Escalation form');
   });
+
+  it('renders error message for invalid schema', () => {
+    // Missing required 'page' and 'sections'
+    const invalidSchema = {
+      layout: 'dashboard',
+    } as any;
+
+    const html = renderToStaticMarkup(<JsonRenderRenderer schema={invalidSchema} />);
+    expect(html).toContain('UI schema validation failed');
+  });
 });

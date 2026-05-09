@@ -46,7 +46,8 @@ function dateIso(value: Date) {
   return value.toISOString();
 }
 
-function titleFromPrompt(prompt: string) {
+function titleFromPrompt(prompt: string | null | undefined) {
+  if (!prompt) return '名称未設定';
   const compact = prompt.trim();
   if (compact.length <= 80) return compact;
   return `${compact.slice(0, 77)}...`;

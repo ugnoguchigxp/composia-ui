@@ -76,7 +76,7 @@ function initialVisibleSectionCount(sectionCount: number) {
 }
 
 function useVisibleSectionCount(schema: AppUiSchema) {
-  const sectionCount = schema.sections.length;
+  const sectionCount = schema.sections?.length ?? 0;
   const initialCount = initialVisibleSectionCount(sectionCount);
   const [stage, setStage] = useState<SectionStage>(() => ({
     count: initialCount,
