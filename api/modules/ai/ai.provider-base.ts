@@ -16,6 +16,7 @@ export type ProviderConfig = {
   buildRequest: (params: GenerateJsonParams) => { url: string; init: RequestInit };
   extractText: (payload: Record<string, unknown>) => string;
   name: string;
+  fetch?: typeof fetch;
 };
 
 function providerError(message: string, details?: Record<string, unknown>) {
@@ -87,9 +88,10 @@ export function createJsonProvider(
     summary: object;
   }
 ): AiLayoutProvider {
+  const fetchFn = config.fetch ?? fetch;
   const generateJson = async (params: GenerateJsonParams) => {
     const { url, init } = config.buildRequest(params);
-    const response = await fetch(url, init);
+    const response = await fetchFn(url, init);
     const payload = await parseProviderResponse(response);
     logger.info(
       {

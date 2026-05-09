@@ -398,20 +398,27 @@ function extractGoogleAiMessageText(payload: Record<string, unknown>) {
   throw providerError('Google AI response did not include text content');
 }
 
-function createOpenAiResponsesLayoutProvider(): AiLayoutProvider {
+export type ProviderDependencies = {
+  fetch?: typeof fetch;
+  config?: typeof config;
+};
+
+function createOpenAiResponsesLayoutProvider(deps: ProviderDependencies): AiLayoutProvider {
+  const currentConfig = deps.config ?? config;
   return createJsonProvider(
     {
       name: 'OpenAI',
+      fetch: deps.fetch,
       buildRequest: ({ input, instructions, name, schema }) => ({
         url: 'https://api.openai.com/v1/responses',
         init: {
           method: 'POST',
           headers: {
-            Authorization: `Bearer ${config.OPENAI_API_KEY}`,
+            Authorization: `Bearer ${currentConfig.OPENAI_API_KEY}`,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            model: config.OPENAI_MODEL,
+            model: currentConfig.OPENAI_MODEL,
             instructions,
             input,
             max_output_tokens: aiJsonMaxOutputTokens,
@@ -433,16 +440,18 @@ function createOpenAiResponsesLayoutProvider(): AiLayoutProvider {
   );
 }
 
-function createAzureOpenAiLayoutProvider(): AiLayoutProvider {
+function createAzureOpenAiLayoutProvider(deps: ProviderDependencies): AiLayoutProvider {
+  const currentConfig = deps.config ?? config;
   return createJsonProvider(
     {
       name: 'Azure OpenAI',
+      fetch: deps.fetch,
       buildRequest: ({ input, instructions, name, schema }) => {
-        const rawEndpoint = config.AZURE_OPENAI_ENDPOINT;
+        const rawEndpoint = currentConfig.AZURE_OPENAI_ENDPOINT;
         const endpoint = rawEndpoint?.endsWith('/') ? rawEndpoint.slice(0, -1) : rawEndpoint;
-        const deployment = encodeURIComponent(config.AZURE_OPENAI_DEPLOYMENT_NAME ?? '');
+        const deployment = encodeURIComponent(currentConfig.AZURE_OPENAI_DEPLOYMENT_NAME ?? '');
         const url = `${endpoint}/openai/deployments/${deployment}/chat/completions?api-version=${encodeURIComponent(
-          config.AZURE_OPENAI_API_VERSION
+          currentConfig.AZURE_OPENAI_API_VERSION
         )}`;
 
         return {
@@ -450,7 +459,7 @@ function createAzureOpenAiLayoutProvider(): AiLayoutProvider {
           init: {
             method: 'POST',
             headers: {
-              'api-key': config.AZURE_OPENAI_API_KEY ?? '',
+              'api-key': currentConfig.AZURE_OPENAI_API_KEY ?? '',
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
@@ -478,21 +487,23 @@ function createAzureOpenAiLayoutProvider(): AiLayoutProvider {
   );
 }
 
-function createAnthropicLayoutProvider(): AiLayoutProvider {
+function createAnthropicLayoutProvider(deps: ProviderDependencies): AiLayoutProvider {
+  const currentConfig = deps.config ?? config;
   return createJsonProvider(
     {
       name: 'Anthropic',
+      fetch: deps.fetch,
       buildRequest: ({ input, instructions }) => ({
         url: 'https://api.anthropic.com/v1/messages',
         init: {
           method: 'POST',
           headers: {
-            'x-api-key': config.ANTHROPIC_API_KEY ?? '',
+            'x-api-key': currentConfig.ANTHROPIC_API_KEY ?? '',
             'anthropic-version': '2023-06-01',
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            model: config.ANTHROPIC_MODEL,
+            model: currentConfig.ANTHROPIC_MODEL,
             max_tokens: aiJsonMaxOutputTokens,
             system: instructions,
             messages: [{ role: 'user', content: input }],
@@ -506,12 +517,14 @@ function createAnthropicLayoutProvider(): AiLayoutProvider {
   );
 }
 
-function createGoogleAiLayoutProvider(): AiLayoutProvider {
+function createGoogleAiLayoutProvider(deps: ProviderDependencies): AiLayoutProvider {
+  const currentConfig = deps.config ?? config;
   return createJsonProvider(
     {
       name: 'Google AI',
+      fetch: deps.fetch,
       buildRequest: ({ input, instructions, schema }) => ({
-        url: `https://generativelanguage.googleapis.com/v1beta/models/${config.GOOGLE_AI_MODEL}:generateContent?key=${config.GOOGLE_AI_API_KEY}`,
+        url: `https://generativelanguage.googleapis.com/v1beta/models/${currentConfig.GOOGLE_AI_MODEL}:generateContent?key=${currentConfig.GOOGLE_AI_API_KEY}`,
         init: {
           method: 'POST',
           headers: {
@@ -534,25 +547,27 @@ function createGoogleAiLayoutProvider(): AiLayoutProvider {
   );
 }
 
-export function createDefaultAiLayoutProvider(): AiLayoutProvider {
+export function createDefaultAiLayoutProvider(deps: ProviderDependencies = {}): AiLayoutProvider {
+  const currentConfig = deps.config ?? config;
+
   if (
-    config.AZURE_OPENAI_API_KEY &&
-    config.AZURE_OPENAI_ENDPOINT &&
-    config.AZURE_OPENAI_DEPLOYMENT_NAME
+    currentConfig.AZURE_OPENAI_API_KEY &&
+    currentConfig.AZURE_OPENAI_ENDPOINT &&
+    currentConfig.AZURE_OPENAI_DEPLOYMENT_NAME
   ) {
-    return createAzureOpenAiLayoutProvider();
+    return createAzureOpenAiLayoutProvider(deps);
   }
 
-  if (config.OPENAI_API_KEY) {
-    return createOpenAiResponsesLayoutProvider();
+  if (currentConfig.OPENAI_API_KEY) {
+    return createOpenAiResponsesLayoutProvider(deps);
   }
 
-  if (config.ANTHROPIC_API_KEY) {
-    return createAnthropicLayoutProvider();
+  if (currentConfig.ANTHROPIC_API_KEY) {
+    return createAnthropicLayoutProvider(deps);
   }
 
-  if (config.GOOGLE_AI_API_KEY) {
-    return createGoogleAiLayoutProvider();
+  if (currentConfig.GOOGLE_AI_API_KEY) {
+    return createGoogleAiLayoutProvider(deps);
   }
 
   return {
