@@ -40,6 +40,9 @@ drizzle/*
 !drizzle/migrations/
 !drizzle/seed.ts
 
+# Runtime media metadata
+data/
+
 # OS & Editor
 .DS_Store
 .vscode/*

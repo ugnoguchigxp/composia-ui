@@ -126,6 +126,142 @@ describe('ai service', () => {
     );
   });
 
+  it('normalizes provider chart heights, notification levels, and quick action icons before catalog validation', async () => {
+    const service = createAiService({
+      generateLayout: async () => ({
+        page: 'ERP dashboard',
+        intent: 'Show admin ERP operations',
+        layout: 'dashboard',
+        sections: [
+          {
+            component: 'ChartSection',
+            source: 'app',
+            props: {
+              title: 'Sales trend',
+              height: 420,
+              data: [{ label: 'Q1', value: 120 }],
+            },
+          },
+          {
+            component: 'NotificationCenterSection',
+            source: 'app',
+            props: {
+              title: 'Alerts',
+              items: [
+                { id: 'critical', title: 'Inventory shortage', level: 'critical' },
+                { id: 'warn', title: 'Approval pending', level: 'warn' },
+                { id: 'ok', title: 'Backup complete', level: 'ok' },
+              ],
+            },
+          },
+          {
+            component: 'QuickActionsSection',
+            source: 'app',
+            props: {
+              title: 'Actions',
+              items: [
+                { id: 'users', label: 'Users', icon: 'users' },
+                { id: 'reports', label: 'Reports', icon: 'bar_chart' },
+                { id: 'unknown', label: 'Unknown', icon: 'sparkles' },
+              ],
+            },
+          },
+        ],
+      }),
+    });
+
+    await expect(service.generateLayout({ prompt: 'ERP dashboard' })).resolves.toEqual(
+      expect.objectContaining({
+        schema: expect.objectContaining({
+          sections: [
+            expect.objectContaining({
+              component: 'ChartSection',
+              props: expect.objectContaining({ height: 'lg' }),
+            }),
+            expect.objectContaining({
+              component: 'NotificationCenterSection',
+              props: expect.objectContaining({
+                items: [
+                  expect.objectContaining({ level: 'danger' }),
+                  expect.objectContaining({ level: 'warning' }),
+                  expect.objectContaining({ level: 'success' }),
+                ],
+              }),
+            }),
+            expect.objectContaining({
+              component: 'QuickActionsSection',
+              props: expect.objectContaining({
+                items: [
+                  expect.objectContaining({ icon: 'users' }),
+                  expect.objectContaining({ icon: 'bar-chart' }),
+                  expect.objectContaining({ icon: 'settings' }),
+                ],
+              }),
+            }),
+          ],
+        }),
+      })
+    );
+  });
+
+  it('drops generated section actions that are not anchored to visible href props', async () => {
+    const service = createAiService({
+      generateLayout: async () => ({
+        page: 'Shop',
+        intent: 'Show product features',
+        layout: 'screen',
+        sections: [
+          {
+            component: 'CardGridSection',
+            source: 'app',
+            props: {
+              title: 'Featured',
+              items: [
+                {
+                  title: 'Popular models',
+                  href: '/features/popular',
+                },
+              ],
+            },
+            actions: [
+              {
+                id: 'popular-models',
+                label: 'Popular models',
+                kind: 'generate-screen',
+                target: '/features/popular',
+              },
+              {
+                id: 'view-feature',
+                label: '特集を見る',
+                kind: 'generate-screen',
+                target: '/features',
+              },
+            ],
+          },
+        ],
+      }),
+    });
+
+    await expect(service.generateLayout({ prompt: 'Shop top page' })).resolves.toEqual(
+      expect.objectContaining({
+        schema: expect.objectContaining({
+          sections: [
+            expect.objectContaining({
+              component: 'CardGridSection',
+              actions: [
+                expect.objectContaining({
+                  id: 'popular-models',
+                  label: 'Popular models',
+                  target: '/features/popular',
+                }),
+              ],
+            }),
+          ],
+        }),
+      })
+    );
+  });
+
   it('fills default-safe catalog props before returning generated layouts', async () => {
     const service = createAiService({
       generateLayout: async () => ({
@@ -155,12 +291,8 @@ describe('ai service', () => {
               props: expect.objectContaining({
                 searchPlaceholder: '商品を検索',
                 searchButtonLabel: '検索',
-                links: [
-                  { label: 'おすすめ', href: '/' },
-                  { label: 'セール', href: '/deals' },
-                  { label: 'ランキング', href: '/ranking' },
-                  { label: 'カート', href: '/cart' },
-                ],
+                links: [],
+                resultsTitle: '検索結果',
               }),
             }),
           ],

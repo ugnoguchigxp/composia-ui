@@ -1,5 +1,17 @@
 import type { BaseComponentProps } from '@json-render/react';
-import { Download, Play, RefreshCw, Settings, Shield } from 'lucide-react';
+import {
+  BarChart3,
+  Database,
+  DollarSign,
+  Download,
+  FileText,
+  Package,
+  Play,
+  RefreshCw,
+  Settings,
+  Shield,
+  Users,
+} from 'lucide-react';
 import type { z } from 'zod';
 import type { componentPropsSchemas } from '../../services/catalog.service';
 import { AppActionList } from '../AppActionControl';
@@ -13,6 +25,12 @@ const iconMap = {
   'refresh-cw': RefreshCw,
   settings: Settings,
   shield: Shield,
+  users: Users,
+  database: Database,
+  'file-text': FileText,
+  'bar-chart': BarChart3,
+  package: Package,
+  'dollar-sign': DollarSign,
 } as const;
 
 export function QuickActionsSection({ props }: BaseComponentProps<QuickActionsSectionProps>) {

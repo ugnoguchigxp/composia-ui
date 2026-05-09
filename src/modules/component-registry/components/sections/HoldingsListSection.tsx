@@ -9,7 +9,11 @@ import { SectionShell } from './SectionShell';
 type HoldingsListSectionProps = z.infer<(typeof componentPropsSchemas)['HoldingsListSection']>;
 
 export function HoldingsListSection({ props }: BaseComponentProps<HoldingsListSectionProps>) {
-  const tabs = props.tabs ?? ['Stocks', 'ETFs', 'REITs'];
+  const inferredTabs = [
+    ...new Set(props.holdings.map((holding) => holding.category).filter(Boolean)),
+  ];
+  const tabs = props.tabs.length > 0 ? props.tabs : inferredTabs;
+  const activeTab = props.activeTab ?? tabs[0];
 
   return (
     <SectionShell bodyClassName="space-y-[var(--ui-section-gap)]" visualIntent={props.visualIntent}>
@@ -23,22 +27,24 @@ export function HoldingsListSection({ props }: BaseComponentProps<HoldingsListSe
             readOnly
           />
         </label>
-        <div className="flex items-center gap-2">
-          {tabs.map((tab) => (
-            <button
-              className={cn(
-                'inline-flex h-ui items-center rounded-md border px-ui-button text-sm font-medium',
-                tab === props.activeTab
-                  ? 'border-border bg-muted/60 text-foreground'
-                  : 'border-border/70 bg-background/70 text-muted-foreground'
-              )}
-              key={tab}
-              type="button"
-            >
-              {tab}
-            </button>
-          ))}
-        </div>
+        {tabs.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-2">
+            {tabs.map((tab) => (
+              <button
+                className={cn(
+                  'inline-flex h-ui items-center rounded-md border px-ui-button text-sm font-medium',
+                  tab === activeTab
+                    ? 'border-border bg-muted/60 text-foreground'
+                    : 'border-border/70 bg-background/70 text-muted-foreground'
+                )}
+                key={tab}
+                type="button"
+              >
+                {tab}
+              </button>
+            ))}
+          </div>
+        ) : null}
       </div>
       <div className="space-y-3">
         {props.holdings.map((holding) => (

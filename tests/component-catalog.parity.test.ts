@@ -114,14 +114,14 @@ describe('Component Catalog Parity', () => {
         searchPlaceholder: '商品を検索',
         searchButtonLabel: '検索',
         categories: [],
-        links: [
-          { label: 'おすすめ', href: '/' },
-          { label: 'セール', href: '/deals' },
-          { label: 'ランキング', href: '/ranking' },
-          { label: 'カート', href: '/cart' },
-        ],
+        links: [],
+        resultsTitle: '検索結果',
       })
     );
+    expect(
+      schema.sections.find((section) => section.component === 'MainSearchNavigationSection')?.props
+        .results as unknown[]
+    ).toHaveLength(4);
     expect(schema.sections.find((section) => section.component === 'ChartSection')?.props).toEqual(
       expect.objectContaining({
         chartType: 'bar',
@@ -200,6 +200,47 @@ describe('Component Catalog Parity', () => {
     expect(propsFor('ComparisonSection')).toMatchObject({ columns: [] });
     expect(propsFor('DataTableSection')).toMatchObject({ columns: [], rows: [] });
     expect(propsFor('NavigationPanel')).toMatchObject({ links: [] });
+  });
+
+  it('keeps tab menus data-driven instead of forcing fixed menu counts', () => {
+    const mainSearchLinks = [
+      { label: 'Home', href: '/' },
+      { label: 'Books', href: '/books' },
+      { label: 'Electronics', href: '/electronics' },
+      { label: 'Outdoor', href: '/outdoor' },
+      { label: 'Beauty', href: '/beauty' },
+      { label: 'Toys', href: '/toys' },
+      { label: 'Fashion', href: '/fashion' },
+    ];
+    const holdingTabs = ['Domestic', 'Global', 'Dividend', 'Growth', 'Watchlist'];
+    const schema = normalizeAppUiSchemaCatalog({
+      sections: [
+        {
+          component: 'MainSearchNavigationSection',
+          source: 'app',
+          props: { links: mainSearchLinks },
+        },
+        {
+          component: 'HoldingsListSection',
+          source: 'app',
+          props: { tabs: holdingTabs, activeTab: 'Growth' },
+        },
+        {
+          component: 'NavigationPanel',
+          source: 'navigation',
+          props: { title: 'Local', links: mainSearchLinks.slice(0, 1) },
+        },
+      ],
+    });
+    const propsFor = (component: string) =>
+      schema.sections.find((section) => section.component === component)?.props;
+
+    expect(propsFor('MainSearchNavigationSection')).toMatchObject({ links: mainSearchLinks });
+    expect(propsFor('HoldingsListSection')).toMatchObject({
+      activeTab: 'Growth',
+      tabs: holdingTabs,
+    });
+    expect(propsFor('NavigationPanel')).toMatchObject({ links: mainSearchLinks.slice(0, 1) });
   });
 
   it('does not require nested comparison column items', () => {

@@ -34,7 +34,7 @@ const redirectToLoginIfNeeded = () => {
   }
 };
 
-const customFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
   const headers = new Headers(init?.headers);
   const newInit: RequestInit = {
     ...init,
@@ -97,5 +97,5 @@ const customFetch = async (input: RequestInfo | URL, init?: RequestInit): Promis
 };
 
 export const client = hc<AppType>('/api', {
-  fetch: customFetch,
+  fetch: apiFetch,
 });

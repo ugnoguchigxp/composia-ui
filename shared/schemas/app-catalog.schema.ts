@@ -5,7 +5,31 @@ import { visualIntentSchema } from './visual-intent.schema';
 
 const tableCellValueSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
 const allowedImageHostnames = new Set(['picsum.photos']);
+const allowedLocalImageExtensions = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp']);
 const renderActionsSchema = z.array(appActionSchema).optional();
+
+function isLocalImageAssetPath(src: string) {
+  if (!src.startsWith('/images/')) return false;
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(src);
+  } catch {
+    return false;
+  }
+  if (
+    decoded.includes('//') ||
+    decoded.includes('\\') ||
+    decoded.includes('..') ||
+    decoded.includes('?') ||
+    decoded.includes('#')
+  ) {
+    return false;
+  }
+  const filename = decoded.slice('/images/'.length);
+  if (filename.length === 0 || filename.includes('/')) return false;
+  const extension = filename.split('.').at(-1)?.toLowerCase();
+  return extension ? allowedLocalImageExtensions.has(extension) : false;
+}
 
 export const appRelativeHrefSchema = z
   .string()
@@ -17,14 +41,19 @@ export const appRelativeHrefSchema = z
 export const imageUrlSchema = z
   .string()
   .trim()
-  .url()
   .refine(
     (src) => {
-      const url = new URL(src);
-      return url.protocol === 'https:' && allowedImageHostnames.has(url.hostname);
+      if (isLocalImageAssetPath(src)) return true;
+
+      try {
+        const url = new URL(src);
+        return url.protocol === 'https:' && allowedImageHostnames.has(url.hostname);
+      } catch {
+        return false;
+      }
     },
     {
-      message: 'image src must be an allowed HTTPS image URL',
+      message: 'image src must be an allowed HTTPS image URL or /images asset path',
     }
   );
 
@@ -96,6 +125,52 @@ const cardGridItemSchema = z
     meta: displayMetadataSchema.optional(),
   })
   .strict();
+
+const defaultMarketplaceSearchResults = [
+  {
+    title: 'ワイヤレスイヤホン',
+    description: 'ノイズキャンセルと長時間バッテリーに対応した定番モデル。',
+    badge: '人気',
+    href: '/products/wireless-earbuds',
+    image: {
+      src: 'https://picsum.photos/seed/marketplace-earbuds/1200/720',
+      alt: 'ワイヤレスイヤホン',
+    },
+    meta: { label: '価格', value: '¥12,800' },
+  },
+  {
+    title: 'ステンレスボトル',
+    description: '通勤やアウトドアで使いやすい軽量ボトル。',
+    badge: '本日のお得',
+    href: '/products/stainless-bottle',
+    image: {
+      src: 'https://picsum.photos/seed/marketplace-bottle/1200/720',
+      alt: 'ステンレスボトル',
+    },
+    meta: { label: '評価', value: 4.7 },
+  },
+  {
+    title: 'デスクライト',
+    description: '明るさと色温度を調整できる省スペースライト。',
+    badge: '新着',
+    href: '/products/desk-light',
+    image: {
+      src: 'https://picsum.photos/seed/marketplace-desk-light/1200/720',
+      alt: 'デスクライト',
+    },
+    meta: { label: '在庫', value: 'あり' },
+  },
+  {
+    title: 'キャンバストート',
+    description: '毎日の買い物や通学に使える丈夫なトートバッグ。',
+    href: '/products/canvas-tote',
+    image: {
+      src: 'https://picsum.photos/seed/marketplace-canvas-tote/1200/720',
+      alt: 'キャンバストート',
+    },
+    meta: { label: '配送', value: '明日到着' },
+  },
+];
 
 const optionSchema = z
   .object({
@@ -179,7 +254,7 @@ const holdingRecordSchema = z
     name: z.string().min(1),
     quantityLabel: z.string().min(1),
     acquiredLabel: z.string().min(1),
-    category: z.enum(['Stock', 'ETF', 'REIT']).default('Stock'),
+    category: z.string().min(1).default('Stock'),
     value: z.union([z.string(), z.number()]),
   })
   .strict();
@@ -285,12 +360,26 @@ const notificationItemSchema = z
   })
   .strict();
 
+const quickActionIconSchema = z.enum([
+  'play',
+  'download',
+  'refresh-cw',
+  'settings',
+  'shield',
+  'users',
+  'database',
+  'file-text',
+  'bar-chart',
+  'package',
+  'dollar-sign',
+]);
+
 const quickActionItemSchema = z
   .object({
     id: z.string().min(1),
     label: z.string().min(1),
     description: z.string().optional(),
-    icon: z.enum(['play', 'download', 'refresh-cw', 'settings', 'shield']).default('play'),
+    icon: quickActionIconSchema.default('play'),
   })
   .strict();
 
@@ -534,8 +623,8 @@ export const componentPropsSchemas = {
   HoldingsListSection: z
     .object({
       searchPlaceholder: z.string().min(1).default('Search holdings or tickers...'),
-      tabs: z.array(z.enum(['Stocks', 'ETFs', 'REITs'])).default(['Stocks', 'ETFs', 'REITs']),
-      activeTab: z.enum(['Stocks', 'ETFs', 'REITs']).default('ETFs'),
+      tabs: z.array(z.string().min(1)).default([]),
+      activeTab: z.string().min(1).optional(),
       holdings: z.array(holdingRecordSchema).max(40).default([]),
       actions: renderActionsSchema,
       visualIntent: visualIntentSchema.optional(),
@@ -665,15 +754,9 @@ export const componentPropsSchemas = {
       searchPlaceholder: z.string().min(1).default('商品を検索'),
       searchButtonLabel: z.string().min(1).default('検索'),
       categories: z.array(optionSchema).default([]),
-      links: z
-        .array(actionLinkSchema)
-        .max(12)
-        .default([
-          { label: 'おすすめ', href: '/' },
-          { label: 'セール', href: '/deals' },
-          { label: 'ランキング', href: '/ranking' },
-          { label: 'カート', href: '/cart' },
-        ]),
+      links: z.array(actionLinkSchema).default([]),
+      resultsTitle: z.string().min(1).default('検索結果'),
+      results: z.array(cardGridItemSchema).max(24).default(defaultMarketplaceSearchResults),
       actions: renderActionsSchema,
       visualIntent: visualIntentSchema.optional(),
     })
@@ -893,6 +976,8 @@ export const componentDefinitions = componentDefinitionSchema.array().parse([
     propsSchema: componentPropsSchemas.HoldingsListSection,
     promptProps:
       'searchPlaceholder?, tabs?, activeTab?, holdings[ticker,name,quantityLabel,acquiredLabel,category?,value]?',
+    promptGuidance:
+      'tabs are arbitrary labels and may be empty, short, or long based on the requested categories',
     variants: ['portfolio-holdings-list'],
   },
   {
@@ -947,7 +1032,8 @@ export const componentDefinitions = componentDefinitionSchema.array().parse([
     allowedSources: ['app', 'api', 'summary'],
     placement: 'section',
     propsSchema: componentPropsSchemas.QuickActionsSection,
-    promptProps: 'title, description?, items[id,label,description?,icon?]?',
+    promptProps:
+      'title, description?, items[id,label,description?,icon? one of play|download|refresh-cw|settings|shield|users|database|file-text|bar-chart|package|dollar-sign]?',
     variants: ['quick-actions-grid'],
   },
   {
@@ -1010,9 +1096,9 @@ export const componentDefinitions = componentDefinitionSchema.array().parse([
     placement: 'section',
     propsSchema: componentPropsSchemas.MainSearchNavigationSection,
     promptProps:
-      'title?, searchPlaceholder?, searchButtonLabel?, categories[label,value]?, links[label,href]?',
+      'title?, searchPlaceholder?, searchButtonLabel?, categories[label,value]?, links[label,href]?, resultsTitle?, results[title,description?,badge?,href?,meta?,image]?',
     promptGuidance:
-      'use for Amazon-style catalog headers with a prominent search bar and tabs directly underneath',
+      'use for Amazon-style catalog pages with a prominent search bar, flexible wrapped tabs from props.links, and visible result cards; do not add a search-results action button',
     variants: ['marketplace-search-tabs'],
   },
   {

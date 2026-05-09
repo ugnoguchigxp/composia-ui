@@ -57,12 +57,12 @@
 | `CarouselSection` | `app`, `api`, `markdown`, `rss` | 商品、記事、ギャラリー、推薦の横並び。 | `title, description?, items[title,description?,badge?,href?,image?]?` |
 | `StepperSection` | `summary`, `api`, `markdown`, `app` | designSystem stepper 移植版。workflow、onboarding、注文、障害対応、サポート手順。 | `title, description?, steps[id,title,description?,status?,disabled?,meta?]?, orientation?, variant?, activeStepId?, compactOnMobile?, inlineContentOnVerticalMobile?` |
 | `CardGridSection` | `app`, `api`, `markdown`, `rss`, `postgres` | 商品、project、template、file、選択カードの grid。 | `title, description?, items[title,description?,badge?,href?,meta?,image?]?` |
-| `MainSearchNavigationSection` | `navigation`, `app` | marketplace 型の主検索と直下タブ。 | `title?, searchPlaceholder?, searchButtonLabel?, categories[label,value]?, links[label,href]?` |
+| `MainSearchNavigationSection` | `navigation`, `app` | marketplace 型の主検索、任意件数の折り返しタブ、写真つき検索結果。 | `title?, searchPlaceholder?, searchButtonLabel?, categories[label,value]?, links[label,href]?, resultsTitle?, results[title,description?,badge?,href?,meta?,image]?` |
 | `FormSection` | `app`, `api`, `postgres` | create、edit、settings、checkout、application form。 | `title, description?, fields[name,label,type?,placeholder?,value?,required?,options?]?, submitLabel?, secondaryAction?` |
 | `KanbanSection` | `app`, `api`, `postgres` | task、ticket、lead、workflow state。 | `title, description?, columns[title,cards[title,description?,assignee?,meta?,tone?]]?` |
 | `CalendarSection` | `app`, `api`, `postgres` | event、booking、deadline、schedule。 | `title, description?, events[title,date,time?,description?,tone?]?` |
 | `ScheduleSection` | `app`, `api`, `postgres` | 月間カレンダーで schedule を一覧するカード。 | `title?, description?, monthLabel?, weekDays?, days?, selectedDay?, entries[date,title,amount,status?]?` |
-| `HoldingsListSection` | `app`, `api`, `postgres`, `summary` | 検索＋タブ＋評価額で保有銘柄を表示。 | `searchPlaceholder?, tabs?, activeTab?, holdings[ticker,name,quantityLabel,acquiredLabel,category?,value]?` |
+| `HoldingsListSection` | `app`, `api`, `postgres`, `summary` | 検索＋任意件数のタブ＋評価額で保有銘柄を表示。 | `searchPlaceholder?, tabs?, activeTab?, holdings[ticker,name,quantityLabel,acquiredLabel,category?,value]?` |
 | `AccordionSection` | `app`, `api`, `markdown`, `summary` | FAQ や詳細説明を折りたたみ表示。 | `title, description?, type?, defaultExpandedIds?, items[id,title,content,meta?]?` |
 | `ControlPanelSection` | `app`, `api`, `summary` | 設定つまみ主体のコントロールパネル。 | `title, description?, enabled?, modes[id,label]?, activeModeId?, controls[id,label,icon?,value,min?,max?,step?]?` |
 | `QuickActionsSection` | `app`, `api`, `summary` | 即時実行ショートカットのグリッド。 | `title, description?, items[id,label,description?,icon?]?` |
@@ -71,7 +71,7 @@
 | `EditorPreviewSection` | `app`, `api`, `markdown` | document、markdown、code、prompt、content の edit/preview。 | `title, editorTitle?, editorContent, previewTitle?, previewContent` |
 | `ComparisonSection` | `app`, `api`, `postgres`, `markdown` | plan、option、candidate、version、diff の比較。 | `title, description?, columns[title,description?,items[label,value,tone?]?]?` |
 | `DataTableSection` | `postgres`, `api` | bounded tabular data preview。row cell は scalar のみ。 | `title, description?, columns[key,label]?, rows? with scalar cell values only` |
-| `NavigationPanel` | `navigation` | compact local tab navigation。main search がない局所タブ用。 | `title, links[label,href]?` |
+| `NavigationPanel` | `navigation` | 任意件数の compact local tab navigation。main search がない局所タブ用。 | `title, links[label,href]?` |
 | `EmptyState` | `app`, `summary`, `rss`, `postgres`, `api`, `markdown`, `navigation` | empty data fallback。 | `title, description?, action?` |
 | `ErrorState` | `app`, `summary`, `rss`, `postgres`, `api`, `markdown`, `navigation` | validation / loading error fallback。 | `title, description?` |
 
@@ -87,4 +87,7 @@ Section の大刷新は [section-refactor-checklist.md](/Users/y.noguchi/Code/co
 
 - Section 選定優先度は `目的適合 > 重複なし > データソース適合 > 視覚バランス`。
 - `MainSearchNavigationSection` がある場合、同一目的の `NavigationPanel` や検索用 `FormSection` の併用は避ける。
+- タブ系 props は固定件数にしない。`MainSearchNavigationSection.links`、`NavigationPanel.links`、`HoldingsListSection.tabs` は要求内容に合わせて 0 件から任意件数まで増減できる。
+- 検索結果は action button ではなく、`MainSearchNavigationSection.results` の写真とテキストリンクで表現する。
+- section 末尾の単発 CTA button は既定で作らない。導線が必要な場合は `items[].href`、`links[].href`、hero action など、実体のある表示要素に紐づける。
 - props は schema で default 補完される。未指定は可能な限り補完し、unknown/incompatible value は catalog validation で拒否する。

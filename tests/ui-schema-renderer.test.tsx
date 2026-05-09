@@ -499,6 +499,10 @@ describe('ui schema renderer', () => {
                   { label: 'タイムセール', href: '/deals' },
                   { label: 'ランキング', href: '/ranking' },
                   { label: 'カート', href: '/cart' },
+                  { label: '新着', href: '/new' },
+                  { label: 'ブランド', href: '/brands' },
+                  { label: 'ギフト', href: '/gifts' },
+                  { label: 'アウトレット', href: '/outlet' },
                 ],
               },
             },
@@ -511,11 +515,14 @@ describe('ui schema renderer', () => {
     expect(html).toContain('タイムセール');
     expect(html).toContain('ランキング');
     expect(html).toContain('カート');
+    expect(html).toContain('アウトレット');
     expect(html.indexOf('商品を検索')).toBeLessThan(html.indexOf('タイムセール'));
+    expect(html.indexOf('タイムセール')).toBeLessThan(html.indexOf('アウトレット'));
+    expect(html).toContain('flex-wrap');
     expect(html).toContain('border-b-2');
   });
 
-  it('renders default-safe marketplace search navigation when AI omits tab props', () => {
+  it('does not synthesize a fixed marketplace tab menu when AI omits tab props', () => {
     const html = renderToStaticMarkup(
       <JsonRenderRenderer
         schema={{
@@ -534,10 +541,11 @@ describe('ui schema renderer', () => {
     );
 
     expect(html).toContain('商品を検索');
-    expect(html).toContain('おすすめ');
-    expect(html).toContain('セール');
-    expect(html).toContain('ランキング');
-    expect(html.indexOf('商品を検索')).toBeLessThan(html.indexOf('おすすめ'));
+    expect(html).toContain('検索結果');
+    expect(html).toContain('ワイヤレスイヤホン');
+    expect(html).not.toContain('おすすめ');
+    expect(html).not.toContain('href="/deals"');
+    expect(html).not.toContain('aria-label="Main navigation"');
   });
 
   it('renders card grid metadata objects from AI output', () => {
@@ -639,6 +647,52 @@ describe('ui schema renderer', () => {
     expect(html).toContain(`data-action-id="${cardAction?.id}"`);
     expect(html).toContain('data-selected="true"');
     expect(html).not.toContain('href="/products/seasonal-bouquet"');
+  });
+
+  it('does not render orphan card grid section actions as bottom CTA buttons', () => {
+    const html = renderToStaticMarkup(
+      <JsonRenderRenderer
+        onAction={() => undefined}
+        schema={{
+          page: 'Recommended',
+          intent: 'Show featured product cards',
+          layout: 'screen',
+          sections: [
+            {
+              component: 'CardGridSection',
+              source: 'app',
+              props: {
+                title: '本日のおすすめ',
+                items: [
+                  {
+                    title: '人気モデル特集',
+                    href: '/features/popular-models',
+                  },
+                ],
+              },
+              actions: [
+                {
+                  id: 'popular-models',
+                  label: '人気モデル特集',
+                  kind: 'generate-screen',
+                  target: '/features/popular-models',
+                },
+                {
+                  id: 'view-features',
+                  label: '特集を見る',
+                  kind: 'generate-screen',
+                  target: '/features',
+                },
+              ],
+            },
+          ],
+        }}
+      />
+    );
+
+    expect(html).toContain('人気モデル特集');
+    expect(html).not.toContain('特集を見る');
+    expect(html).not.toContain('data-action-id="view-features"');
   });
 
   it('renders broad work app sections from the catalog', () => {

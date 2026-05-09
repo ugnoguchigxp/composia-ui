@@ -401,8 +401,12 @@ export const sectionComponentFixtures = {
         { label: 'Outdoor', value: 'outdoor' },
       ],
       links: [
+        { label: 'Home', href: '/' },
+        { label: 'Categories', href: '/categories' },
         { label: 'Deals', href: '/deals' },
         { label: 'Ranking', href: '/ranking' },
+        { label: 'Brands', href: '/brands' },
+        { label: 'Gift guide', href: '/gifts' },
         { label: 'Cart', href: '/cart' },
       ],
     },

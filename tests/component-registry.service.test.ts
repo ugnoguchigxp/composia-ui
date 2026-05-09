@@ -69,7 +69,7 @@ describe('component registry service', () => {
     expect(issues).toEqual([
       {
         path: 'ImageSection.image.src',
-        message: 'image src must be an allowed HTTPS image URL',
+        message: 'image src must be an allowed HTTPS image URL or /images asset path',
       },
     ]);
   });
@@ -81,6 +81,18 @@ describe('component registry service', () => {
         image: {
           src: 'https://picsum.photos/seed/safe-image/1200/720',
           alt: 'Safe image',
+        },
+      })
+    ).toEqual([]);
+  });
+
+  it('accepts local public image asset paths', () => {
+    expect(
+      validateComponentProps('ImageSection', {
+        title: 'Uploaded image',
+        image: {
+          src: '/images/screenshot1.png',
+          alt: 'Uploaded image',
         },
       })
     ).toEqual([]);

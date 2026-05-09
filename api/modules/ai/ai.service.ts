@@ -233,11 +233,185 @@ function normalizeTableRows(rows: unknown) {
   });
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+type ActionAnchor = {
+  label: string;
+  target: string;
+};
+
+function actionAnchorLabel(value: Record<string, unknown>, fallback: string) {
+  for (const key of ['label', 'title', 'name']) {
+    const candidate = value[key];
+    if (typeof candidate === 'string' && candidate.trim()) return candidate.trim();
+  }
+  return fallback;
+}
+
+function collectActionAnchors(value: unknown): ActionAnchor[] {
+  if (Array.isArray(value)) return value.flatMap(collectActionAnchors);
+  if (!isRecord(value)) return [];
+
+  const href = value.href;
+  const ownAnchors =
+    typeof href === 'string' && href.trim()
+      ? [{ label: actionAnchorLabel(value, href.trim()), target: href.trim() }]
+      : [];
+
+  return [
+    ...ownAnchors,
+    ...Object.entries(value).flatMap(([key, child]) =>
+      key === 'href' ? [] : collectActionAnchors(child)
+    ),
+  ];
+}
+
+function sectionActionMatchesAnchor(
+  action: NonNullable<AppUiSchema['sections'][number]['actions']>[number],
+  anchors: ActionAnchor[]
+) {
+  return anchors.some((anchor) => action.target === anchor.target || action.label === anchor.label);
+}
+
+function removeOrphanSectionActions<T extends AppUiSchema['sections'][number]>(section: T): T {
+  if (!section.actions?.length) return section;
+
+  const anchors = collectActionAnchors(section.props);
+  const actions = section.actions.filter((action) => sectionActionMatchesAnchor(action, anchors));
+  if (actions.length === section.actions.length) return section;
+  if (actions.length === 0) {
+    const { actions: _actions, ...sectionWithoutActions } = section;
+    return sectionWithoutActions as T;
+  }
+
+  return { ...section, actions };
+}
+
+function normalizeChartHeight(value: unknown) {
+  if (value === undefined) return value;
+  if (typeof value === 'number') {
+    if (value <= 260) return 'sm';
+    if (value >= 360) return 'lg';
+    return 'md';
+  }
+
+  if (typeof value !== 'string') return 'md';
+  const normalized = value.trim().toLowerCase();
+  if (['sm', 'md', 'lg'].includes(normalized)) return normalized;
+
+  const numeric = Number.parseInt(normalized, 10);
+  if (Number.isFinite(numeric)) return normalizeChartHeight(numeric);
+
+  if (['small', 'short', 'compact', 'low'].includes(normalized)) return 'sm';
+  if (['large', 'tall', 'high', 'xl', 'wide'].includes(normalized)) return 'lg';
+  return 'md';
+}
+
+const quickActionIcons = new Set([
+  'play',
+  'download',
+  'refresh-cw',
+  'settings',
+  'shield',
+  'users',
+  'database',
+  'file-text',
+  'bar-chart',
+  'package',
+  'dollar-sign',
+]);
+
+function normalizeQuickActionIcon(value: unknown) {
+  if (value === undefined) return value;
+  if (typeof value !== 'string') return 'settings';
+
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_]+/g, '-');
+  if (quickActionIcons.has(normalized)) return normalized;
+
+  if (
+    ['user', 'people', 'team', 'employee', 'employees', 'customer', 'customers'].includes(
+      normalized
+    )
+  ) {
+    return 'users';
+  }
+  if (['db', 'data', 'table', 'server', 'storage'].includes(normalized)) return 'database';
+  if (['file', 'document', 'report', 'invoice', 'receipt', 'receipt-text'].includes(normalized)) {
+    return 'file-text';
+  }
+  if (
+    ['chart', 'analytics', 'bar-chart-2', 'bar-chart-3', 'line-chart', 'pie-chart'].includes(
+      normalized
+    )
+  ) {
+    return 'bar-chart';
+  }
+  if (['box', 'inventory', 'product', 'products'].includes(normalized)) return 'package';
+  if (
+    ['money', 'yen', 'dollar', 'payment', 'payments', 'revenue', 'finance'].includes(normalized)
+  ) {
+    return 'dollar-sign';
+  }
+  if (['run', 'start', 'launch', 'open'].includes(normalized)) return 'play';
+  if (['export', 'import'].includes(normalized)) return 'download';
+  if (['refresh', 'sync', 'reload', 'update'].includes(normalized)) return 'refresh-cw';
+  if (['security', 'risk', 'compliance', 'approval', 'guard'].includes(normalized)) return 'shield';
+  return 'settings';
+}
+
+function normalizeQuickActionItems(items: unknown) {
+  if (!Array.isArray(items)) return items;
+
+  return items.map((item) => {
+    if (typeof item !== 'object' || item === null || Array.isArray(item)) return item;
+    return {
+      ...item,
+      icon: normalizeQuickActionIcon((item as Record<string, unknown>).icon),
+    };
+  });
+}
+
+function normalizeNotificationLevel(value: unknown) {
+  if (value === undefined) return value;
+  if (typeof value !== 'string') return 'info';
+
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_]+/g, '-');
+  if (['info', 'success', 'warning', 'danger'].includes(normalized)) return normalized;
+  if (['warn', 'caution', 'attention', 'notice'].includes(normalized)) return 'warning';
+  if (['critical', 'error', 'failed', 'failure', 'urgent', 'alert', 'high'].includes(normalized)) {
+    return 'danger';
+  }
+  if (['ok', 'resolved', 'complete', 'completed', 'healthy'].includes(normalized)) return 'success';
+  return 'info';
+}
+
+function normalizeNotificationItems(items: unknown) {
+  if (!Array.isArray(items)) return items;
+
+  return items.map((item) => {
+    if (typeof item !== 'object' || item === null || Array.isArray(item)) return item;
+    return {
+      ...item,
+      level: normalizeNotificationLevel((item as Record<string, unknown>).level),
+    };
+  });
+}
+
 function normalizeProviderSchema(schema: AppUiSchema): AppUiSchema {
   const dedupedSections = dedupeGeneratedSections(schema.sections);
   return {
     ...schema,
-    sections: dedupedSections.map((section) => {
+    sections: dedupedSections.map((providerSection) => {
+      const section = removeOrphanSectionActions(providerSection);
+
       if (section.component === 'FormSection') {
         const fields = Array.isArray(section.props.fields)
           ? section.props.fields.map((field) => {
@@ -261,12 +435,42 @@ function normalizeProviderSchema(schema: AppUiSchema): AppUiSchema {
         };
       }
 
+      if (section.component === 'ChartSection') {
+        return {
+          ...section,
+          props: {
+            ...section.props,
+            height: normalizeChartHeight(section.props.height),
+          },
+        };
+      }
+
       if (section.component === 'DataTableSection') {
         return {
           ...section,
           props: {
             ...section.props,
             rows: normalizeTableRows(section.props.rows),
+          },
+        };
+      }
+
+      if (section.component === 'NotificationCenterSection') {
+        return {
+          ...section,
+          props: {
+            ...section.props,
+            items: normalizeNotificationItems(section.props.items),
+          },
+        };
+      }
+
+      if (section.component === 'QuickActionsSection') {
+        return {
+          ...section,
+          props: {
+            ...section.props,
+            items: normalizeQuickActionItems(section.props.items),
           },
         };
       }

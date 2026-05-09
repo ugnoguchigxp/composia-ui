@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as PromptRouteImport } from './routes/prompt'
+import { Route as MediaRouteImport } from './routes/media'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as HistoryRouteImport } from './routes/history'
 import { Route as DbdesignRouteImport } from './routes/dbdesign'
@@ -24,6 +25,11 @@ import { Route as PromptProjectProjectIdSplatRouteImport } from './routes/prompt
 const PromptRoute = PromptRouteImport.update({
   id: '/prompt',
   path: '/prompt',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MediaRoute = MediaRouteImport.update({
+  id: '/media',
+  path: '/media',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -85,6 +91,7 @@ export interface FileRoutesByFullPath {
   '/dbdesign': typeof DbdesignRouteWithChildren
   '/history': typeof HistoryRoute
   '/login': typeof LoginRoute
+  '/media': typeof MediaRoute
   '/prompt': typeof PromptRouteWithChildren
   '/oauth/callback': typeof OauthCallbackRoute
   '/prompt/$screenId': typeof PromptScreenIdRoute
@@ -98,6 +105,7 @@ export interface FileRoutesByTo {
   '/dbdesign': typeof DbdesignRouteWithChildren
   '/history': typeof HistoryRoute
   '/login': typeof LoginRoute
+  '/media': typeof MediaRoute
   '/prompt': typeof PromptRouteWithChildren
   '/oauth/callback': typeof OauthCallbackRoute
   '/prompt/$screenId': typeof PromptScreenIdRoute
@@ -112,6 +120,7 @@ export interface FileRoutesById {
   '/dbdesign': typeof DbdesignRouteWithChildren
   '/history': typeof HistoryRoute
   '/login': typeof LoginRoute
+  '/media': typeof MediaRoute
   '/prompt': typeof PromptRouteWithChildren
   '/oauth/callback': typeof OauthCallbackRoute
   '/prompt/$screenId': typeof PromptScreenIdRoute
@@ -127,6 +136,7 @@ export interface FileRouteTypes {
     | '/dbdesign'
     | '/history'
     | '/login'
+    | '/media'
     | '/prompt'
     | '/oauth/callback'
     | '/prompt/$screenId'
@@ -140,6 +150,7 @@ export interface FileRouteTypes {
     | '/dbdesign'
     | '/history'
     | '/login'
+    | '/media'
     | '/prompt'
     | '/oauth/callback'
     | '/prompt/$screenId'
@@ -153,6 +164,7 @@ export interface FileRouteTypes {
     | '/dbdesign'
     | '/history'
     | '/login'
+    | '/media'
     | '/prompt'
     | '/oauth/callback'
     | '/prompt/$screenId'
@@ -167,6 +179,7 @@ export interface RootRouteChildren {
   DbdesignRoute: typeof DbdesignRouteWithChildren
   HistoryRoute: typeof HistoryRoute
   LoginRoute: typeof LoginRoute
+  MediaRoute: typeof MediaRoute
   PromptRoute: typeof PromptRouteWithChildren
   OauthCallbackRoute: typeof OauthCallbackRoute
 }
@@ -178,6 +191,13 @@ declare module '@tanstack/react-router' {
       path: '/prompt'
       fullPath: '/prompt'
       preLoaderRoute: typeof PromptRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/media': {
+      id: '/media'
+      path: '/media'
+      fullPath: '/media'
+      preLoaderRoute: typeof MediaRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -287,6 +307,7 @@ const rootRouteChildren: RootRouteChildren = {
   DbdesignRoute: DbdesignRouteWithChildren,
   HistoryRoute: HistoryRoute,
   LoginRoute: LoginRoute,
+  MediaRoute: MediaRoute,
   PromptRoute: PromptRouteWithChildren,
   OauthCallbackRoute: OauthCallbackRoute,
 }

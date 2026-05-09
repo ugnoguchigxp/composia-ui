@@ -4,8 +4,6 @@ import type { z } from 'zod';
 import { cn } from '../../../../lib/utils';
 import type { componentPropsSchemas } from '../../services/catalog.service';
 import {
-  AppActionList,
-  excludeRenderedActions,
   findActionForLabel,
   type RenderableAppActionProps,
   useAppActionRenderContext,
@@ -21,7 +19,6 @@ export function CardGridSection({ props }: BaseComponentProps<CardGridSectionPro
   const itemActions = props.items.map((item) =>
     findActionForLabel(props.actions, item.title, item.href)
   );
-  const extraActions = excludeRenderedActions(props.actions, itemActions);
   const handleActionKeyDown = (
     event: KeyboardEvent<HTMLElement>,
     action: NonNullable<(typeof itemActions)[number]>
@@ -99,7 +96,6 @@ export function CardGridSection({ props }: BaseComponentProps<CardGridSectionPro
           );
         })}
       </div>
-      <AppActionList actions={extraActions} className="mt-0" />
     </SectionShell>
   );
 }

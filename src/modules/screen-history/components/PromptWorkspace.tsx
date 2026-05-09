@@ -18,7 +18,15 @@ import {
   WandSparkles,
   XCircle,
 } from 'lucide-react';
-import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import type { AiActivity } from '../../../../shared/schemas/ai.schema';
 import type { SandboxStateResponse } from '../../../../shared/schemas/database-design.schema';
 import type {
@@ -110,6 +118,22 @@ const initialAssistantMessage: ChatMessage = {
   role: 'assistant',
   content: 'どんな UI にしますか？',
 };
+
+type PromptSubmitShortcutEvent = Pick<
+  ReactKeyboardEvent<HTMLTextAreaElement>,
+  'altKey' | 'ctrlKey' | 'key' | 'metaKey' | 'nativeEvent' | 'shiftKey'
+>;
+
+export function isPromptSubmitShortcut(event: PromptSubmitShortcutEvent) {
+  return (
+    event.key === 'Enter' &&
+    event.ctrlKey &&
+    !event.altKey &&
+    !event.metaKey &&
+    !event.shiftKey &&
+    !event.nativeEvent.isComposing
+  );
+}
 
 function createId(prefix: string) {
   return `${prefix}-${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`}`;
@@ -1522,11 +1546,21 @@ function ChatDock({
     if (promptResetKey > 0) setPrompt('');
   }, [promptResetKey]);
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const submitPrompt = () => {
     const trimmed = prompt.trim();
     if (!trimmed || isPending) return;
     onSubmitPrompt(trimmed);
+  };
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    submitPrompt();
+  };
+
+  const handlePromptKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    if (!isPromptSubmitShortcut(event)) return;
+    event.preventDefault();
+    submitPrompt();
   };
 
   if (!isOpen) {
@@ -1640,27 +1674,32 @@ function ChatDock({
         <form className="grid gap-2 border-t border-border p-3" onSubmit={handleSubmit}>
           <textarea
             aria-label="Prompt"
+            aria-keyshortcuts="Control+Enter"
             className="max-h-40 min-h-24 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm leading-6 outline-none focus-visible:ring-2 focus-visible:ring-ring"
             maxLength={2000}
             onChange={(event) => setPrompt(event.target.value)}
+            onKeyDown={handlePromptKeyDown}
             placeholder={hasActiveScreen ? 'この画面の修正内容を入力' : '作りたい画面を入力'}
             value={prompt}
           />
           <div className="flex items-center justify-between gap-3">
             <span className="text-muted-foreground text-xs">{prompt.length}/2000</span>
-            <button
-              aria-label="Send prompt"
-              className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-3 text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={isPending || prompt.trim().length === 0}
-              type="submit"
-            >
-              {isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Send className="h-4 w-4" />
-              )}
-              Send
-            </button>
+            <div className="flex items-center gap-2">
+              <span className="text-muted-foreground text-[11px]">(ctrl + Enter)</span>
+              <button
+                aria-label="Send prompt"
+                className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-3 text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={isPending || prompt.trim().length === 0}
+                type="submit"
+              >
+                {isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
+                Send
+              </button>
+            </div>
           </div>
         </form>
       ) : null}

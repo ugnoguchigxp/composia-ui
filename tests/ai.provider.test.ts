@@ -38,6 +38,10 @@ describe('ai provider system context', () => {
     expect(layoutSystemContext).toContain('never return string arrays');
     expect(layoutSystemContext).toContain('DataTableSection rows');
     expect(layoutSystemContext).toContain('Never put nested objects or arrays inside row cells');
+    expect(layoutSystemContext).toContain(
+      'Do not add section.actions as generic bottom CTA buttons'
+    );
+    expect(layoutSystemContext).toContain('Put navigation on the concrete visible item via href');
   });
 
   it('keeps legacy sidebar navigation out of new provider-generated screens', () => {

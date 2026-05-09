@@ -17,6 +17,7 @@ import {
   sandboxDatabaseRouter,
 } from './modules/database-design/database-design.routes';
 import { entitiesRouter, metadataRouter } from './modules/entities/entities.routes';
+import { mediaRouter } from './modules/media/media.routes';
 import {
   mcpToolsRouter,
   screenHistoryRouter,
@@ -36,6 +37,7 @@ const apiRoutes = createOpenApiRouter()
   .route('/cache', cacheRouter)
   .route('/database-design', databaseDesignRouter)
   .route('/entities', entitiesRouter)
+  .route('/media', mediaRouter)
   .route('/metadata', metadataRouter)
   .route('/mcp', mcpToolsRouter)
   .route('/mcp', databaseDesignMcpRouter)
@@ -138,6 +140,7 @@ if (config.NODE_ENV === 'production') {
   const serveIndex = serveStatic({ path: './dist/index.html' });
   app.use('/assets/*', serveStatic({ root: './dist' }));
   app.use('/favicon.ico', serveStatic({ root: './dist' }));
+  app.use('/images/*', serveStatic({ root: './public' }));
   app.get('*', async (c, next) => {
     if (c.req.path.startsWith('/api')) return next();
     return serveIndex(c, next);

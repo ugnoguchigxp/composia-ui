@@ -4,11 +4,10 @@ import type { z } from 'zod';
 import type { componentPropsSchemas } from '../../services/catalog.service';
 import {
   AppActionControl,
-  AppActionList,
-  excludeRenderedActions,
   findActionForLabel,
   type RenderableAppActionProps,
 } from '../AppActionControl';
+import { formatDisplayMetadata } from './display-metadata';
 import { SectionShell } from './SectionShell';
 
 type MainSearchNavigationSectionProps = z.infer<
@@ -19,11 +18,6 @@ type MainSearchNavigationSectionProps = z.infer<
 export function MainSearchNavigationSection({
   props,
 }: BaseComponentProps<MainSearchNavigationSectionProps>) {
-  const linkActions = props.links.map((link) =>
-    findActionForLabel(props.actions, link.label, link.href)
-  );
-  const extraActions = excludeRenderedActions(props.actions, linkActions);
-
   return (
     <SectionShell
       bodyClassName="grid gap-section"
@@ -63,27 +57,87 @@ export function MainSearchNavigationSection({
             </button>
           </div>
         </div>
-        <nav
-          aria-label={`${props.title ?? 'Main'} navigation`}
-          className="overflow-x-auto rounded-md border border-border/70 bg-muted/50 px-1.5 py-1"
-        >
-          <div className="flex min-w-max gap-1">
-            {props.links.map((link) => {
-              const action = findActionForLabel(props.actions, link.label, link.href);
-              return (
-                <AppActionControl
-                  action={action}
-                  className="inline-flex h-9 shrink-0 items-center rounded-md border-transparent border-b-2 px-3 text-muted-foreground text-sm font-medium hover:border-border hover:bg-background hover:text-foreground data-[selected=true]:border-primary data-[selected=true]:bg-background data-[selected=true]:text-foreground"
-                  fallbackHref={link.href}
-                  fallbackLabel={link.label}
-                  key={action?.id ?? link.href}
+        {props.links.length > 0 ? (
+          <nav
+            aria-label={`${props.title ?? 'Main'} navigation`}
+            className="rounded-md border border-border/70 bg-muted/50 px-1.5 py-1"
+          >
+            <div className="flex flex-wrap gap-1">
+              {props.links.map((link) => {
+                const action = findActionForLabel(props.actions, link.label, link.href);
+                return (
+                  <AppActionControl
+                    action={action}
+                    className="inline-flex h-9 shrink-0 items-center rounded-md border-transparent border-b-2 px-3 text-muted-foreground text-sm font-medium hover:border-border hover:bg-background hover:text-foreground data-[selected=true]:border-primary data-[selected=true]:bg-background data-[selected=true]:text-foreground"
+                    fallbackHref={link.href}
+                    fallbackLabel={link.label}
+                    key={action?.id ?? link.href}
+                  />
+                );
+              })}
+            </div>
+          </nav>
+        ) : null}
+      </div>
+      {props.results.length > 0 ? (
+        <section aria-label={props.resultsTitle} className="grid gap-3">
+          <h3 className="font-semibold text-foreground text-sm">{props.resultsTitle}</h3>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {props.results.map((item) => {
+              const meta = formatDisplayMetadata(item.meta);
+              const image = item.image ? (
+                <img
+                  alt={item.image.alt}
+                  className="aspect-[4/3] w-full rounded-md border border-border/70 object-cover"
+                  decoding="async"
+                  loading="lazy"
+                  referrerPolicy="no-referrer"
+                  src={item.image.src}
                 />
+              ) : null;
+
+              return (
+                <article className="grid gap-2" key={`${item.title}-${item.href ?? ''}`}>
+                  {item.href ? (
+                    <a aria-label={item.title} className="block" href={item.href}>
+                      {image}
+                    </a>
+                  ) : (
+                    image
+                  )}
+                  <div className="grid gap-1">
+                    <div className="flex items-start gap-2">
+                      {item.href ? (
+                        <a
+                          className="font-medium text-primary text-sm leading-5 underline-offset-4 hover:underline"
+                          href={item.href}
+                        >
+                          {item.title}
+                        </a>
+                      ) : (
+                        <span className="font-medium text-foreground text-sm leading-5">
+                          {item.title}
+                        </span>
+                      )}
+                      {item.badge ? (
+                        <span className="rounded-sm bg-secondary px-2 py-0.5 text-secondary-foreground text-xs">
+                          {item.badge}
+                        </span>
+                      ) : null}
+                    </div>
+                    {meta ? <p className="text-muted-foreground text-xs">{meta}</p> : null}
+                    {item.description ? (
+                      <p className="line-clamp-2 text-muted-foreground text-sm leading-5">
+                        {item.description}
+                      </p>
+                    ) : null}
+                  </div>
+                </article>
               );
             })}
           </div>
-        </nav>
-      </div>
-      <AppActionList actions={extraActions} className="mt-1" />
+        </section>
+      ) : null}
     </SectionShell>
   );
 }

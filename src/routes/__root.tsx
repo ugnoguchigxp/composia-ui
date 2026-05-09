@@ -1,6 +1,6 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { createRootRouteWithContext, Link, Outlet } from '@tanstack/react-router';
-import { Database, Home, LogOut, User, WandSparkles } from 'lucide-react';
+import { Database, Home, Image, LogOut, User, WandSparkles } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../lib/auth';
 
@@ -70,6 +70,13 @@ export const Route = createRootRouteWithContext<RouterContext>()({
             >
               <Database className="h-4 w-4" />
               DBDesign
+            </Link>
+            <Link
+              to="/media"
+              className="inline-flex h-ui items-center gap-2 rounded-md px-ui-button text-sm font-medium hover:bg-secondary hover:text-secondary-foreground"
+            >
+              <Image className="h-4 w-4" />
+              Media
             </Link>
           </div>
 
